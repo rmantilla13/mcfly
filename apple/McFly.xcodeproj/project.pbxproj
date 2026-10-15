@@ -18,6 +18,7 @@
 		532E61DA43CF3A567D0E68B9 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0541DC6B569E5BE913765B74 /* Components.swift */; };
 		5E42F488FE1CD32F40926EBE /* MarketsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */; };
 		658E91D14231709945A117B6 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08BAFC5D9C7398731AB90318 /* Config.swift */; };
+		708B1455CD8F86BAF364E88A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */; };
 		7BA38494D5F34C9B13B931FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F43F67BC8172506F846877D4 /* Assets.xcassets */; };
 		7CE1E42A606557E789079024 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28DF0EF62E7B6986374243A /* Theme.swift */; };
 		803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333BC1BF2A56D73A429ED6E /* AgentsView.swift */; };
@@ -65,6 +66,7 @@
 		9B3CBF241787C44CC8F35BEC /* McFlyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyKit; path = McFlyKit; sourceTree = SOURCE_ROOT; };
 		BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSpeaker.swift; sourceTree = "<group>"; };
 		BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
+		D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D60CD29D7101DC7226714153 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		E28DF0EF62E7B6986374243A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E7D8CDC30E03C6AB224D384F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -100,6 +102,7 @@
 			children = (
 				F43F67BC8172506F846877D4 /* Assets.xcassets */,
 				E7D8CDC30E03C6AB224D384F /* Info.plist */,
+				D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */,
 				F2458D6B94D770EC8E90A2E6 /* App */,
 				3D05ED827F94CC52AB1D22EB /* Theme */,
 				49E5C3BDFCFE7932F8688F3D /* Views */,
@@ -257,6 +260,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7BA38494D5F34C9B13B931FE /* Assets.xcassets in Resources */,
+				708B1455CD8F86BAF364E88A /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -71,6 +71,61 @@ minutes old and its newest Pulse report is today's, so Home always has a day.
 `-McFlyMood morning|day|evening|night|dark` (or `MCFLY_MOOD`, as on the
 display) pins the palette for screenshots.
 
+## TestFlight
+
+```bash
+scripts/release-ios.sh --upload
+```
+
+This builds the app for iPhone and iPad, signs it for the App Store and
+uploads it; TestFlight has it once Apple has processed it, usually within
+minutes. Without `--upload` it stops at `build/ios/McFly.xcarchive`, and
+nothing leaves the Mac.
+
+It builds a commit, `origin/main` unless `MCFLY_RELEASE_REF` names another
+(a branch, a tag, `HEAD`), in a checkout of its own: never this checkout's
+files, which other work in progress may share, so push what should ship
+first. Each build says which commit it is. Only `Config/Local.xcconfig`
+comes from here. It refuses to make a build without the Supabase project
+there (a tester would only see "not connected"), and checks what App Store
+Connect would otherwise turn away after the upload: the build number, the
+privacy manifest, the associated domain, and a reason in the manifest for
+each API Apple asks about that the linked binary uses, packages included.
+
+Before the first upload:
+
+1. `Config/Local.xcconfig` with `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
+   `MCFLY_TEAM_ID`, and `mcfly://auth-callback` in Supabase's **Redirect
+   URLs** (Configure, above): without it an emailed sign-in link opens the
+   console, not the app.
+2. At [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list),
+   **Identifiers → + → App IDs → App**: bundle ID `bot.mcfly.app` (explicit),
+   with **Associated Domains** ticked. (The upload would register it too, but
+   App Store Connect lists only bundle IDs that already exist.)
+3. In [App Store Connect](https://appstoreconnect.apple.com/apps), **+ → New
+   App**: iOS, bundle ID `bot.mcfly.app`, any SKU. The name must be unique on
+   the App Store; the home screen still says McFly (`CFBundleDisplayName`).
+   Without it the upload ends in "No suitable application records were
+   found".
+4. Xcode signed in to the developer account (**Settings → Accounts**). The
+   upload makes the Apple Distribution certificate and the App Store profile
+   itself, and no iPhone need be registered to the team: the archive is
+   signed for the App Store at export, never for development. An App Store
+   Connect API key works instead; see the script's header.
+
+Each build number is the time it was built, so every upload is newer than the
+last. Bump `MARKETING_VERSION` in `project.yml` for a new version. Add yourself
+to a group under **TestFlight → Internal Testing**, and builds reach you
+through the TestFlight app. Testers outside the team need Beta App Review,
+which needs an account for the reviewer to sign in with (a password one: an
+emailed link can't be opened at Apple).
+
+`McFly/PrivacyInfo.xcprivacy` gives the reasons for those APIs (file dates,
+for supabase-swift's Storage; user defaults, for the Mac app's dark mode) and
+what the app sends (the account's email, what is asked of the assistant). A
+new use of one needs its reason there, or the upload is refused; the script
+says which.
+
 ## Screens
 
 | Where | What |

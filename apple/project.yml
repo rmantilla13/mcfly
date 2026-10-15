@@ -36,6 +36,10 @@ targets:
       properties:
         CFBundleDisplayName: McFly
         CFBundleName: McFly
+        # From the build settings, so release-ios.sh's build number reaches
+        # the app (xcodegen writes 1.0 and 1 otherwise).
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSHumanReadableCopyright: Copyright © McFly. All rights reserved.
         LSApplicationCategoryType: public.app-category.productivity
         # Standard HTTPS only, so App Store Connect skips the export question.
