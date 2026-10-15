@@ -51,8 +51,12 @@ sudo dpkg --configure -a
 # Boot video: the ffmpeg package includes ffplay, which draws on the KMS/DRM
 # screen before the app starts. ffmpeg itself is the framebuffer fallback.
 # qt6-base-private-dev: lets the app switch the HDMI panel off when it sleeps.
-sudo apt-get update
-sudo apt-get install -y \
+# A Pi on weak Wi-Fi drops downloads: retry each one, and MCFLY_FORCE_IPV4=1
+# skips IPv6 where the network advertises it but doesn't route it.
+apt_opts=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+[ "${MCFLY_FORCE_IPV4:-}" = 1 ] && apt_opts+=(-o Acquire::ForceIPv4=true)
+sudo apt-get "${apt_opts[@]}" update
+sudo apt-get "${apt_opts[@]}" install -y \
     build-essential cmake git \
     qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-websockets-dev qt6-qpa-plugins \
     qt6-shadertools-dev libqt6websockets6 \
@@ -214,6 +218,14 @@ ensure_display_env QT_QPA_EGLFS_INTEGRATION eglfs_kms
 ensure_display_env QT_QPA_EGLFS_KMS_CONFIG /etc/mcfly/kms.json
 ensure_display_env QT_QPA_EGLFS_HIDECURSOR 1
 ensure_display_env QT_QPA_EGLFS_ALWAYS_SET_MODE 1
+# No backend yet (a fresh install, or one still on demo data): connect to the
+# repo's default, mcfly.bot's project (display/deploy/backend.env), so the
+# first boot shows the pairing code. A backend set by hand is kept.
+if ! sudo grep -qE '^MCFLY_SUPABASE_URL=' /etc/mcfly/display.env && [ -f "$repo/display/deploy/backend.env" ]; then
+    echo "Connecting to the default backend (display/deploy/backend.env)"
+    ensure_display_env MCFLY_SUPABASE_URL "$(grep -E '^MCFLY_SUPABASE_URL=' "$repo/display/deploy/backend.env" | cut -d= -f2-)"
+    ensure_display_env MCFLY_SUPABASE_ANON_KEY "$(grep -E '^MCFLY_SUPABASE_ANON_KEY=' "$repo/display/deploy/backend.env" | cut -d= -f2-)"
+fi
 
 step "Configuring the console"
 # Hide the rainbow splash and the kernel log, and keep the console from

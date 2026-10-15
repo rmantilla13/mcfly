@@ -196,15 +196,12 @@ touch, so a long one isn't cut off. To turn the screen off too, see
 
 ## 5. Connect it to your account
 
-Until the backend is set up, the display shows sample data. Once there's a
-Supabase project (see the main README):
-
-1. Run `./display/deploy/connect-backend.sh` (it asks for the project URL
-   and the publishable key and writes `/etc/mcfly/display.env`), or set
-   `MCFLY_SUPABASE_URL` and `MCFLY_SUPABASE_ANON_KEY` there by hand.
-2. Run `sudo systemctl restart mcfly-display`. The setup screen shows a 6-digit
-   code.
-3. On your phone (the McFly app → Displays → Pair), on the Mac, or at mcfly.bot/pair, sign in with your account and enter the code, or scan the QR code next to it.
+The installer connects the display to mcfly.bot's backend by itself
+(`display/deploy/backend.env`), so after the reboot the setup screen shows a
+6-digit code. Pair it from your phone (the McFly app → Displays → Pair), the
+Mac, or mcfly.bot/pair: sign in and enter the code, or scan the QR code next
+to it. To use a different Supabase project instead, run
+`./display/deploy/connect-backend.sh`.
 
 ## 6. Voice (optional)
 
@@ -383,6 +380,34 @@ it powered with a black picture: add `MCFLY_PANEL_POWER=off` to
 | Get a login prompt on the screen | `sudo systemctl stop mcfly-display && sudo systemctl unmask getty@tty1.service autovt@tty1.service && sudo systemctl start getty@tty1` (install masks those units so a boot cannot stick on the console; re-run `install-pi.sh` or `preview.sh off` to mask them again) |
 | Use your own boot video | `sudo cp my-video.mp4 /etc/mcfly/boot.mp4` and reboot. Delete it to go back to the built-in clip |
 | Check power and temperature | `vcgencmd get_throttled` (`0x0` is good) and `vcgencmd measure_temp` |
+
+## Start over (clean install)
+
+To remove McFly completely and install it fresh (for example after an install
+that stopped half-way):
+
+```bash
+cd ~/mcfly && git pull && ./display/deploy/uninstall-pi.sh
+```
+
+```bash
+cd ~ && rm -rf ~/mcfly && git clone https://github.com/rmantilla13/mcfly.git
+```
+
+```bash
+cd ~/mcfly && ./display/deploy/install-pi.sh --with-voice && sudo reboot
+```
+
+The uninstall removes the app, its services, `/etc/mcfly`, the display's
+pairing and the voice service (add `--keep-models` to keep the 220 MB of
+speech models). Wi-Fi, your user and SSH stay. After the reboot McFly opens on
+its own on the pairing screen; pair it again.
+
+If downloads fail with "Tried to start delayed item … but failed" or
+"Temporary failure resolving", the Wi-Fi is dropping. Run
+`sudo iw dev wlan0 set power_save off`, then the installer again with
+`MCFLY_FORCE_IPV4=1 ./display/deploy/install-pi.sh --with-voice`, or use an
+ethernet cable for the install.
 
 ## Troubleshooting
 

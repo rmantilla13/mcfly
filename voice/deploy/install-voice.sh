@@ -35,11 +35,15 @@ case "$(dpkg --print-architecture)" in
 esac
 
 step "Installing packages"
-sudo apt-get update
+# A Pi on weak Wi-Fi drops downloads: retry each one, and MCFLY_FORCE_IPV4=1
+# skips IPv6 where the network advertises it but doesn't route it.
+apt_opts=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+[ "${MCFLY_FORCE_IPV4:-}" = 1 ] && apt_opts+=(-o Acquire::ForceIPv4=true)
+sudo apt-get "${apt_opts[@]}" update
 # Python for the venv, PortAudio for the mic, espeak-ng as the fallback voice,
 # alsa-utils for aplay (playback) and arecord (troubleshooting). Everything
 # else comes as prebuilt Python wheels, so no compilers are needed.
-sudo apt-get install -y python3 python3-venv libportaudio2 espeak-ng alsa-utils
+sudo apt-get "${apt_opts[@]}" install -y python3 python3-venv libportaudio2 espeak-ng alsa-utils
 
 step "Installing mcfly-voice into $venv"
 # The venv belongs to the service user, so nothing in the repo or the venv
