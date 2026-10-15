@@ -1,0 +1,55 @@
+# Runs the McFly voice service (wake word, speech to text, spoken replies)
+# next to the display. Installed by voice/deploy/install-voice.sh, which fills
+# in @USER@ and @UID@: the same user as mcfly-display, so they share the
+# screen speakers.
+[Unit]
+Description=McFly voice service
+After=sound.target
+
+[Service]
+User=@USER@
+SupplementaryGroups=audio
+# The display user's lingering session owns PipeWire, and the screen speakers
+# with it. Replies go there (mute and volume from the gear menu) instead of
+# opening HDMI on their own.
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+# Reads /etc/mcfly/voice.toml; models live in ~/.local/share/mcfly-voice.
+# Give PipeWire a moment at boot. A missing socket is fine: replies fall back
+# to the panel, and the microphone still works.
+ExecStartPre=/bin/sh -c 'i=0; while [ "$i" -lt 15 ] && [ ! -S /run/user/@UID@/pulse/native ]; do i=$((i+1)); sleep 1; done'
+ExecStart=/opt/mcfly-voice/bin/python -m mcfly_voice
+# Models are fetched only by `--download-models`, never while running.
+Environment=HF_HUB_OFFLINE=1
+Environment=PYTHONUNBUFFERED=1
+# Loading the models takes a few seconds, longer from a slow SD card.
+TimeoutStartSec=120
+Restart=always
+RestartSec=3
+# Audio capture shouldn't stall when the display is busy.
+Nice=-5
+
+# Sandboxing. It needs /dev/snd (so no PrivateDevices, ProtectClock or
+# DeviceAllow), writes only its data_dir in the user's home, and may play
+# through PipeWire's socket in /run/user/<uid> (AF_UNIX) when ALSA's default
+# device leads there.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+UMask=0077
+# Audio stays on the device: no network beyond the display's localhost socket.
+# (If you really serve server.host on the LAN, override these two.)
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,83 @@
+# Runs the McFly display as a kiosk on boot, straight to the panel via EGLFS.
+# There's no desktop: this service owns tty1, and the video, render, input,
+# audio and tty groups give it the screen, GPU, touch, sound and console.
+# Installed by display/deploy/install-pi.sh, which fills in the user and their UID.
+[Unit]
+Description=McFly wall display
+# After logins are allowed, logind is up, and any boot splash has let go of
+# the screen. The user manager (lingering) creates the runtime dir and PipeWire.
+After=systemd-user-sessions.service systemd-logind.service plymouth-quit-wait.service
+# udev has created device nodes. HDMI's DRM node can still appear later, and
+# the panel may be off. Restart= covers that. Do not pin a card index: on the
+# Pi 5 the HDMI card and the GPU card swap.
+After=systemd-udev-trigger.service
+# Do not wait for network-online. That target sits until Wi-Fi associates
+# (or until its timeout, when the network is down) and the panel stays on
+# the console the whole time. Instead the stop helper (ExecStartPre) keeps
+# the boot video up while Wi-Fi joins, for at most MCFLY_BOOT_NETWORK_WAIT
+# seconds (30), and only when the video is playing, so the app opens
+# connected. When the network comes later, the app retries within seconds.
+Wants=systemd-logind.service
+Wants=user@@UID@.service
+After=user@@UID@.service
+# The boot video is already running (it is ordered before this unit). It is
+# not a Conflicts=: both units have to be queued at boot, and a conflict
+# would drop one of them. ExecStartPre stops the player and waits until it
+# has released HDMI. That helper signals the process directly; `systemctl
+# stop` from here deadlocks the boot transaction.
+After=mcfly-bootscreen.service
+# Own the first console. Conflicts stops the login prompt; Before= (not After=)
+# so when both are queued we start and getty is stopped. After=getty waits for
+# the prompt, then the two units order-cycle and systemd drops this start —
+# the screen stays on the login prompt across reboot. autovt is the same
+# getty, started on demand by logind when it thinks tty1 is free.
+Conflicts=getty@tty1.service autovt@tty1.service
+Before=getty@tty1.service autovt@tty1.service
+# Never give up restarting: the panel may be switched on after the Pi (no
+# screen yet means the app exits), the GPU may still be starting, or the
+# first start may fail while multi-user is still coming up. Restart=always
+# retries those; a zero interval disables the default give-up after a few tries.
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+# Open the DRM device and the console even when the login that ran the
+# installer has not picked up the new group membership yet.
+SupplementaryGroups=video render input audio tty
+# A logind session on tty1, so autovt does not put a login prompt back.
+# systemd opens the TTY as root before dropping to User=. The stack is
+# display/deploy/mcfly-display.pam, installed to /etc/pam.d/mcfly-display.
+PAMName=mcfly-display
+# Qt platform, scaling and backend settings live in the file (scale, Supabase).
+# The Environment= lines below apply only when that file does not set the same
+# key. The installer writes these keys into the file. journald only stores
+# what this process prints. `journalctl -u mcfly-display -f` does not start
+# it and does not draw on HDMI. `systemctl enable --now mcfly-display` does.
+EnvironmentFile=/etc/mcfly/display.env
+# Where the user's PipeWire (PulseAudio) socket lives.
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/etc/mcfly/kms.json
+Environment=QT_QPA_EGLFS_HIDECURSOR=1
+# Program the HDMI mode even when the console already set one, so the text
+# console does not stay on the panel while this process is running.
+Environment=QT_QPA_EGLFS_ALWAYS_SET_MODE=1
+# EGLFS and linuxfb only cover the console when this process holds tty1.
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+UtmpIdentifier=tty1
+ExecStartPre=-+/usr/local/libexec/mcfly-stop-bootscreen
+ExecStart=/usr/local/bin/mcfly-display
+Restart=always
+# A missing screen or a GPU that is still starting exits the process. Come
+# back quickly so the panel does not sit on the console.
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

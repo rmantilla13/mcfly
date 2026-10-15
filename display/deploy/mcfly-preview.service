@@ -1,0 +1,21 @@
+# Shows McFly on a virtual screen you open in a web browser, for using the Pi
+# before the panel is connected. Installed by display/deploy/preview.sh (which
+# fills in @USER@); it replaces the kiosk service while it runs.
+[Unit]
+Description=McFly preview (virtual screen in a browser)
+After=network-online.target mcfly-bootscreen.service
+Wants=network-online.target
+Conflicts=mcfly-display.service
+
+[Service]
+User=@USER@
+# The same settings as the kiosk, plus MCFLY_PREVIEW_LAN from preview.env.
+EnvironmentFile=-/etc/mcfly/preview.env
+# Same handoff as the kiosk: drop the boot video before drawing.
+ExecStartPre=-+/usr/local/libexec/mcfly-stop-bootscreen
+ExecStart=/usr/local/bin/mcfly-preview
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

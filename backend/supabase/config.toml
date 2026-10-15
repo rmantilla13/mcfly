@@ -1,0 +1,20 @@
+# Supabase CLI settings for McFly (supabase link, db push, functions deploy).
+# Anything not listed here uses the CLI's defaults.
+project_id = "mcfly"
+
+# Each function checks its caller itself (an agent's key, a display's
+# pairing secret, a platform admin, or a signed-in reader), so the gateway's
+# JWT check is off.
+# That also keeps them working with Supabase's newer non-JWT API keys, and
+# lets an agent call ingest with nothing but its own key.
+[functions.ingest]
+verify_jwt = false
+
+[functions.pair-device]
+verify_jwt = false
+
+[functions.admin]
+verify_jwt = false
+
+[functions.assistant]
+verify_jwt = false

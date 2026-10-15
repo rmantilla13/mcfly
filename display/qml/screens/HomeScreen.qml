@@ -1,0 +1,581 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import McFly
+import McFly.Core
+
+// Home: today, in time order.
+//
+// The left column is the moment: the greeting and the clock, what's up next,
+// anything blocked, and the way to ask McFly. The right column is the day:
+// the markets in one strip, then one stream of what arrived and what is
+// planned (Store.timeline), scrolled so "now" sits near the top. Past rows
+// fade, the current event is outlined, the next one is marked.
+//
+// Mini keeps both columns but drops the ask bar (the nav's sparkle does its
+// job) and shows three tickers; Tall stacks everything into a feed
+// (docs/LAYOUTS.md).
+Item {
+    id: home
+    signal openScreen(int index)
+    signal openAssistant(string question)
+    signal pushToTalk()
+
+    // On screen and not covered (set by Main.qml); the ask bar's glow only
+    // animates while it is.
+    property bool shown: true
+
+    property date now: new Date()
+    // Past / now / next move once a minute, not every second.
+    readonly property real minuteMs: Math.floor(now.getTime() / 60000) * 60000
+
+    readonly property var tickers: Store.quotes.slice(0, Theme.wide ? 5 : Theme.mini ? 3 : 4)
+    readonly property var blocked: Store.projects.filter(p => p.status === "blocked")
+    // The event on now, else the next one today or later (not all-day).
+    readonly property var nextEvent: {
+        const t = minuteMs
+        for (const e of Store.events)
+            if (!e.all_day && e.endMs > t)
+                return e
+        return null
+    }
+    readonly property var timeline: Store.timeline
+    // The row to keep in view: the first one not yet over.
+    readonly property int focusIndex: {
+        const t = minuteMs
+        for (let i = 0; i < timeline.length; ++i)
+            if (!timeline[i].allDay && timeline[i].endMs >= t && timeline[i].kind === "event")
+                return i
+        return timeline.length - 1
+    }
+    readonly property int nextIndex: {
+        const t = minuteMs
+        for (let i = 0; i < timeline.length; ++i)
+            if (timeline[i].kind === "event" && !timeline[i].allDay && timeline[i].startMs > t)
+                return i
+        return -1
+    }
+
+    Timer { interval: 1000; running: home.visible; repeat: true; triggeredOnStart: true; onTriggered: home.now = new Date() }
+
+    function greeting() {
+        const h = now.getHours()
+        const part = h < 5 ? qsTr("Good night") : h < 12 ? qsTr("Good morning") : h < 18 ? qsTr("Good afternoon") : qsTr("Good evening")
+        return Store.displayName && Store.displayName !== "McFly" ? part + ", " + Store.displayName : part
+    }
+    function minutesUntil(ms) { return Math.max(0, Math.round((ms - minuteMs) / 60000)) }
+    function untilLabel(ms) {
+        const m = minutesUntil(ms)
+        if (m < 1) return qsTr("now")
+        if (m < 60) return qsTr("in %1 min").arg(m)
+        const h = Math.floor(m / 60), r = m % 60
+        return r === 0 ? qsTr("in %1 h").arg(h) : qsTr("in %1 h %2 min").arg(h).arg(r)
+    }
+    function nextHeading() {
+        const e = nextEvent
+        if (!e) return ""
+        if (e.startMs <= minuteMs) return qsTr("NOW · ENDS %1").arg(untilLabel(e.endMs).toUpperCase())
+        if (e.day !== Store.today) return qsTr("UP NEXT · %1").arg(e.dayLabel.toUpperCase())
+        return qsTr("UP NEXT · %1").arg(untilLabel(e.startMs).toUpperCase())
+    }
+    function kindIcon(item) {
+        switch (item.kind) {
+        case "news": return "news"
+        case "brief": return "brief"
+        case "alert": return "info"
+        case "project": return item.icon || "check"
+        default: return "calendar"
+        }
+    }
+
+    // ---- The regions.
+
+    // Greeting, the big clock, the date.
+    component Clock: ColumnLayout {
+        spacing: 0
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            Rectangle {
+                visible: Theme.navMode === "bar"
+                width: Theme.mini ? 30 : 36; height: width; radius: width / 2
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Theme.glowBlue }
+                    GradientStop { position: 1; color: Theme.glowCoral }
+                }
+                Icon { anchors.centerIn: parent; name: "bolt"; size: parent.width * 0.52; color: "white"; strokeWidth: 2.2 }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: home.greeting()
+                color: Theme.textMuted
+                font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd
+                elide: Text.ElideRight
+            }
+            Label {
+                visible: Store.mode === "demo"
+                text: qsTr("DEMO")
+                color: Theme.accent
+                font.pixelSize: Theme.fontXs
+                font.weight: Font.Bold
+                font.letterSpacing: 1
+            }
+        }
+        RowLayout {
+            spacing: 8
+            Label {
+                text: Qt.formatTime(home.now, "h:mm AP").split(" ")[0]
+                color: Theme.text
+                font.pixelSize: Theme.mini ? 64 : Theme.compact ? 88 : 112
+                font.weight: Font.Light
+                font.letterSpacing: Theme.mini ? -2 : -4
+            }
+            Label {
+                Layout.alignment: Qt.AlignBottom
+                Layout.bottomMargin: Theme.mini ? 12 : 20
+                text: Qt.formatTime(home.now, "AP")
+                color: Theme.textMuted
+                font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd
+            }
+        }
+        Label {
+            Layout.fillWidth: true
+            text: Qt.formatDate(home.now, Theme.mini ? "ddd, MMM d" : "dddd, MMMM d") + " · " + Store.lastSyncLabel
+            color: Theme.textMuted
+            font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
+            elide: Text.ElideRight
+        }
+    }
+
+    // Up next (or on now), on the accent.
+    component NextCard: Rectangle {
+        visible: !!home.nextEvent
+        implicitHeight: nextCol.implicitHeight + (Theme.mini ? 24 : 36)
+        radius: Theme.radius
+        color: home.nextEvent && home.nextEvent.color ? home.nextEvent.color : Theme.accent
+        ColumnLayout {
+            id: nextCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: Theme.mini ? 14 : 22
+            spacing: 2
+            Label {
+                Layout.fillWidth: true
+                text: home.nextHeading()
+                color: Qt.rgba(1, 1, 1, 0.88)
+                font.pixelSize: Theme.fontXs - (Theme.mini ? 1 : 0)
+                font.weight: Font.Bold
+                font.letterSpacing: 1.3
+                elide: Text.ElideRight
+            }
+            Label {
+                Layout.fillWidth: true
+                text: home.nextEvent ? home.nextEvent.title : ""
+                color: "white"
+                font.pixelSize: Theme.mini ? Theme.fontMd : Theme.fontLg
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: !Theme.mini || !!(home.nextEvent && home.nextEvent.location)
+                text: home.nextEvent ? [home.nextEvent.timeLabel, home.nextEvent.location || home.nextEvent.calendar].filter(s => !!s).join(" · ") : ""
+                color: Qt.rgba(1, 1, 1, 0.9)
+                font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
+                elide: Text.ElideRight
+            }
+        }
+        TapHandler { onTapped: home.openScreen(6) }
+    }
+
+    // The first blocked project, on a warm tint.
+    component BlockedCard: Rectangle {
+        readonly property var project: home.blocked.length > 0 ? home.blocked[0] : null
+        visible: !!project
+        implicitHeight: blockedRow.implicitHeight + (Theme.mini ? 20 : 30)
+        radius: Theme.radius
+        color: Qt.tint(Theme.surface, Qt.rgba(0.94, 0.42, 0.33, Theme.dark ? 0.22 : 0.16))
+        RowLayout {
+            id: blockedRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: Theme.mini ? 14 : 20
+            spacing: 14
+            Rectangle {
+                width: Theme.mini ? 32 : 40; height: width; radius: width / 2
+                color: Qt.rgba(0.94, 0.42, 0.33, 0.22)
+                Icon { anchors.centerIn: parent; name: "info"; size: Theme.mini ? 18 : 20; color: Theme.danger }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                Label {
+                    Layout.fillWidth: true
+                    text: project ? (home.blocked.length > 1 ? qsTr("%1 and %2 more are blocked").arg(project.name).arg(home.blocked.length - 1)
+                                                            : qsTr("%1 is blocked").arg(project.name)) : ""
+                    color: Theme.text
+                    font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd - 2
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: project ? (project.next_step || project.summary || "") : ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
+                    elide: Text.ElideRight
+                }
+            }
+        }
+        TapHandler { onTapped: home.openScreen(4) }
+    }
+
+    // "Ask McFly" on the voice glow.
+    component AskBar: Rectangle {
+        id: askBar
+        property bool live: true
+        implicitHeight: Theme.tall ? 84 : 88
+        radius: height / 2
+        color: "#1B1A1F"
+        clip: true
+        SpectrumGlow {
+            anchors.fill: parent
+            kind: "input"
+            cornerRadius: askBar.radius
+            ambient: true
+            intensity: 0.8
+            active: home.shown && askBar.live
+            processing: AI.busy
+        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 28
+            anchors.rightMargin: 14
+            spacing: 14
+            Icon { name: "sparkle"; size: 24; color: Qt.rgba(1, 1, 1, 0.85) }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Ask McFly")
+                color: Qt.rgba(1, 1, 1, 0.86)
+                font.pixelSize: Theme.fontMd - 2
+                elide: Text.ElideRight
+            }
+            IconButton {
+                width: 60; height: 60
+                icon: Voice.available ? "mic" : "mic-off"
+                fill: Qt.rgba(1, 1, 1, 0.14)
+                ink: "white"
+                onClicked: home.pushToTalk()
+            }
+        }
+        TapHandler { onTapped: home.openAssistant("") }
+    }
+
+    // The markets in one strip: symbol, price, change.
+    component MarketsStrip: Rectangle {
+        implicitHeight: Theme.mini ? 56 : 68
+        radius: Theme.radiusSm + 6
+        color: Theme.surface
+        visible: home.tickers.length > 0
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.mini ? 14 : 20
+            anchors.rightMargin: Theme.mini ? 14 : 20
+            spacing: Theme.mini ? 10 : 18
+            Repeater {
+                model: home.tickers
+                delegate: RowLayout {
+                    required property var modelData
+                    required property int index
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Rectangle {
+                        visible: index > 0
+                        Layout.preferredWidth: 1
+                        Layout.preferredHeight: 26
+                        Layout.rightMargin: Theme.mini ? 4 : 10
+                        color: Theme.divider
+                    }
+                    Label { text: modelData.symbol; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold }
+                    Label {
+                        Layout.fillWidth: true
+                        visible: !Theme.mini && !Theme.tall
+                        text: modelData.priceLabel
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSm
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.fillWidth: Theme.mini || Theme.tall
+                        horizontalAlignment: Text.AlignRight
+                        text: modelData.pctLabel
+                        color: modelData.up ? Theme.success : Theme.glowCoral
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.DemiBold
+                    }
+                }
+            }
+        }
+        TapHandler { onTapped: home.openScreen(2) }
+    }
+
+    // One row of the day: the time, then the card.
+    component TimelineRow: RowLayout {
+        id: row
+        required property var modelData
+        required property int index
+        readonly property bool isEvent: modelData.kind === "event"
+        readonly property bool isNow: isEvent && !modelData.allDay && modelData.startMs <= home.minuteMs && modelData.endMs > home.minuteMs
+        readonly property bool isNext: index === home.nextIndex
+        readonly property bool isPast: !modelData.allDay && (isEvent ? modelData.endMs <= home.minuteMs : false)
+        readonly property bool hasPicture: Theme.pictures && !Theme.mini && modelData.kind === "news" && !!modelData.imageUrl
+        width: ListView.view ? ListView.view.width : implicitWidth
+        spacing: Theme.mini ? 10 : 16
+        opacity: isPast ? 0.5 : 1
+
+        // The time, right-aligned against the card.
+        ColumnLayout {
+            Layout.preferredWidth: Theme.mini ? 50 : 64
+            Layout.alignment: Qt.AlignTop
+            Layout.topMargin: Theme.mini ? 12 : 18
+            spacing: 0
+            Label {
+                Layout.alignment: Qt.AlignRight
+                text: modelData.timeLabel
+                color: row.isNow || row.isNext ? Theme.accent : Theme.text
+                font.pixelSize: modelData.allDay ? Theme.fontXs : Theme.fontSm
+                font.weight: Font.DemiBold
+            }
+            Label {
+                Layout.alignment: Qt.AlignRight
+                visible: !!modelData.ampm
+                text: modelData.ampm
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontXs - 2
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: cardRow.implicitHeight + (Theme.mini ? 22 : 30)
+            radius: Theme.radiusSm + 4
+            color: row.isEvent && !row.isNow ? "transparent" : Theme.surface
+            border.width: row.isNow ? 2 : row.isEvent ? 1 : 0
+            border.color: row.isNow ? (modelData.color || Theme.accent) : Theme.divider
+            clip: true
+
+            RowLayout {
+                id: cardRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Theme.mini ? 12 : 18
+                anchors.rightMargin: Theme.mini ? 12 : 18
+                spacing: Theme.mini ? 10 : 14
+
+                // A picture for the Pulse; else the kind, on its colour.
+                Rectangle {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: row.hasPicture ? 96 : (Theme.mini ? 30 : 36)
+                    Layout.preferredHeight: row.hasPicture ? 72 : Layout.preferredWidth
+                    radius: row.hasPicture ? 14 : width / 2
+                    color: "transparent"
+                    clip: true
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: parent.radius
+                        color: modelData.color || Theme.accent
+                        opacity: row.hasPicture ? 0.35 : 0.18
+                    }
+                    Image {
+                        anchors.fill: parent
+                        visible: row.hasPicture && status === Image.Ready
+                        source: row.hasPicture ? modelData.imageUrl : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        sourceSize.width: 192
+                    }
+                    Icon {
+                        anchors.centerIn: parent
+                        visible: !row.hasPicture
+                        name: home.kindIcon(modelData)
+                        size: Theme.mini ? 16 : 18
+                        color: modelData.color || Theme.accent
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Label {
+                        Layout.fillWidth: true
+                        visible: !row.isEvent
+                        text: (modelData.label || "").toUpperCase()
+                        color: modelData.color || Theme.textMuted
+                        font.pixelSize: Theme.fontXs - 2
+                        font.weight: Font.Bold
+                        font.letterSpacing: 1.1
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: modelData.title
+                        color: Theme.text
+                        font.pixelSize: Theme.mini ? Theme.fontSm : (modelData.kind === "news" ? Theme.fontMd - 2 : Theme.fontSm + 1)
+                        font.weight: row.isEvent || modelData.kind === "news" ? Font.DemiBold : Font.Medium
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: modelData.kind === "brief" || modelData.kind === "alert" ? 1 : 2
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        visible: text.length > 0 && !(Theme.mini && row.isEvent)
+                        text: modelData.detail || ""
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm - 2
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: Theme.mini ? 1 : 2
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Rectangle {
+                    visible: row.isNow || row.isNext
+                    Layout.alignment: Qt.AlignVCenter
+                    implicitWidth: badge.implicitWidth + 20
+                    implicitHeight: badge.implicitHeight + 10
+                    radius: height / 2
+                    color: row.isNow ? (modelData.color || Theme.accent) : Theme.accentSoft
+                    Label {
+                        id: badge
+                        anchors.centerIn: parent
+                        text: row.isNow ? qsTr("Now") : home.untilLabel(modelData.startMs)
+                        color: row.isNow ? "white" : Theme.accent
+                        font.pixelSize: Theme.fontXs - 1
+                        font.weight: Font.DemiBold
+                    }
+                }
+            }
+        }
+        TapHandler {
+            onTapped: {
+                // A report row opens that report, whatever News showed last.
+                if (modelData.kind === "news") {
+                    Store.showSource(modelData.agentId || "")
+                    Store.showReport(modelData.id)
+                }
+                home.openScreen(modelData.target)
+            }
+        }
+    }
+
+    component TodayHeading: RowLayout {
+        Label {
+            text: qsTr("TODAY")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontXs
+            font.weight: Font.Bold
+            font.letterSpacing: 1.6
+        }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+        Label {
+            text: home.timeline.length === 1 ? qsTr("1 thing") : qsTr("%1 things").arg(home.timeline.length)
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontXs
+        }
+    }
+
+    component EmptyDay: Label {
+        text: qsTr("Nothing yet today. Briefs, the Pulse, project updates and your calendar land here as your agents push them.")
+        color: Theme.textMuted
+        font.pixelSize: Theme.fontSm
+        wrapMode: Text.WordWrap
+    }
+
+    // ---- Landscape (Wide, Compact, Mini): the moment | the day.
+    RowLayout {
+        visible: !Theme.tall
+        anchors.fill: parent
+        anchors.margins: Theme.pageMargin
+        spacing: Theme.spacing + (Theme.wide ? 8 : 0)
+
+        ColumnLayout {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            Layout.preferredWidth: Theme.mini ? 5 : 4
+            Layout.maximumWidth: Theme.wide ? 520 : 99999
+            spacing: Theme.spacing
+            Clock { Layout.fillWidth: true }
+            NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            Item { Layout.fillHeight: true }
+            AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; visible: !Theme.mini; live: !Theme.tall }
+        }
+
+        ColumnLayout {
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+            Layout.preferredWidth: Theme.mini ? 6 : 6
+            spacing: Theme.mini ? 10 : 14
+            MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            TodayHeading { Layout.fillWidth: true }
+            EmptyDay { Layout.fillWidth: true; visible: home.timeline.length === 0 }
+            ListView {
+                id: dayList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: home.timeline.length > 0
+                clip: true
+                spacing: Theme.mini ? 8 : 10
+                model: home.timeline
+                boundsBehavior: Flickable.StopAtBounds
+                delegate: TimelineRow {}
+
+                // Keep "now" in view: one row of what came before, then the rest.
+                property bool touched: false
+                function settle() {
+                    if (!touched && count > 0)
+                        positionViewAtIndex(Math.max(0, home.focusIndex - 1), ListView.Beginning)
+                }
+                onMovementStarted: { touched = true; settleTimer.restart() }
+                onCountChanged: Qt.callLater(settle)
+                Timer { id: settleTimer; interval: 45000; onTriggered: { dayList.touched = false; dayList.settle() } }
+                Connections {
+                    target: home
+                    function onFocusIndexChanged() { Qt.callLater(dayList.settle) }
+                    function onShownChanged() { if (home.shown) { dayList.touched = false; Qt.callLater(dayList.settle) } }
+                }
+                Component.onCompleted: Qt.callLater(settle)
+            }
+        }
+    }
+
+    // ---- Portrait (Tall): the same, as a feed.
+    FocusFlickable {
+        visible: Theme.tall
+        anchors.fill: parent
+        fadeColor: Theme.background
+        contentHeight: feed.implicitHeight + 2 * Theme.pageMargin
+        ColumnLayout {
+            id: feed
+            x: Theme.pageMargin
+            y: Theme.pageMargin
+            width: parent.width - 2 * Theme.pageMargin
+            spacing: Theme.spacing
+            Clock { Layout.fillWidth: true }
+            NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; live: Theme.tall }
+            MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            TodayHeading { Layout.fillWidth: true }
+            EmptyDay { Layout.fillWidth: true; visible: home.timeline.length === 0 }
+            Repeater {
+                model: home.timeline
+                delegate: TimelineRow { Layout.fillWidth: true }
+            }
+        }
+    }
+}

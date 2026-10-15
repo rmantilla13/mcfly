@@ -1,0 +1,527 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07583609CE7B9BA6A8D782CB /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60CD29D7101DC7226714153 /* CalendarView.swift */; };
+		0AE2AF15475FFB89621BAB26 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */; };
+		0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622F972CFB8950E0AADFBB67 /* QRScanner.swift */; };
+		193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */; };
+		1D76897E71772E824308AC19 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4DA5C7573FB6B6376939E2 /* SignInView.swift */; };
+		2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F63275D054EB81A93B798DB /* VoiceModeView.swift */; };
+		3D61DB160852C5DF5374EC79 /* VoiceGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */; };
+		403B2E4ACBFB949C7AF4FF38 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EE7599A570B363E70AC7B5 /* VoiceListener.swift */; };
+		532E61DA43CF3A567D0E68B9 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0541DC6B569E5BE913765B74 /* Components.swift */; };
+		541261B77869C959D93B1725 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBC68DCFD8267900B556D240 /* TodayView.swift */; };
+		5E42F488FE1CD32F40926EBE /* MarketsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */; };
+		658E91D14231709945A117B6 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08BAFC5D9C7398731AB90318 /* Config.swift */; };
+		7BA38494D5F34C9B13B931FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F43F67BC8172506F846877D4 /* Assets.xcassets */; };
+		7CE1E42A606557E789079024 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28DF0EF62E7B6986374243A /* Theme.swift */; };
+		803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333BC1BF2A56D73A429ED6E /* AgentsView.swift */; };
+		855A1069A25AE4905144CA99 /* NewsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9542FCF91E0153CF407BB112 /* NewsView.swift */; };
+		97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */; };
+		A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */; };
+		A5DC78C3C4B30C2729DE9E2B /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6CC890403E385B4789CB51D1 /* Supabase */; };
+		A985F080DBDA85AE23C3019C /* VoiceHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B4EC30B75341278FB8D613 /* VoiceHubView.swift */; };
+		B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A13A583CBDB5AED68797C8 /* BriefsView.swift */; };
+		BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 638567AD540315D470FEDD13 /* VoiceSession.swift */; };
+		C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */; };
+		CAAA01B47BE2782961A8E827 /* McFlyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */; };
+		D73FF3DDA9C43A362ABEF107 /* ScreenAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82227595F1494D94F711C11A /* ScreenAwake.swift */; };
+		DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */; };
+		EE568B69399E265371EA67C7 /* McFlyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		04A13A583CBDB5AED68797C8 /* BriefsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BriefsView.swift; sourceTree = "<group>"; };
+		0541DC6B569E5BE913765B74 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		05B5FD45B1920066405A6BBC /* McFly.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = McFly.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		08BAFC5D9C7398731AB90318 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaysView.swift; sourceTree = "<group>"; };
+		2333BC1BF2A56D73A429ED6E /* AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentsView.swift; sourceTree = "<group>"; };
+		27EE7599A570B363E70AC7B5 /* VoiceListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceListener.swift; sourceTree = "<group>"; };
+		2DA89C609E9FAA5C294B0BA5 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		39B4EC30B75341278FB8D613 /* VoiceHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceHubView.swift; sourceTree = "<group>"; };
+		4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardsView.swift; sourceTree = "<group>"; };
+		622F972CFB8950E0AADFBB67 /* QRScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScanner.swift; sourceTree = "<group>"; };
+		638567AD540315D470FEDD13 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
+		78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGlow.swift; sourceTree = "<group>"; };
+		7B4DA5C7573FB6B6376939E2 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		7F63275D054EB81A93B798DB /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
+		82227595F1494D94F711C11A /* ScreenAwake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenAwake.swift; sourceTree = "<group>"; };
+		9542FCF91E0153CF407BB112 /* NewsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsView.swift; sourceTree = "<group>"; };
+		9B3CBF241787C44CC8F35BEC /* McFlyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyKit; path = McFlyKit; sourceTree = SOURCE_ROOT; };
+		BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSpeaker.swift; sourceTree = "<group>"; };
+		BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
+		D60CD29D7101DC7226714153 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
+		E28DF0EF62E7B6986374243A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		E7D8CDC30E03C6AB224D384F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		EBC68DCFD8267900B556D240 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		F43F67BC8172506F846877D4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McFlyApp.swift; sourceTree = "<group>"; };
+		F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketsView.swift; sourceTree = "<group>"; };
+		FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4375D1825B82D66CDB3E0C3F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE568B69399E265371EA67C7 /* McFlyKit in Frameworks */,
+				A5DC78C3C4B30C2729DE9E2B /* Supabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0C9812BEBD1991C4AA03D06E /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				2DA89C609E9FAA5C294B0BA5 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		18FE7CF548E1C62D239843E5 /* McFly */ = {
+			isa = PBXGroup;
+			children = (
+				F43F67BC8172506F846877D4 /* Assets.xcassets */,
+				E7D8CDC30E03C6AB224D384F /* Info.plist */,
+				F2458D6B94D770EC8E90A2E6 /* App */,
+				3D05ED827F94CC52AB1D22EB /* Theme */,
+				49E5C3BDFCFE7932F8688F3D /* Views */,
+				D54F5295E2C0E0F2085703BF /* Voice */,
+			);
+			path = McFly;
+			sourceTree = "<group>";
+		};
+		3D05ED827F94CC52AB1D22EB /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				E28DF0EF62E7B6986374243A /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		4284B22B4A2D839B1B7214BA /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				9B3CBF241787C44CC8F35BEC /* McFlyKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		49E5C3BDFCFE7932F8688F3D /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				2333BC1BF2A56D73A429ED6E /* AgentsView.swift */,
+				04A13A583CBDB5AED68797C8 /* BriefsView.swift */,
+				D60CD29D7101DC7226714153 /* CalendarView.swift */,
+				0541DC6B569E5BE913765B74 /* Components.swift */,
+				4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */,
+				1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */,
+				F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */,
+				9542FCF91E0153CF407BB112 /* NewsView.swift */,
+				BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */,
+				622F972CFB8950E0AADFBB67 /* QRScanner.swift */,
+				7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */,
+				7B4DA5C7573FB6B6376939E2 /* SignInView.swift */,
+				EBC68DCFD8267900B556D240 /* TodayView.swift */,
+				39B4EC30B75341278FB8D613 /* VoiceHubView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4B6DD2DD3A83515526CF75C8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				05B5FD45B1920066405A6BBC /* McFly.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		698CE8D6A81EE1E38FBDD0D9 = {
+			isa = PBXGroup;
+			children = (
+				0C9812BEBD1991C4AA03D06E /* Config */,
+				18FE7CF548E1C62D239843E5 /* McFly */,
+				4284B22B4A2D839B1B7214BA /* Packages */,
+				4B6DD2DD3A83515526CF75C8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D54F5295E2C0E0F2085703BF /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				82227595F1494D94F711C11A /* ScreenAwake.swift */,
+				78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */,
+				27EE7599A570B363E70AC7B5 /* VoiceListener.swift */,
+				7F63275D054EB81A93B798DB /* VoiceModeView.swift */,
+				638567AD540315D470FEDD13 /* VoiceSession.swift */,
+				BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
+		F2458D6B94D770EC8E90A2E6 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */,
+				08BAFC5D9C7398731AB90318 /* Config.swift */,
+				F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		152F60CF0F8174651613968D /* McFly */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DD2792EF9FC06C2483A457C5 /* Build configuration list for PBXNativeTarget "McFly" */;
+			buildPhases = (
+				039151B5F36DD80F4EA03D3F /* Sources */,
+				8CEA52131EDFD17B3FE31DFE /* Resources */,
+				4375D1825B82D66CDB3E0C3F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = McFly;
+			packageProductDependencies = (
+				073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */,
+				6CC890403E385B4789CB51D1 /* Supabase */,
+			);
+			productName = McFly;
+			productReference = 05B5FD45B1920066405A6BBC /* McFly.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A29C15BA4FB5BEE1532E61E6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					152F60CF0F8174651613968D = {
+						DevelopmentTeam = "$(MCFLY_TEAM_ID)";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 1F56060899A46EC2ACEC9118 /* Build configuration list for PBXProject "McFly" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 698CE8D6A81EE1E38FBDD0D9;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0663E5669ED36AB616CFD780 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				1B0690F477DCFA41F95A7AEB /* XCLocalSwiftPackageReference "McFlyKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4B6DD2DD3A83515526CF75C8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				152F60CF0F8174651613968D /* McFly */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8CEA52131EDFD17B3FE31DFE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7BA38494D5F34C9B13B931FE /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		039151B5F36DD80F4EA03D3F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */,
+				C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */,
+				B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */,
+				07583609CE7B9BA6A8D782CB /* CalendarView.swift in Sources */,
+				532E61DA43CF3A567D0E68B9 /* Components.swift in Sources */,
+				658E91D14231709945A117B6 /* Config.swift in Sources */,
+				DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */,
+				A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */,
+				5E42F488FE1CD32F40926EBE /* MarketsView.swift in Sources */,
+				CAAA01B47BE2782961A8E827 /* McFlyApp.swift in Sources */,
+				855A1069A25AE4905144CA99 /* NewsView.swift in Sources */,
+				0AE2AF15475FFB89621BAB26 /* ProjectsView.swift in Sources */,
+				0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */,
+				D73FF3DDA9C43A362ABEF107 /* ScreenAwake.swift in Sources */,
+				97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */,
+				1D76897E71772E824308AC19 /* SignInView.swift in Sources */,
+				7CE1E42A606557E789079024 /* Theme.swift in Sources */,
+				541261B77869C959D93B1725 /* TodayView.swift in Sources */,
+				3D61DB160852C5DF5374EC79 /* VoiceGlow.swift in Sources */,
+				A985F080DBDA85AE23C3019C /* VoiceHubView.swift in Sources */,
+				403B2E4ACBFB949C7AF4FF38 /* VoiceListener.swift in Sources */,
+				2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */,
+				BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */,
+				193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2E99E2A2E8E6E55AA2C30618 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2DA89C609E9FAA5C294B0BA5 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = "McFly/McFly-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "McFly/McFly-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(MCFLY_TEAM_ID)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = McFly/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MCFLY_BUNDLE_ID)";
+				PRODUCT_NAME = McFly;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		42298133D39E693A54314BD4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ORGANIZATIONNAME = McFly;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		87AB549A0E691BF1584DFBF6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2DA89C609E9FAA5C294B0BA5 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = "McFly/McFly-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "McFly/McFly-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "$(MCFLY_TEAM_ID)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = McFly/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MCFLY_BUNDLE_ID)";
+				PRODUCT_NAME = McFly;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BF73E61790383F1EF4560B74 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				ORGANIZATIONNAME = McFly;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1F56060899A46EC2ACEC9118 /* Build configuration list for PBXProject "McFly" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BF73E61790383F1EF4560B74 /* Debug */,
+				42298133D39E693A54314BD4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DD2792EF9FC06C2483A457C5 /* Build configuration list for PBXNativeTarget "McFly" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2E99E2A2E8E6E55AA2C30618 /* Debug */,
+				87AB549A0E691BF1584DFBF6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1B0690F477DCFA41F95A7AEB /* XCLocalSwiftPackageReference "McFlyKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = McFlyKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0663E5669ED36AB616CFD780 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.30.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = McFlyKit;
+		};
+		6CC890403E385B4789CB51D1 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0663E5669ED36AB616CFD780 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A29C15BA4FB5BEE1532E61E6 /* Project object */;
+}

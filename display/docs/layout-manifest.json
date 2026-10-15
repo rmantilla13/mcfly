@@ -1,0 +1,204 @@
+{
+  "rule": "tier = portrait ? tall : width < 1000 ? mini : width < 1600 ? compact : wide; scale = shortSide < 600 ? s : m",
+  "tiers": {
+    "wide": {
+      "navMode": "rail",
+      "navWidth": 124,
+      "navHeight": 0,
+      "pageMargin": 40,
+      "gutter": 24,
+      "columns": 12,
+      "paned": true,
+      "pictures": true,
+      "listWidth": 520,
+      "paneWidth": 440,
+      "heroHeight": 360,
+      "storyCardHeight": 280,
+      "quoteTileHeight": 168,
+      "projectCardHeight": 196,
+      "widgetRowHeight": 150,
+      "homeScrolls": false
+    },
+    "compact": {
+      "navMode": "rail",
+      "navWidth": 100,
+      "navHeight": 0,
+      "pageMargin": 24,
+      "gutter": 16,
+      "columns": 8,
+      "paned": true,
+      "pictures": true,
+      "listWidth": 440,
+      "paneWidth": 380,
+      "heroHeight": 300,
+      "storyCardHeight": 250,
+      "quoteTileHeight": 168,
+      "projectCardHeight": 196,
+      "widgetRowHeight": 140,
+      "homeScrolls": false
+    },
+    "mini": {
+      "navMode": "bar",
+      "navWidth": 0,
+      "navHeight": 76,
+      "pageMargin": 16,
+      "gutter": 12,
+      "columns": 4,
+      "paned": false,
+      "pictures": false,
+      "listWidth": 0,
+      "paneWidth": 0,
+      "heroHeight": 0,
+      "storyCardHeight": 88,
+      "quoteTileHeight": 112,
+      "projectCardHeight": 124,
+      "widgetRowHeight": 120,
+      "homeScrolls": false
+    },
+    "tall": {
+      "navMode": "bar",
+      "navWidth": 0,
+      "navHeight": 84,
+      "pageMargin": 20,
+      "gutter": 16,
+      "columns": 4,
+      "paned": false,
+      "pictures": true,
+      "listWidth": 0,
+      "paneWidth": 0,
+      "heroHeight": 240,
+      "storyCardHeight": 290,
+      "quoteTileHeight": 150,
+      "projectCardHeight": 170,
+      "widgetRowHeight": 140,
+      "homeScrolls": true
+    }
+  },
+  "scales": {
+    "s": {
+      "fontXs": 14,
+      "fontSm": 16,
+      "fontMd": 20,
+      "fontLg": 26,
+      "fontXl": 36,
+      "fontHuge": 64,
+      "radius": 24,
+      "radiusSm": 16,
+      "touchTarget": 64
+    },
+    "m": {
+      "fontXs": 15,
+      "fontSm": 18,
+      "fontMd": 23,
+      "fontLg": 30,
+      "fontXl": 44,
+      "fontHuge": 88,
+      "radius": 28,
+      "radiusSm": 18,
+      "touchTarget": 64
+    }
+  },
+  "gridColumns": {
+    "stories": {
+      "wide": 4,
+      "compact": 3,
+      "mini": 2,
+      "tall": 2
+    },
+    "quotes": {
+      "wide": 3,
+      "compact": 2,
+      "mini": 3,
+      "tall": 2
+    },
+    "metrics": {
+      "wide": 4,
+      "compact": 3,
+      "mini": 2,
+      "tall": 2
+    },
+    "projects": {
+      "wide": 3,
+      "compact": 2,
+      "mini": 2,
+      "tall": 2
+    },
+    "widgets": {
+      "wide": 6,
+      "compact": 4,
+      "mini": 2,
+      "tall": 2
+    },
+    "days": {
+      "wide": 14,
+      "compact": 10,
+      "mini": 7,
+      "tall": 7
+    }
+  },
+  "nav": {
+    "order": [
+      "home",
+      "briefs",
+      "markets",
+      "news",
+      "projects",
+      "boards",
+      "calendar"
+    ],
+    "buttons": [
+      "ask",
+      "settings",
+      "sleep"
+    ],
+    "bar": {
+      "slot": 64,
+      "activeSlotMax": 136,
+      "buttonSize": 56,
+      "pillInset": 4
+    }
+  },
+  "layers": [
+    {
+      "z": 0,
+      "what": "nav + pages, pushed details inside screens, AssistantPanel"
+    },
+    {
+      "z": "overlay",
+      "what": "SettingsSheet, dialogs"
+    },
+    {
+      "z": 2,
+      "what": "on-screen keyboard"
+    },
+    {
+      "z": 3,
+      "what": "toast (above the bar at bar tiers)"
+    },
+    {
+      "z": 4,
+      "what": "screen saver"
+    },
+    {
+      "z": 5,
+      "what": "QuickAnswer (above the bar at bar tiers)"
+    },
+    {
+      "z": 6,
+      "what": "sleep cover"
+    }
+  ],
+  "components": {
+    "new": [
+      "ScreenHeader",
+      "MasterDetail",
+      "ChipRow",
+      "EmptyState",
+      "QrPanel"
+    ],
+    "changed": [
+      "Theme",
+      "NavRail"
+    ]
+  }
+}

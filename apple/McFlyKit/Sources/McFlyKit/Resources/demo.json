@@ -1,0 +1,929 @@
+{
+  "agents": [
+    {
+      "id": "00000000-0000-0000-0000-00000000a001",
+      "name": "Grok",
+      "slug": "grok",
+      "kind": "grok",
+      "color": "#7A64E8",
+      "created_at": "2026-10-01T14:00:00+00:00",
+      "last_seen_at": "2026-10-14T19:40:00+00:00",
+      "revoked_at": null,
+      "key_prefix": "mcf_00000000",
+      "key_created_at": "2026-10-01T14:00:00+00:00",
+      "pushes_7d": 48,
+      "last_error": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000a002",
+      "name": "Market desk",
+      "slug": "market-desk",
+      "kind": "stocks",
+      "color": "#3DB37A",
+      "created_at": "2026-10-01T14:05:00+00:00",
+      "last_seen_at": "2026-10-14T20:00:00+00:00",
+      "revoked_at": null,
+      "key_prefix": "mcf_00000000",
+      "key_created_at": "2026-10-01T14:05:00+00:00",
+      "pushes_7d": 140,
+      "last_error": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000a003",
+      "name": "Daily Pulse",
+      "slug": "daily-pulse",
+      "kind": "news",
+      "color": "#E2725B",
+      "created_at": "2026-10-01T14:10:00+00:00",
+      "last_seen_at": "2026-10-14T12:00:00+00:00",
+      "revoked_at": null,
+      "key_prefix": "mcf_00000000",
+      "key_created_at": "2026-10-01T14:10:00+00:00",
+      "pushes_7d": 7,
+      "last_error": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000a004",
+      "name": "GitHub watcher",
+      "slug": "github-watcher",
+      "kind": "other",
+      "color": "#5B7CF5",
+      "created_at": "2026-10-01T14:15:00+00:00",
+      "last_seen_at": "2026-10-14T19:40:00+00:00",
+      "revoked_at": null,
+      "key_prefix": "mcf_00000000",
+      "key_created_at": "2026-10-01T14:15:00+00:00",
+      "pushes_7d": 31,
+      "last_error": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000a005",
+      "name": "Ops metrics",
+      "slug": "ops-metrics",
+      "kind": "other",
+      "color": "#F6B94A",
+      "created_at": "2026-10-01T14:20:00+00:00",
+      "last_seen_at": "2026-10-14T20:00:00+00:00",
+      "revoked_at": null,
+      "key_prefix": "mcf_00000000",
+      "key_created_at": "2026-10-01T14:20:00+00:00",
+      "pushes_7d": 168,
+      "last_error": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000a006",
+      "name": "Calendar sync",
+      "slug": "calendar-sync",
+      "kind": "other",
+      "color": "#14C2C2",
+      "created_at": "2026-10-01T14:25:00+00:00",
+      "last_seen_at": "2026-10-14T18:00:00+00:00",
+      "revoked_at": null,
+      "key_prefix": "mcf_00000000",
+      "key_created_at": "2026-10-01T14:25:00+00:00",
+      "pushes_7d": 14,
+      "last_error": null
+    }
+  ],
+  "briefs": [
+    {
+      "id": "00000000-0000-0000-0000-0000000b0002",
+      "agent_id": "00000000-0000-0000-0000-00000000a001",
+      "external_id": "seed-hourly",
+      "title": "Hourly check-in",
+      "body": "Quiet hour. NVDA is leading the Nasdaq, and the Pulse report for today has landed with 11 stories.",
+      "kind": "hourly",
+      "published_at": "2026-10-14T19:40:00+00:00",
+      "expires_at": null,
+      "created_at": "2026-10-14T19:40:00+00:00",
+      "updated_at": "2026-10-14T19:40:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000b0001",
+      "agent_id": "00000000-0000-0000-0000-00000000a001",
+      "external_id": "seed-daily",
+      "title": "Morning briefing",
+      "body": "Three things for today.\n\n- The Fed minutes land at 1 PM CT; markets are pricing a hold.\n- Your 3 PM call moved to 3:30.\n- Rain clears by noon, 71° this afternoon.",
+      "kind": "daily",
+      "published_at": "2026-10-14T17:00:00+00:00",
+      "expires_at": null,
+      "created_at": "2026-10-14T17:00:00+00:00",
+      "updated_at": "2026-10-14T17:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000b0000",
+      "agent_id": "00000000-0000-0000-0000-00000000a001",
+      "external_id": "seed-yesterday",
+      "title": "Evening wrap",
+      "body": "Markets closed mixed.\n\n- SPY finished up a third of a percent.\n- Tomorrow: Fed minutes at 1 PM CT.",
+      "kind": "daily",
+      "published_at": "2026-10-13T22:30:00+00:00",
+      "expires_at": null,
+      "created_at": "2026-10-13T22:30:00+00:00",
+      "updated_at": "2026-10-13T22:30:00+00:00"
+    }
+  ],
+  "quotes": [
+    {
+      "id": 12,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "price": 668.42,
+      "change": 2.11,
+      "change_pct": 0.32,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 11,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "price": 402.1,
+      "change": 5.3,
+      "change_pct": 1.34,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 10,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "NVDA",
+      "name": "NVIDIA",
+      "price": 191.25,
+      "change": 2.85,
+      "change_pct": 1.51,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 9,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "AAPL",
+      "name": "Apple",
+      "price": 247.9,
+      "change": 2.78,
+      "change_pct": 1.13,
+      "currency": "USD",
+      "note": "Services beat; iPhone 18 demand steady.",
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 8,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "price": 666.31,
+      "change": -1.2,
+      "change_pct": -0.18,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    },
+    {
+      "id": 7,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "price": 396.8,
+      "change": -2.1,
+      "change_pct": -0.53,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    },
+    {
+      "id": 6,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "NVDA",
+      "name": "NVIDIA",
+      "price": 188.4,
+      "change": -3.1,
+      "change_pct": -1.62,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    },
+    {
+      "id": 5,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "AAPL",
+      "name": "Apple",
+      "price": 245.12,
+      "change": 1.42,
+      "change_pct": 0.58,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    },
+    {
+      "id": 4,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "price": 667.51,
+      "change": 0.9,
+      "change_pct": 0.14,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-12T20:00:00+00:00",
+      "created_at": "2026-10-12T20:00:00+00:00"
+    },
+    {
+      "id": 3,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "price": 398.9,
+      "change": 3.4,
+      "change_pct": 0.86,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-12T20:00:00+00:00",
+      "created_at": "2026-10-12T20:00:00+00:00"
+    },
+    {
+      "id": 2,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "NVDA",
+      "name": "NVIDIA",
+      "price": 191.5,
+      "change": 1.1,
+      "change_pct": 0.58,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-12T20:00:00+00:00",
+      "created_at": "2026-10-12T20:00:00+00:00"
+    },
+    {
+      "id": 1,
+      "agent_id": "00000000-0000-0000-0000-00000000a002",
+      "symbol": "AAPL",
+      "name": "Apple",
+      "price": 243.7,
+      "change": -0.8,
+      "change_pct": -0.33,
+      "currency": "USD",
+      "note": null,
+      "as_of": "2026-10-12T20:00:00+00:00",
+      "created_at": "2026-10-12T20:00:00+00:00"
+    }
+  ],
+  "symbols": [
+    {
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "sort_order": 0,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "symbol": "AAPL",
+      "name": "Apple",
+      "sort_order": 1,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA",
+      "sort_order": 2,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "sort_order": 3,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    }
+  ],
+  "news_reports": [
+    {
+      "id": "00000000-0000-0000-0000-0000000c0001",
+      "agent_id": "00000000-0000-0000-0000-00000000a003",
+      "slug": "2026-10-14",
+      "report_date": "2026-10-14",
+      "display_date": "Oct 14, 2026",
+      "hero_item": "gemini",
+      "published_at": "2026-10-14T12:00:00+00:00",
+      "created_at": "2026-10-14T12:00:00+00:00",
+      "news_items": [
+        {
+          "id": "00000000-0000-0000-0000-0000000d0001",
+          "report_id": "00000000-0000-0000-0000-0000000c0001",
+          "section_key": "s",
+          "section_name": "Social",
+          "section_order": 0,
+          "item_key": "reels",
+          "position": 0,
+          "headline": "Instagram puts Reels first on the home tab",
+          "takeaway": "Short video is now the default feed; static posts need to earn their reach.",
+          "url": "https://about.instagram.com/blog",
+          "image_url": null,
+          "source_domain": "about.instagram.com",
+          "created_at": "2026-10-14T12:00:00+00:00"
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000d0002",
+          "report_id": "00000000-0000-0000-0000-0000000c0001",
+          "section_key": "s",
+          "section_name": "Social",
+          "section_order": 0,
+          "item_key": "tiktok",
+          "position": 1,
+          "headline": "TikTok Shop adds live auctions in the US",
+          "takeaway": "Live commerce keeps growing; brands with hosts win.",
+          "url": "https://newsroom.tiktok.com/",
+          "image_url": null,
+          "source_domain": "newsroom.tiktok.com",
+          "created_at": "2026-10-14T12:00:00+00:00"
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000d0003",
+          "report_id": "00000000-0000-0000-0000-0000000c0001",
+          "section_key": "a",
+          "section_name": "Paid Ads",
+          "section_order": 1,
+          "item_key": "pmax",
+          "position": 0,
+          "headline": "Google adds channel-level reporting to Performance Max",
+          "takeaway": "You can finally see where the spend goes.",
+          "url": "https://blog.google/products/ads-commerce/",
+          "image_url": null,
+          "source_domain": "blog.google",
+          "created_at": "2026-10-14T12:00:00+00:00"
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000d0004",
+          "report_id": "00000000-0000-0000-0000-0000000c0001",
+          "section_key": "a",
+          "section_name": "Paid Ads",
+          "section_order": 1,
+          "item_key": "meta",
+          "position": 1,
+          "headline": "Meta Advantage+ gets a creative-only mode",
+          "takeaway": "Hand it the assets and it builds the campaign.",
+          "url": "https://www.facebook.com/business/news",
+          "image_url": null,
+          "source_domain": "facebook.com",
+          "created_at": "2026-10-14T12:00:00+00:00"
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000d0005",
+          "report_id": "00000000-0000-0000-0000-0000000c0001",
+          "section_key": "i",
+          "section_name": "AI Tech",
+          "section_order": 2,
+          "item_key": "gemini",
+          "position": 0,
+          "headline": "Google launches Gemini 4 Argon",
+          "takeaway": "A stronger model in Search changes how brands surface in AI answers.",
+          "url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/",
+          "image_url": null,
+          "source_domain": "blog.google",
+          "created_at": "2026-10-14T12:00:00+00:00"
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000d0006",
+          "report_id": "00000000-0000-0000-0000-0000000c0001",
+          "section_key": "i",
+          "section_name": "AI Tech",
+          "section_order": 2,
+          "item_key": "claude",
+          "position": 1,
+          "headline": "Anthropic ships Claude 5 to everyone",
+          "takeaway": "Computer use is on by default; expect agents in every workflow tool.",
+          "url": "https://www.anthropic.com/news",
+          "image_url": null,
+          "source_domain": "anthropic.com",
+          "created_at": "2026-10-14T12:00:00+00:00"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000c0000",
+      "agent_id": "00000000-0000-0000-0000-00000000a003",
+      "slug": "2026-10-13",
+      "report_date": "2026-10-13",
+      "display_date": "Oct 13, 2026",
+      "hero_item": "chips",
+      "published_at": "2026-10-13T12:00:00+00:00",
+      "created_at": "2026-10-13T12:00:00+00:00",
+      "news_items": [
+        {
+          "id": "00000000-0000-0000-0000-0000000d0101",
+          "report_id": "00000000-0000-0000-0000-0000000c0000",
+          "section_key": "i",
+          "section_name": "AI Tech",
+          "section_order": 0,
+          "item_key": "chips",
+          "position": 0,
+          "headline": "NVIDIA previews the next Blackwell refresh",
+          "takeaway": "Supply stays tight through spring; plan GPU budgets early.",
+          "url": "https://blogs.nvidia.com/",
+          "image_url": null,
+          "source_domain": "blogs.nvidia.com",
+          "created_at": "2026-10-13T12:00:00+00:00"
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000d0102",
+          "report_id": "00000000-0000-0000-0000-0000000c0000",
+          "section_key": "s",
+          "section_name": "Social",
+          "section_order": 1,
+          "item_key": "threads",
+          "position": 0,
+          "headline": "Threads opens its API to schedulers",
+          "takeaway": "Posting tools can finally treat it like the others.",
+          "url": "https://about.fb.com/news/",
+          "image_url": null,
+          "source_domain": "about.fb.com",
+          "created_at": "2026-10-13T12:00:00+00:00"
+        }
+      ]
+    }
+  ],
+  "devices": [
+    {
+      "id": "00000000-0000-0000-0000-0000000e0001",
+      "user_id": "00000000-0000-0000-0000-0000000f0001",
+      "name": "Kitchen display",
+      "last_seen_at": "2026-10-14T20:05:00+00:00",
+      "created_at": "2026-10-02T09:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000e0002",
+      "user_id": "00000000-0000-0000-0000-0000000f0002",
+      "name": "Office",
+      "last_seen_at": "2026-10-12T18:00:00+00:00",
+      "created_at": "2026-10-05T09:00:00+00:00"
+    }
+  ],
+  "settings": {
+    "display_name": "McFly",
+    "timezone": "America/Chicago",
+    "briefs_keep_days": 30,
+    "quotes_keep_days": 90,
+    "news_keep_reports": 14,
+    "updated_at": "2026-10-01T14:00:00+00:00",
+    "assistant_provider": "claude",
+    "metrics_keep_days": 90,
+    "events_keep_days": 60
+  },
+  "projects": [
+    {
+      "id": "00000000-0000-0000-0000-00000000f101",
+      "agent_id": "00000000-0000-0000-0000-00000000a004",
+      "key": "mcfly",
+      "name": "McFly",
+      "kind": "code",
+      "status": "active",
+      "progress": 62,
+      "summary": "The agent display: Pi app, console and the iPhone app.",
+      "next_step": "Ship the dashboards screen",
+      "link": "https://github.com/rmantilla13/mcfly",
+      "color": null,
+      "sort_order": 0,
+      "created_at": "2026-10-10T12:00:00+00:00",
+      "updated_at": "2026-10-14T19:40:00+00:00",
+      "project_updates": [
+        {
+          "id": 3,
+          "project_id": "00000000-0000-0000-0000-00000000f101",
+          "kind": "ci",
+          "text": "CI green on main (14 checks)",
+          "url": null,
+          "happened_at": "2026-10-14T19:40:00+00:00",
+          "created_at": "2026-10-14T19:40:00+00:00"
+        },
+        {
+          "id": 2,
+          "project_id": "00000000-0000-0000-0000-00000000f101",
+          "kind": "pr",
+          "text": "#12 Dashboards screen: opened by Ricky",
+          "url": "https://github.com/rmantilla13/mcfly/pull/12",
+          "happened_at": "2026-10-14T18:05:00+00:00",
+          "created_at": "2026-10-14T18:05:00+00:00"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000f102",
+      "agent_id": "00000000-0000-0000-0000-00000000a004",
+      "key": "onyx",
+      "name": "Onyx",
+      "kind": "code",
+      "status": "blocked",
+      "progress": 80,
+      "summary": "Collections and the Mac app.",
+      "next_step": "App Review answer on the FSKit entitlement",
+      "link": null,
+      "color": null,
+      "sort_order": 1,
+      "created_at": "2026-10-10T12:00:00+00:00",
+      "updated_at": "2026-10-13T22:00:00+00:00",
+      "project_updates": [
+        {
+          "id": 1,
+          "project_id": "00000000-0000-0000-0000-00000000f102",
+          "kind": "alert",
+          "text": "App Review: waiting on the FSKit entitlement",
+          "url": null,
+          "happened_at": "2026-10-13T22:00:00+00:00",
+          "created_at": "2026-10-13T22:00:00+00:00"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000f103",
+      "agent_id": "00000000-0000-0000-0000-00000000a004",
+      "key": "homestead",
+      "name": "Homestead",
+      "kind": "launch",
+      "status": "paused",
+      "progress": 95,
+      "summary": "Voice handbook app; launch copy is done.",
+      "next_step": null,
+      "link": null,
+      "color": null,
+      "sort_order": 2,
+      "created_at": "2026-10-10T12:00:00+00:00",
+      "updated_at": "2026-10-12T12:00:00+00:00",
+      "project_updates": []
+    }
+  ],
+  "metrics": [
+    {
+      "id": 8,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "site.uptime",
+      "label": "Uptime",
+      "value": 99.98,
+      "unit": "%",
+      "delta": null,
+      "delta_pct": null,
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 7,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "orders.open",
+      "label": "Open orders",
+      "value": 17,
+      "unit": null,
+      "delta": -3,
+      "delta_pct": null,
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 6,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "sales.today",
+      "label": "Sales today",
+      "value": 4280,
+      "unit": "USD",
+      "delta": null,
+      "delta_pct": 12.5,
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 5,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "api.p95",
+      "label": "API p95",
+      "value": 212,
+      "unit": "ms",
+      "delta": -18,
+      "delta_pct": null,
+      "note": "After the cache change.",
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 4,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "steps",
+      "label": "Steps",
+      "value": 6420,
+      "unit": null,
+      "delta": null,
+      "delta_pct": -8,
+      "note": null,
+      "as_of": "2026-10-14T20:00:00+00:00",
+      "created_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "id": 3,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "sales.today",
+      "label": null,
+      "value": 3800,
+      "unit": null,
+      "delta": null,
+      "delta_pct": null,
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    },
+    {
+      "id": 2,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "api.p95",
+      "label": null,
+      "value": 230,
+      "unit": null,
+      "delta": null,
+      "delta_pct": null,
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    },
+    {
+      "id": 1,
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "steps",
+      "label": null,
+      "value": 7010,
+      "unit": null,
+      "delta": null,
+      "delta_pct": null,
+      "note": null,
+      "as_of": "2026-10-13T20:00:00+00:00",
+      "created_at": "2026-10-13T20:00:00+00:00"
+    }
+  ],
+  "metric_settings": [
+    {
+      "key": "sales.today",
+      "label": "Sales today",
+      "group_name": "Store",
+      "sort_order": 0,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "key": "orders.open",
+      "label": "Open orders",
+      "group_name": "Store",
+      "sort_order": 1,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "key": "site.uptime",
+      "label": "Uptime",
+      "group_name": "Ops",
+      "sort_order": 2,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "key": "api.p95",
+      "label": "API p95",
+      "group_name": "Ops",
+      "sort_order": 3,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "group_name": "Me",
+      "sort_order": 4,
+      "hidden": false,
+      "updated_at": "2026-10-14T20:00:00+00:00"
+    }
+  ],
+  "dashboards": [
+    {
+      "id": "00000000-0000-0000-0000-00000000d201",
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "ops",
+      "title": "Ops",
+      "subtitle": "Production, last 24 h",
+      "sort_order": 0,
+      "hidden": false,
+      "created_at": "2026-10-14T20:00:00+00:00",
+      "updated_at": "2026-10-14T20:00:00+00:00",
+      "widgets": [
+        {
+          "type": "status",
+          "label": "API",
+          "state": "ok",
+          "detail": "All checks passing"
+        },
+        {
+          "type": "status",
+          "label": "Workers",
+          "state": "warn",
+          "detail": "1 of 4 behind"
+        },
+        {
+          "type": "metric",
+          "label": "Requests",
+          "value": 1240000,
+          "unit": "",
+          "delta_pct": 4.2
+        },
+        {
+          "type": "metric",
+          "label": "Errors",
+          "value": 0.12,
+          "unit": "%",
+          "delta_pct": -30
+        },
+        {
+          "type": "progress",
+          "label": "Storage",
+          "value": 68,
+          "max": 100,
+          "unit": "%"
+        },
+        {
+          "type": "chart",
+          "label": "Requests per hour",
+          "points": [
+            40,
+            42,
+            38,
+            51,
+            60,
+            58,
+            64,
+            70,
+            66,
+            72,
+            75,
+            71
+          ],
+          "unit": "k"
+        },
+        {
+          "type": "list",
+          "title": "On call",
+          "items": [
+            "Ricky (primary)",
+            "Pager: quiet since Mon"
+          ]
+        },
+        {
+          "type": "text",
+          "title": "Note",
+          "body": "Deploy window tonight 9–10 PM CT."
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000d202",
+      "agent_id": "00000000-0000-0000-0000-00000000a005",
+      "key": "launch",
+      "title": "Launch week",
+      "subtitle": null,
+      "sort_order": 1,
+      "hidden": false,
+      "created_at": "2026-10-14T20:00:00+00:00",
+      "updated_at": "2026-10-14T20:00:00+00:00",
+      "widgets": [
+        {
+          "type": "progress",
+          "label": "Checklist",
+          "value": 14,
+          "max": 20
+        },
+        {
+          "type": "list",
+          "title": "Left to do",
+          "items": [
+            "App Store screenshots",
+            "Press list",
+            "Support page"
+          ]
+        },
+        {
+          "type": "metric",
+          "label": "Waitlist",
+          "value": 812,
+          "delta": 46
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "00000000-0000-0000-0000-00000000e301",
+      "agent_id": "00000000-0000-0000-0000-00000000a006",
+      "calendar": "Work",
+      "external_id": "ev-1",
+      "title": "Standup",
+      "description": null,
+      "location": null,
+      "starts_at": "2026-10-14T14:30:00+00:00",
+      "ends_at": "2026-10-14T14:45:00+00:00",
+      "all_day": false,
+      "color": "#5B7CF5",
+      "url": null,
+      "created_at": "2026-10-14T18:00:00+00:00",
+      "updated_at": "2026-10-14T18:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000e302",
+      "agent_id": "00000000-0000-0000-0000-00000000a006",
+      "calendar": "Work",
+      "external_id": "ev-2",
+      "title": "Pulse review with the team",
+      "description": null,
+      "location": "Zoom",
+      "starts_at": "2026-10-14T20:30:00+00:00",
+      "ends_at": "2026-10-14T21:00:00+00:00",
+      "all_day": false,
+      "color": "#5B7CF5",
+      "url": "https://zoom.us/j/123456789",
+      "created_at": "2026-10-14T18:00:00+00:00",
+      "updated_at": "2026-10-14T18:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000e303",
+      "agent_id": "00000000-0000-0000-0000-00000000a006",
+      "calendar": "Home",
+      "external_id": "ev-3",
+      "title": "Dinner with Lina",
+      "description": null,
+      "location": "Maria's",
+      "starts_at": "2026-10-15T00:00:00+00:00",
+      "ends_at": "2026-10-15T02:00:00+00:00",
+      "all_day": false,
+      "color": "#F07F5A",
+      "url": null,
+      "created_at": "2026-10-14T18:00:00+00:00",
+      "updated_at": "2026-10-14T18:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000e304",
+      "agent_id": "00000000-0000-0000-0000-00000000a006",
+      "calendar": "Work",
+      "external_id": "ev-4",
+      "title": "Investor call",
+      "description": null,
+      "location": null,
+      "starts_at": "2026-10-15T16:00:00+00:00",
+      "ends_at": "2026-10-15T17:00:00+00:00",
+      "all_day": false,
+      "color": "#5B7CF5",
+      "url": null,
+      "created_at": "2026-10-14T18:00:00+00:00",
+      "updated_at": "2026-10-14T18:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000e305",
+      "agent_id": "00000000-0000-0000-0000-00000000a006",
+      "calendar": "Home",
+      "external_id": "ev-5",
+      "title": "Flight to Austin",
+      "description": null,
+      "location": null,
+      "starts_at": "2026-10-17T13:00:00+00:00",
+      "ends_at": "2026-10-17T16:00:00+00:00",
+      "all_day": false,
+      "color": "#F07F5A",
+      "url": null,
+      "created_at": "2026-10-14T18:00:00+00:00",
+      "updated_at": "2026-10-14T18:00:00+00:00"
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000e306",
+      "agent_id": "00000000-0000-0000-0000-00000000a006",
+      "calendar": "Home",
+      "external_id": "ev-6",
+      "title": "Launch day",
+      "description": null,
+      "location": null,
+      "starts_at": "2026-10-20T05:00:00+00:00",
+      "ends_at": "2026-10-21T04:59:59+00:00",
+      "all_day": true,
+      "color": "#F6B94A",
+      "url": null,
+      "created_at": "2026-10-14T18:00:00+00:00",
+      "updated_at": "2026-10-14T18:00:00+00:00"
+    }
+  ]
+}

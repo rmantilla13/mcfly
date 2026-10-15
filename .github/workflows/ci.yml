@@ -1,0 +1,231 @@
+# Checks everything. Each job only runs when its part of the tree, or this
+# workflow, changes.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      functions: ${{ steps.filter.outputs.functions }}
+      display: ${{ steps.filter.outputs.display }}
+      pi_install: ${{ steps.filter.outputs.pi_install }}
+      admin: ${{ steps.filter.outputs.admin }}
+      voice: ${{ steps.filter.outputs.voice }}
+      apple: ${{ steps.filter.outputs.apple }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            workflow: &workflow
+              - ".github/workflows/ci.yml"
+            backend:
+              - *workflow
+              - "backend/supabase/migrations/**"
+              - "backend/supabase/seed.sql"
+              - "backend/tests/**"
+            functions:
+              - *workflow
+              - "backend/supabase/functions/**"
+            display:
+              - *workflow
+              - "display/**"
+            pi_install:
+              - *workflow
+              - "display/deploy/**"
+              - "voice/deploy/**"
+              - "display/CMakeLists.txt"
+              - "voice/pyproject.toml"
+            admin:
+              - *workflow
+              - "admin/**"
+            voice:
+              - *workflow
+              - "voice/**"
+            apple:
+              - *workflow
+              - "apple/**"
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-16
+      - name: Run SQL tests
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin
+        run: backend/tests/run.sh
+
+  functions:
+    needs: changes
+    if: needs.changes.outputs.functions == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend/supabase/functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno install
+      - name: Type-check edge functions
+        run: deno check */index.ts
+      - name: Unit tests
+        run: deno test
+
+  display:
+    needs: changes
+    if: needs.changes.outputs.display == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake \
+            qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-websockets-dev qt6-qpa-plugins \
+            qt6-shadertools-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
+            qml6-module-qtquick-shapes \
+            qml6-module-qtquick-virtualkeyboard qt6-virtualkeyboard-plugin \
+            fonts-inter
+      - name: Build
+        run: |
+          cmake -S display -B build/display -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/display -j"$(nproc)"
+      - name: Built with HDMI panel power
+        run: grep -q -- -DMCFLY_PANEL_POWER build/display/CMakeFiles/mcfly-display.dir/flags.make
+      - name: Unit tests
+        run: ctest --test-dir build/display --output-on-failure
+      - name: Every screen draws (--demo, offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          mkdir -p shots
+          for screen in setup home briefs markets news projects boards calendar saver ask; do
+            ./build/display/mcfly-display --demo --windowed --no-keyboard --screen "$screen" --screenshot "shots/$screen.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: display-screens
+          path: shots
+
+  # The real Pi installer on Debian Trixie (x86-64 here; the Pi is arm64).
+  pi-install:
+    needs: changes
+    if: >-
+      needs.changes.outputs.pi_install == 'true' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'main' &&
+      (needs.changes.outputs.display == 'true' || needs.changes.outputs.voice == 'true'))
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    steps:
+      - name: Prepare a Pi-like system (sudo user, no systemd)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends sudo ca-certificates git curl
+          useradd -m -s /bin/bash pi
+          echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/pi
+      - uses: actions/checkout@v4
+      - name: Kiosk is enabled on install and owns tty1
+        run: bash display/tests/kiosk_boot_test.sh
+      - name: Boot video and its handoff
+        run: bash display/tests/bootscreen_test.sh
+      - name: Stub systemctl
+        run: install -m 755 display/deploy/pi-sim/systemctl-stub /usr/local/bin/systemctl
+      - name: install-pi.sh --with-voice
+        run: |
+          cp -r "$GITHUB_WORKSPACE" /home/pi/mcfly
+          chown -R pi:pi /home/pi/mcfly
+          sudo -u pi -H bash -c 'cd ~/mcfly && ./display/deploy/install-pi.sh --with-voice'
+      - name: Built with HDMI panel power
+        run: grep -q -- -DMCFLY_PANEL_POWER /home/pi/mcfly/build/display/CMakeFiles/mcfly-display.dir/flags.make
+      - name: Smoke run of the installed app (--demo, 5 s)
+        run: |
+          set -a; . /etc/mcfly/display.env; set +a
+          export QT_QPA_PLATFORM=offscreen
+          sudo -E -u pi /usr/local/bin/mcfly-display --demo --no-keyboard > display.log 2>&1 &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "mcfly-display exited early"; cat display.log; exit 1
+          fi
+          kill "$pid"; wait "$pid" || true
+          cat display.log
+      - name: Voice service imports
+        run: /opt/mcfly-voice/bin/python -c "import sounddevice, webrtcvad, faster_whisper, piper, openwakeword, onnxruntime; print('voice imports ok')"
+
+  admin:
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  voice:
+    needs: changes
+    if: needs.changes.outputs.voice == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: voice/pyproject.toml
+      - run: pip install -e 'voice[dev]'
+      - run: pytest voice
+
+  apple:
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: McFlyKit tests
+        run: swift test --package-path apple/McFlyKit
+      - name: Generate the project
+        run: |
+          brew install xcodegen
+          cd apple && xcodegen generate
+      - name: Build for Mac
+        run: xcodebuild -project apple/McFly.xcodeproj -scheme McFly -destination 'platform=macOS' -configuration Debug build CODE_SIGNING_ALLOWED=NO | tail -20
+      - name: Build for iPhone (simulator)
+        run: xcodebuild -project apple/McFly.xcodeproj -scheme McFly -destination 'generic/platform=iOS Simulator' -configuration Debug build CODE_SIGNING_ALLOWED=NO | tail -20

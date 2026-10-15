@@ -1,0 +1,188 @@
+#pragma once
+
+#include <QDate>
+#include <QDateTime>
+#include <QElapsedTimer>
+#include <QHash>
+#include <QObject>
+#include <QSettings>
+#include <QTimer>
+#include <QVariantList>
+#include <QVariantMap>
+#include <functional>
+
+class SupabaseClient;
+
+// Single source of feed data for the QML UI: what the agents pushed.
+//
+// Modes:
+//   demo    - no backend configured (or --demo): sample data
+//   pairing - backend configured but this display has no session yet
+//   live    - signed in as the device user; data synced from Supabase
+//
+// Rows keep their database shape (snake_case) and are decorated with a few
+// display-ready fields (labels, colors, sparkline points) in rebuild().
+//
+// `today` is the one local date the whole UI treats as today. It moves on at
+// local midnight (and when the clock jumps).
+class FeedStore : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QString mode READ mode NOTIFY modeChanged)
+    Q_PROPERTY(bool online READ online NOTIFY statusChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY statusChanged)
+    Q_PROPERTY(QString pairingCode READ pairingCode NOTIFY pairingChanged)
+    Q_PROPERTY(QString today READ today NOTIFY todayChanged)       // local date, yyyy-MM-dd
+    Q_PROPERTY(QString displayName READ displayName NOTIFY dataChanged)
+    Q_PROPERTY(QString lastSyncLabel READ lastSyncLabel NOTIFY statusChanged)
+
+    Q_PROPERTY(QVariantList agents READ agents NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList briefs READ briefs NOTIFY dataChanged)     // newest first
+    Q_PROPERTY(QVariantMap latestBrief READ latestBrief NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList quotes READ quotes NOTIFY dataChanged)     // in display order, hidden ones left out
+    Q_PROPERTY(QVariantMap news READ news NOTIFY dataChanged)          // the report on show (the newest, or the one picked)
+    Q_PROPERTY(QVariantList newsReports READ newsReports NOTIFY dataChanged) // every report, newest first
+    Q_PROPERTY(QVariantList stories READ stories NOTIFY dataChanged)   // the shown report's items, flat, in order
+    Q_PROPERTY(QVariantList newsSources READ newsSources NOTIFY dataChanged) // agents with a report, newest first
+    Q_PROPERTY(QString newsSource READ newsSource NOTIFY dataChanged)  // the agent id filtering the reports, or ""
+    Q_PROPERTY(QVariantList projects READ projects NOTIFY dataChanged) // blocked first, done last
+    Q_PROPERTY(QVariantList metrics READ metrics NOTIFY dataChanged)   // visible metrics in display order, each with history
+    Q_PROPERTY(QVariantList metricGroups READ metricGroups NOTIFY dataChanged) // [{ name, metrics: [...] }]
+    Q_PROPERTY(QVariantList dashboards READ dashboards NOTIFY dataChanged) // visible, in order, widgets decorated
+    Q_PROPERTY(QVariantList events READ events NOTIFY dataChanged)     // from yesterday on, by start
+    Q_PROPERTY(QVariantList eventDays READ eventDays NOTIFY dataChanged) // [{ day, dayLabel, events: [...] }] from today
+    Q_PROPERTY(QVariantList upcoming READ upcoming NOTIFY dataChanged) // the next few events from now
+    // Today in time order: the Pulse report, briefs, project updates and events,
+    // each { kind, startMs, endMs, timeLabel, title, detail, color, target, ... }.
+    // Past, now and next are left to QML, which has a ticking clock.
+    Q_PROPERTY(QVariantList timeline READ timeline NOTIFY dataChanged)
+    Q_PROPERTY(QString assistantProvider READ assistantProvider NOTIFY dataChanged) // platform_settings: claude | grok
+
+public:
+    FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent = nullptr);
+
+    void start();
+
+    QString mode() const { return m_mode; }
+    bool online() const { return m_online; }
+    QString lastError() const { return m_lastError; }
+    QString pairingCode() const { return m_pairingCode; }
+    QString today() const { return m_today.toString(Qt::ISODate); }
+    QDate todayDate() const { return m_today; }
+    QString displayName() const { return m_displayName; }
+    QString lastSyncLabel() const;
+
+    QVariantList agents() const { return m_agents; }
+    QVariantList briefs() const { return m_briefs; }
+    QVariantMap latestBrief() const { return m_latestBrief; }
+    QVariantList quotes() const { return m_quotes; }
+    QVariantMap news() const { return m_news; }
+    QVariantList newsReports() const { return m_newsReports; }
+    QVariantList stories() const { return m_stories; }
+    QVariantList newsSources() const { return m_newsSources; }
+    QString newsSource() const { return m_newsSourceId; }
+    QVariantList projects() const { return m_projects; }
+    QVariantList metrics() const { return m_metrics; }
+    QVariantList metricGroups() const { return m_metricGroups; }
+    QVariantList dashboards() const { return m_dashboards; }
+    QVariantList events() const { return m_events; }
+    QVariantList eventDays() const { return m_eventDays; }
+    QVariantList upcoming() const { return m_upcoming; }
+    QString assistantProvider() const { return m_assistantProvider; }
+    QVariantList timeline() const { return m_timeline; }
+
+    // Syncs now (live), or asks for a pairing code again now if the last try
+    // failed (e.g. Wi-Fi was just joined). Also re-checks the date.
+    Q_INVOKABLE void refresh();
+    // The network is back: sync now if offline, instead of at the next retry.
+    void networkUp();
+    // Shows another day's report (an id from newsReports); "" goes back to the newest.
+    Q_INVOKABLE void showReport(const QString &reportId);
+    // Shows only one source's reports (an agent id from newsSources); "" shows every source.
+    Q_INVOKABLE void showSource(const QString &agentId);
+    // A project by id, decorated like the `projects` rows, or an empty map.
+    Q_INVOKABLE QVariantMap project(const QString &id) const;
+    // Forgets this display's session and shows a new pairing code (Settings → Re-pair).
+    Q_INVOKABLE void unpair();
+    // The quote for a symbol, decorated like the `quotes` rows, or an empty map.
+    Q_INVOKABLE QVariantMap quote(const QString &symbol) const;
+
+    // A short, spoken-style summary of what's on the display, for the
+    // assistant's prompt and the demo answers.
+    Q_INVOKABLE QString snapshotText(int maxChars = 6000) const;
+
+    // Tests: a stand-in for the wall clock (local time). Call before start().
+    void setClock(std::function<QDateTime()> now) { m_clock = std::move(now); }
+    // Tests: how often live mode syncs.
+    void setSyncIntervalMs(int ms);
+
+signals:
+    void modeChanged();
+    void statusChanged();
+    void pairingChanged();
+    void todayChanged();
+    void dataChanged();
+    void notify(const QString &message);
+
+private:
+    void setMode(const QString &mode);
+    void setOnline(bool online, const QString &error = {});
+    void loadDemo();
+    void loadLive();
+    void withSession(std::function<void()> fn);
+    void retrySoon();
+    void stopRetrying();
+    void checkIn();
+    void startPairing();
+    void pollPairing();
+    void rebuild();
+    void rebuildProductivity(const QHash<QString, QVariantMap> &agentById);
+    void rebuildTimeline(const QHash<QString, QVariantMap> &agentById);
+    QDateTime now() const { return m_clock ? m_clock() : QDateTime::currentDateTime(); }
+    bool updateToday();
+    bool rollDay();
+    QString dayLabel(const QDate &day) const;
+    QString timeLabel(const QDateTime &when) const;
+
+    SupabaseClient *m_client;
+    QSettings m_settings;
+    bool m_forceDemo;
+    QString m_mode = QStringLiteral("demo");
+    bool m_online = false;
+    QString m_lastError;
+
+    QTimer m_syncTimer;
+    QTimer m_retryTimer; // a failed sync, tried again before the next one
+    int m_retryMs = 0;   // its last delay; 0 after a clean sync
+    QTimer m_pairTimer;
+    QTimer m_pairRetryTimer;
+    QString m_pairingCode;
+    QString m_pairingSecret;
+    // Bumped for each new code and once paired; answers to older pairing
+    // requests (a slow poll, a retry that crossed one) are ignored.
+    int m_pairAttempt = 0;
+    // Bumped when the device's session is dropped (re-pair, lost session) so
+    // answers to requests made before are ignored.
+    int m_generation = 0;
+    // When this display last set devices.last_seen_at (monotonic; invalid until it has).
+    QElapsedTimer m_lastCheckIn;
+    QDateTime m_lastSync;
+
+    std::function<QDateTime()> m_clock; // tests only; empty means the real clock
+    QDate m_today;
+    QTimer m_dayTimer; // fires just after local midnight
+
+    // Raw rows as loaded (demo JSON or Supabase).
+    QString m_displayName = QStringLiteral("McFly");
+    QVariantList m_rawAgents, m_rawBriefs, m_rawQuotes, m_rawSymbols, m_rawReports;
+    QVariantList m_rawProjects, m_rawMetrics, m_rawMetricSettings, m_rawDashboards, m_rawEvents;
+    QString m_shownReportId; // "" = the newest
+    QString m_newsSourceId;  // "" = every source
+    QString m_assistantProvider = QStringLiteral("claude");
+
+    // Decorated rows for QML.
+    QVariantList m_agents, m_briefs, m_quotes, m_newsReports, m_stories, m_newsSources;
+    QVariantList m_projects, m_metrics, m_metricGroups, m_dashboards, m_events, m_eventDays, m_upcoming;
+    QVariantList m_timeline;
+    QVariantMap m_latestBrief, m_news;
+};

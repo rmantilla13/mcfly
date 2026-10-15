@@ -1,0 +1,850 @@
+{
+  "settings": {
+    "display_name": "McFly",
+    "timezone": "America/Chicago",
+    "assistant_provider": "claude"
+  },
+  "agents": [
+    {
+      "id": "a-grok",
+      "name": "Grok",
+      "slug": "grok",
+      "kind": "grok",
+      "color": "#7A64E8",
+      "last_seen_at": ""
+    },
+    {
+      "id": "a-market",
+      "name": "Market desk",
+      "slug": "market-desk",
+      "kind": "stocks",
+      "color": "#3DB37A",
+      "last_seen_at": ""
+    },
+    {
+      "id": "a-pulse",
+      "name": "Daily Pulse",
+      "slug": "daily-pulse",
+      "kind": "news",
+      "color": "#E2725B",
+      "last_seen_at": ""
+    },
+    {
+      "id": "a-github",
+      "name": "GitHub watcher",
+      "slug": "github-watcher",
+      "kind": "other",
+      "color": "#5B7CF5",
+      "last_seen_at": ""
+    },
+    {
+      "id": "a-ops",
+      "name": "Ops metrics",
+      "slug": "ops-metrics",
+      "kind": "other",
+      "color": "#F6B94A",
+      "last_seen_at": ""
+    },
+    {
+      "id": "a-cal",
+      "name": "Calendar sync",
+      "slug": "calendar-sync",
+      "kind": "other",
+      "color": "#14C2C2",
+      "last_seen_at": ""
+    },
+    {
+      "id": "a-digest",
+      "name": "Tech Digest",
+      "slug": "tech-digest",
+      "kind": "news",
+      "color": "#7A64E8",
+      "last_seen_at": ""
+    }
+  ],
+  "briefs": [
+    {
+      "id": "b-hourly",
+      "agent_id": "a-grok",
+      "kind": "hourly",
+      "hoursAgo": 0.4,
+      "title": "Hourly check-in",
+      "body": "Quiet hour. NVDA is leading the Nasdaq after the data-center numbers, and today's Pulse report landed with six stories.\n\n- Rain clears by noon; 71° this afternoon.\n- Your 3 PM call moved to 3:30."
+    },
+    {
+      "id": "b-daily",
+      "agent_id": "a-grok",
+      "kind": "daily",
+      "hoursAgo": 5,
+      "title": "Morning briefing",
+      "body": "Three things for today.\n\n- The Fed minutes land at 1 PM CT; markets are pricing a hold.\n- Apple reports after the close; services is the number to watch.\n- The Pulse pipeline ran at 8:06 and found 11 sourced stories.\n\nHave a good one."
+    },
+    {
+      "id": "b-alert",
+      "agent_id": "a-market",
+      "kind": "alert",
+      "hoursAgo": 2.5,
+      "title": "TSLA up 4% on deliveries",
+      "body": "Tesla delivered 495k vehicles last quarter, ahead of the 470k consensus. The stock jumped at the open."
+    },
+    {
+      "id": "b-yesterday",
+      "agent_id": "a-grok",
+      "kind": "daily",
+      "hoursAgo": 29,
+      "title": "Evening wrap",
+      "body": "Markets closed mixed. The S&P was flat, the Nasdaq up a third of a percent.\n\n- Tomorrow: Fed minutes, Apple earnings."
+    }
+  ],
+  "quotes": [
+    {
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "price": 668.42,
+      "change": 2.11,
+      "change_pct": 0.32,
+      "agent_id": "a-market",
+      "history": [
+        651.2,
+        653.8,
+        652.1,
+        655.4,
+        658.9,
+        657.3,
+        660.0,
+        662.4,
+        661.1,
+        663.8,
+        665.2,
+        664.0,
+        666.3
+      ]
+    },
+    {
+      "symbol": "AAPL",
+      "name": "Apple",
+      "price": 247.9,
+      "change": 2.78,
+      "change_pct": 1.13,
+      "agent_id": "a-market",
+      "note": "Services beat; iPhone 18 demand steady.",
+      "history": [
+        238.1,
+        239.4,
+        237.8,
+        240.2,
+        241.0,
+        243.5,
+        242.2,
+        244.8,
+        243.9,
+        245.1,
+        246.0,
+        245.3,
+        245.12
+      ]
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA",
+      "price": 191.25,
+      "change": 2.85,
+      "change_pct": 1.51,
+      "agent_id": "a-market",
+      "note": "Data-center revenue guided up again.",
+      "history": [
+        176.4,
+        178.9,
+        181.2,
+        180.1,
+        183.6,
+        186.0,
+        184.4,
+        187.9,
+        190.2,
+        189.0,
+        188.4,
+        186.9,
+        188.4
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "price": 402.1,
+      "change": 15.3,
+      "change_pct": 3.96,
+      "agent_id": "a-market",
+      "note": "Deliveries ahead of consensus.",
+      "history": [
+        372.0,
+        368.4,
+        371.9,
+        375.2,
+        379.8,
+        377.1,
+        381.0,
+        384.3,
+        383.0,
+        386.2,
+        390.1,
+        388.4,
+        386.8
+      ]
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft",
+      "price": 512.6,
+      "change": -3.2,
+      "change_pct": -0.62,
+      "agent_id": "a-market",
+      "history": [
+        520.1,
+        522.4,
+        519.8,
+        521.0,
+        518.3,
+        517.0,
+        519.5,
+        516.2,
+        515.0,
+        517.8,
+        516.4,
+        514.9,
+        515.8
+      ]
+    },
+    {
+      "symbol": "BTC-USD",
+      "name": "Bitcoin",
+      "price": 118420,
+      "change": -1240,
+      "change_pct": -1.04,
+      "agent_id": "a-market",
+      "history": [
+        112400,
+        113900,
+        115200,
+        114100,
+        116800,
+        117500,
+        119200,
+        118100,
+        120400,
+        121100,
+        119800,
+        120600,
+        119660
+      ]
+    }
+  ],
+  "news": {
+    "date": "Today",
+    "slug": "today",
+    "hero": "gemini",
+    "agent_id": "a-pulse",
+    "sections": [
+      {
+        "key": "s",
+        "name": "Social",
+        "items": [
+          {
+            "id": "reels",
+            "h": "Instagram puts Reels first on the home tab",
+            "t": "Short video is now the default feed; static posts need to earn their reach.",
+            "url": "https://about.instagram.com/blog"
+          },
+          {
+            "id": "tiktok",
+            "h": "TikTok Shop adds live auctions in the US",
+            "t": "Live commerce keeps growing; brands with hosts win.",
+            "url": "https://newsroom.tiktok.com/"
+          }
+        ]
+      },
+      {
+        "key": "a",
+        "name": "Paid Ads",
+        "items": [
+          {
+            "id": "pmax",
+            "h": "Google adds channel-level reporting to Performance Max",
+            "t": "You can finally see where the spend goes.",
+            "url": "https://blog.google/products/ads-commerce/"
+          },
+          {
+            "id": "meta",
+            "h": "Meta Advantage+ gets a creative-only mode",
+            "t": "Hand it the assets and it builds the campaign.",
+            "url": "https://www.facebook.com/business/news"
+          }
+        ]
+      },
+      {
+        "key": "i",
+        "name": "AI Tech",
+        "items": [
+          {
+            "id": "gemini",
+            "h": "Google launches Gemini 4 Argon",
+            "t": "A stronger model in Search changes how brands surface in AI answers.",
+            "url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/"
+          },
+          {
+            "id": "claude",
+            "h": "Anthropic ships Claude 5 to everyone",
+            "t": "Computer use is on by default; expect agents in every workflow tool.",
+            "url": "https://www.anthropic.com/news"
+          }
+        ]
+      }
+    ]
+  },
+  "projects": [
+    {
+      "key": "mcfly",
+      "name": "McFly",
+      "kind": "code",
+      "status": "active",
+      "progress": 62,
+      "sort_order": 0,
+      "agent_id": "a-github",
+      "hoursAgo": 0.5,
+      "summary": "The agent display: the Pi app, the console and the iPhone app.",
+      "next_step": "Ship the dashboards screen",
+      "link": "https://github.com/rmantilla13/mcfly",
+      "updates": [
+        {
+          "kind": "ci",
+          "text": "CI green on main (14 checks)",
+          "hoursAgo": 0.5
+        },
+        {
+          "kind": "pr",
+          "text": "#12 Dashboards screen opened",
+          "url": "https://github.com/rmantilla13/mcfly/pull/12",
+          "hoursAgo": 2.2
+        },
+        {
+          "kind": "commit",
+          "text": "Feed store: projects, metrics, dashboards and events",
+          "hoursAgo": 3.0
+        },
+        {
+          "kind": "deploy",
+          "text": "Console deployed to mcfly.bot",
+          "hoursAgo": 26
+        }
+      ]
+    },
+    {
+      "key": "onyx",
+      "name": "Onyx",
+      "kind": "code",
+      "status": "blocked",
+      "progress": 80,
+      "sort_order": 1,
+      "agent_id": "a-github",
+      "hoursAgo": 20,
+      "summary": "Collections and the Mac app.",
+      "next_step": "App Review's answer on the FSKit entitlement",
+      "updates": [
+        {
+          "kind": "alert",
+          "text": "App Review: waiting on the FSKit entitlement",
+          "hoursAgo": 20
+        },
+        {
+          "kind": "commit",
+          "text": "Collections stop disappearing",
+          "hoursAgo": 30
+        }
+      ]
+    },
+    {
+      "key": "homestead",
+      "name": "Homestead",
+      "kind": "launch",
+      "status": "paused",
+      "progress": 95,
+      "sort_order": 2,
+      "agent_id": "a-github",
+      "hoursAgo": 70,
+      "summary": "Voice handbook app; the launch copy is done.",
+      "updates": []
+    },
+    {
+      "key": "pulse",
+      "name": "Daily Pulse pipeline",
+      "kind": "task",
+      "status": "active",
+      "sort_order": 3,
+      "agent_id": "a-github",
+      "hoursAgo": 8,
+      "summary": "The 8:06 report: research, items JSON, the one-pager and the video.",
+      "next_step": "Push to McFly after each run",
+      "updates": [
+        {
+          "kind": "note",
+          "text": "Today's run found 11 sourced stories in 58 s",
+          "hoursAgo": 8
+        }
+      ]
+    },
+    {
+      "key": "taxes",
+      "name": "Q3 taxes",
+      "kind": "task",
+      "status": "done",
+      "progress": 100,
+      "sort_order": 4,
+      "agent_id": "a-github",
+      "hoursAgo": 100,
+      "summary": "Filed.",
+      "updates": [
+        {
+          "kind": "done",
+          "text": "Filed and paid",
+          "hoursAgo": 100
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "key": "sales.today",
+      "label": "Sales today",
+      "group": "Store",
+      "unit": "USD",
+      "agent_id": "a-ops",
+      "value": 4280,
+      "delta_pct": 12.5,
+      "history": [
+        3100,
+        3600,
+        2900,
+        4100,
+        3800,
+        3950,
+        3800
+      ]
+    },
+    {
+      "key": "orders.open",
+      "label": "Open orders",
+      "group": "Store",
+      "agent_id": "a-ops",
+      "value": 17,
+      "delta": -3,
+      "history": [
+        22,
+        25,
+        19,
+        21,
+        24,
+        20,
+        20
+      ]
+    },
+    {
+      "key": "returns",
+      "label": "Returns",
+      "group": "Store",
+      "unit": "%",
+      "agent_id": "a-ops",
+      "value": 2.1,
+      "delta_pct": -0.4,
+      "history": [
+        2.8,
+        2.6,
+        2.9,
+        2.4,
+        2.5,
+        2.3,
+        2.5
+      ]
+    },
+    {
+      "key": "site.uptime",
+      "label": "Uptime",
+      "group": "Ops",
+      "unit": "%",
+      "agent_id": "a-ops",
+      "value": 99.98,
+      "history": [
+        99.99,
+        99.97,
+        100,
+        99.99,
+        99.98,
+        99.99,
+        99.98
+      ]
+    },
+    {
+      "key": "api.p95",
+      "label": "API p95",
+      "group": "Ops",
+      "unit": "ms",
+      "agent_id": "a-ops",
+      "value": 212,
+      "delta": -18,
+      "note": "After the cache change.",
+      "history": [
+        260,
+        255,
+        248,
+        262,
+        240,
+        231,
+        230
+      ]
+    },
+    {
+      "key": "errors",
+      "label": "Error rate",
+      "group": "Ops",
+      "unit": "%",
+      "agent_id": "a-ops",
+      "value": 0.12,
+      "delta_pct": -30,
+      "history": [
+        0.2,
+        0.18,
+        0.22,
+        0.17,
+        0.15,
+        0.19,
+        0.17
+      ]
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "group": "Me",
+      "agent_id": "a-ops",
+      "value": 6420,
+      "delta_pct": -8,
+      "history": [
+        8100,
+        5400,
+        7200,
+        9100,
+        6300,
+        7700,
+        7010
+      ]
+    },
+    {
+      "key": "sleep",
+      "label": "Sleep",
+      "group": "Me",
+      "unit": "h",
+      "agent_id": "a-ops",
+      "value": 7.2,
+      "delta": 0.4,
+      "history": [
+        6.5,
+        7.1,
+        6.8,
+        7.4,
+        6.9,
+        6.2,
+        6.8
+      ]
+    }
+  ],
+  "dashboards": [
+    {
+      "key": "ops",
+      "title": "Ops",
+      "subtitle": "Production, last 24 h",
+      "sort_order": 0,
+      "agent_id": "a-ops",
+      "widgets": [
+        {
+          "type": "status",
+          "label": "API",
+          "state": "ok",
+          "detail": "All checks passing"
+        },
+        {
+          "type": "status",
+          "label": "Workers",
+          "state": "warn",
+          "detail": "1 of 4 behind"
+        },
+        {
+          "type": "status",
+          "label": "Search",
+          "state": "down",
+          "detail": "Index rebuilding since 3:10"
+        },
+        {
+          "type": "metric",
+          "label": "Requests",
+          "value": 1240000,
+          "delta_pct": 4.2
+        },
+        {
+          "type": "metric",
+          "label": "Errors",
+          "value": 0.12,
+          "unit": "%",
+          "delta_pct": -30
+        },
+        {
+          "type": "metric",
+          "label": "Signups",
+          "value": 318,
+          "delta": 46
+        },
+        {
+          "type": "progress",
+          "label": "Storage",
+          "value": 68,
+          "max": 100,
+          "unit": "%"
+        },
+        {
+          "type": "chart",
+          "label": "Requests per hour",
+          "points": [
+            40,
+            42,
+            38,
+            51,
+            60,
+            58,
+            64,
+            70,
+            66,
+            72,
+            75,
+            71
+          ],
+          "unit": "k"
+        },
+        {
+          "type": "list",
+          "title": "On call",
+          "items": [
+            "Ricky (primary)",
+            "Pager quiet since Monday",
+            "Next handoff Friday"
+          ]
+        },
+        {
+          "type": "text",
+          "title": "Note",
+          "body": "Deploy window tonight 9–10 PM CT. Search index finishes rebuilding around 6."
+        }
+      ]
+    },
+    {
+      "key": "launch",
+      "title": "Launch week",
+      "subtitle": "Homestead 1.0",
+      "sort_order": 1,
+      "agent_id": "a-github",
+      "widgets": [
+        {
+          "type": "progress",
+          "label": "Checklist",
+          "value": 14,
+          "max": 20
+        },
+        {
+          "type": "list",
+          "title": "Left to do",
+          "items": [
+            "App Store screenshots",
+            "Press list",
+            "Support page",
+            "Launch tweet"
+          ]
+        },
+        {
+          "type": "metric",
+          "label": "Waitlist",
+          "value": 812,
+          "delta": 46
+        },
+        {
+          "type": "metric",
+          "label": "TestFlight testers",
+          "value": 143,
+          "delta": 12
+        },
+        {
+          "type": "chart",
+          "label": "Waitlist growth",
+          "points": [
+            420,
+            470,
+            510,
+            560,
+            600,
+            640,
+            690,
+            740,
+            766,
+            812
+          ]
+        },
+        {
+          "type": "status",
+          "label": "Build",
+          "state": "ok",
+          "detail": "1.0 (38) on TestFlight"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "calendar": "Work",
+      "title": "Standup",
+      "dayOffset": 0,
+      "start": "09:30",
+      "end": "09:45",
+      "color": "#5B7CF5",
+      "hours": 0.25
+    },
+    {
+      "calendar": "Work",
+      "title": "Pulse review with the team",
+      "dayOffset": 0,
+      "start": "15:30",
+      "end": "16:00",
+      "location": "Zoom",
+      "color": "#5B7CF5",
+      "hours": 0.5
+    },
+    {
+      "calendar": "Home",
+      "title": "Dinner with Lina",
+      "dayOffset": 0,
+      "start": "19:00",
+      "end": "21:00",
+      "location": "Maria's",
+      "color": "#F07F5A",
+      "hours": 2.0
+    },
+    {
+      "calendar": "Work",
+      "title": "Investor call",
+      "dayOffset": 1,
+      "start": "11:00",
+      "end": "12:00",
+      "color": "#5B7CF5",
+      "hours": 1.0
+    },
+    {
+      "calendar": "Work",
+      "title": "Design review",
+      "dayOffset": 1,
+      "start": "14:00",
+      "end": "15:30",
+      "color": "#5B7CF5",
+      "hours": 1.5
+    },
+    {
+      "calendar": "Home",
+      "title": "Gym",
+      "dayOffset": 2,
+      "start": "07:00",
+      "end": "08:00",
+      "color": "#F07F5A",
+      "hours": 1.0
+    },
+    {
+      "calendar": "Home",
+      "title": "Flight to Austin",
+      "dayOffset": 3,
+      "start": "08:00",
+      "end": "11:00",
+      "location": "DFW",
+      "color": "#F07F5A",
+      "hours": 3.0
+    },
+    {
+      "calendar": "Work",
+      "title": "Offsite",
+      "dayOffset": 4,
+      "all_day": true,
+      "color": "#5B7CF5"
+    },
+    {
+      "calendar": "Home",
+      "title": "Launch day",
+      "dayOffset": 6,
+      "all_day": true,
+      "color": "#F6B94A"
+    },
+    {
+      "calendar": "Work",
+      "title": "Board prep",
+      "dayOffset": 8,
+      "start": "10:00",
+      "end": "12:00",
+      "color": "#5B7CF5",
+      "hours": 2.0
+    },
+    {
+      "calendar": "Home",
+      "title": "Maria & Vince's wedding",
+      "dayOffset": 11,
+      "start": "16:00",
+      "end": "23:00",
+      "location": "Hill Valley",
+      "color": "#F07F5A",
+      "hours": 7.0
+    }
+  ],
+  "news2": {
+    "date": "Today",
+    "slug": "digest-today",
+    "hero": "openai",
+    "agent_id": "a-digest",
+    "sections": [
+      {
+        "key": "ai",
+        "name": "AI",
+        "items": [
+          {
+            "id": "openai",
+            "h": "OpenAI opens its agent platform to every developer",
+            "t": "Tool use and computer use are now the default stack; expect a wave of niche agents.",
+            "url": "https://openai.com/blog"
+          },
+          {
+            "id": "nvda",
+            "h": "NVIDIA's data-center run keeps going",
+            "t": "Guidance up again; the capex cycle is not slowing.",
+            "url": "https://nvidianews.nvidia.com/"
+          }
+        ]
+      },
+      {
+        "key": "dev",
+        "name": "Developer tools",
+        "items": [
+          {
+            "id": "swift",
+            "h": "Swift 6.4 lands with faster builds",
+            "t": "Incremental builds are about 30% quicker on big targets.",
+            "url": "https://swift.org/blog/"
+          },
+          {
+            "id": "qt",
+            "h": "Qt 6.12 ships a Pi-friendly renderer",
+            "t": "Lower GPU use on V3D; kiosk apps gain a frame or two.",
+            "url": "https://www.qt.io/blog"
+          }
+        ]
+      }
+    ]
+  }
+}

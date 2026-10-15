@@ -1,0 +1,322 @@
+#!/usr/bin/env bash
+# Play the McFly boot video on the HDMI panel until this process is stopped.
+# mcfly-display does that itself, before it opens the screen (see
+# mcfly-stop-bootscreen). Silent on purpose: the panel's speakers hiss.
+#
+# A file at /etc/mcfly/boot.mp4 (MCFLY_BOOT_CUSTOM) replaces the built-in
+# clip and is never written here.
+#
+# `mcfly-bootscreen --wait-online` waits, for a while, until the backend can
+# be reached. mcfly-stop-bootscreen runs it before it stops the video, so the
+# app opens connected instead of offline until Wi-Fi joins.
+set -euo pipefail
+
+custom="${MCFLY_BOOT_CUSTOM:-/etc/mcfly/boot.mp4}"
+installed="${MCFLY_BOOT_INSTALLED:-/usr/local/share/mcfly/boot.mp4}"
+env_file="${MCFLY_DISPLAY_ENV:-/etc/mcfly/display.env}"
+
+log() { printf 'mcfly-bootscreen: %s\n' "$*" >&2; }
+
+load_display_env() {
+    MCFLY_SUPABASE_URL=""
+    MCFLY_SUPABASE_ANON_KEY=""
+    [ -f "$env_file" ] || return 0
+    local line key val
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=${line%$'\r'}
+        case "$line" in
+            ''|\#*) continue ;;
+            MCFLY_SUPABASE_URL=*|MCFLY_SUPABASE_ANON_KEY=*)
+                key=${line%%=*}
+                val=${line#*=}
+                case "$val" in
+                    \"*\") val=${val#\"}; val=${val%\"} ;;
+                    \'*\') val=${val#\'}; val=${val%\'} ;;
+                esac
+                printf -v "$key" '%s' "$val"
+                ;;
+        esac
+    done <"$env_file"
+}
+
+supabase_ready() {
+    [ -n "${MCFLY_SUPABASE_URL:-}" ] && [ -n "${MCFLY_SUPABASE_ANON_KEY:-}" ] || return 1
+    case "$MCFLY_SUPABASE_URL" in
+        http://*|https://*) ;;
+        *) return 1 ;;
+    esac
+    case "${MCFLY_SUPABASE_URL}${MCFLY_SUPABASE_ANON_KEY}" in
+        *[[:space:]]*) return 1 ;;
+    esac
+}
+
+is_mp4() {
+    [ -f "$1" ] || return 1
+    [ "$(wc -c <"$1")" -ge 8 ] || return 1
+    local magic
+    magic=$(dd if="$1" bs=1 skip=4 count=4 2>/dev/null || true)
+    [ "$magic" = "ftyp" ]
+}
+
+# Whether the host name resolves: Wi-Fi has joined, and DHCP has given the
+# Pi a route and a DNS server. Each try is short; a DNS server that does not
+# answer would otherwise hold getent for several seconds.
+resolves() {
+    if [ -n "${MCFLY_BOOT_RESOLVE:-}" ]; then
+        "$MCFLY_BOOT_RESOLVE" "$1"
+    else
+        timeout 2 getent hosts "$1"
+    fi >/dev/null 2>&1
+}
+
+# --wait-online: return once the backend's host name resolves, or after
+# MCFLY_BOOT_NETWORK_WAIT seconds (default 30, at most 60 so the display
+# unit's start stays under systemd's 90 s timeout; 0 checks once). 0 = online
+# or no backend to wait for, 1 = gave up and the app starts offline.
+wait_online() {
+    local host limit deadline started
+    load_display_env
+    supabase_ready || return 0
+    limit=${MCFLY_BOOT_NETWORK_WAIT:-30}
+    case "$limit" in
+        ''|*[!0-9]*) limit=30 ;;
+    esac
+    [ "$limit" -le 60 ] || limit=60
+    # The host of scheme://[user@]host[:port][/path]. An IPv6 literal keeps
+    # its colons.
+    host=${MCFLY_SUPABASE_URL#*://}
+    host=${host%%[/?#]*}
+    host=${host##*@}
+    case "$host" in
+        \[*) host=${host#\[}; host=${host%%\]*} ;;
+        *) host=${host%%:*} ;;
+    esac
+    [ -n "$host" ] || return 0
+    started=$SECONDS
+    deadline=$((SECONDS + limit))
+    while ! resolves "$host"; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            log "no network after ${limit} s; McFly starts offline and keeps trying"
+            return 1
+        fi
+        sleep 0.5
+    done
+    if [ "$SECONDS" -gt "$started" ]; then
+        log "network up after $((SECONDS - started)) s"
+    fi
+    return 0
+}
+
+case "${1:-}" in
+    "") ;;
+    --wait-online)
+        wait_online
+        exit
+        ;;
+    *)
+        log "usage: mcfly-bootscreen [--wait-online]"
+        exit 2
+        ;;
+esac
+
+if [ -n "${MCFLY_BOOT_VIDEO:-}" ]; then
+    video=$MCFLY_BOOT_VIDEO
+elif [ -f "$custom" ]; then
+    video=$custom
+else
+    video=$installed
+fi
+
+if [ ! -f "$video" ]; then
+    log "no video at $video"
+    exit 0
+fi
+
+have_ffplay=0
+have_ffmpeg=0
+command -v ffplay >/dev/null 2>&1 && have_ffplay=1
+command -v ffmpeg >/dev/null 2>&1 && have_ffmpeg=1
+
+# Pi 5's GPU and HDMI controller swap card numbers. Prefer a card that has
+# an HDMI connector, and a connected one when the panel is already up.
+hdmi_card_index() {
+    local connector card status fallback=""
+    for connector in /sys/class/drm/card*-HDMI-A-*; do
+        [ -e "$connector" ] || continue
+        card=$(basename "$connector" | cut -d- -f1)
+        card=${card#card}
+        status=""
+        if [ -f "$connector/status" ]; then
+            status=$(cat "$connector/status" 2>/dev/null || true)
+        fi
+        if [ "$status" = "connected" ]; then
+            printf '%s' "$card"
+            return 0
+        fi
+        [ -n "$fallback" ] || fallback=$card
+    done
+    [ -n "$fallback" ] || return 1
+    printf '%s' "$fallback"
+}
+
+kms_index=auto
+if idx=$(hdmi_card_index); then
+    kms_index=$idx
+fi
+
+if [ "${MCFLY_BOOTSCREEN_DRY_RUN:-0}" = 1 ]; then
+    printf 'video=%s\n' "$video"
+    printf 'ffplay=%s\n' "$have_ffplay"
+    printf 'ffmpeg=%s\n' "$have_ffmpeg"
+    printf 'kms_index=%s\n' "$kms_index"
+    exit 0
+fi
+
+if [ "$have_ffplay" != 1 ] && [ "$have_ffmpeg" != 1 ]; then
+    log "ffmpeg is not installed, so there is nothing to play"
+    exit 0
+fi
+
+# Cover kernel text while DRM comes up. The login cursor is already off.
+tty="${MCFLY_BOOT_TTY:-/dev/tty1}"
+if [ -w "$tty" ]; then
+    printf '\033[2J\033[?25l\033[H' >"$tty" 2>/dev/null || true
+fi
+
+for _ in $(seq 1 "${MCFLY_BOOT_DRM_TRIES:-20}"); do
+    if [ -e /dev/fb0 ] || compgen -G '/dev/dri/card[0-9]*' >/dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+
+player_pid=
+stopped=0
+# shellcheck disable=SC2317  # run by the trap below
+on_stop() {
+    stopped=1
+    if [ -n "${player_pid:-}" ]; then
+        kill -TERM "$player_pid" 2>/dev/null || true
+    fi
+}
+trap on_stop TERM INT
+
+# Stopped: signal the player and wait until it is reaped. A trapped TERM ends
+# `wait` at once, and a player that is still exiting can hold DRM master, so
+# returning then would let the app open HDMI too early.
+stop_player() {
+    local rc
+    kill -TERM "$player_pid" 2>/dev/null || true
+    while kill -0 "$player_pid" 2>/dev/null; do
+        rc=0
+        wait "$player_pid" 2>/dev/null || rc=$?
+        # 127: not our child any more, so it has already been reaped.
+        [ "$rc" != 127 ] || break
+    done
+    player_pid=
+    exit 0
+}
+
+# 0 = played until it ended. 1 = exited immediately. A stop exits from here.
+supervise() {
+    local ticks=0
+    while kill -0 "$player_pid" 2>/dev/null; do
+        [ "$stopped" = 1 ] && stop_player
+        if [ "$ticks" -ge 6 ]; then
+            wait "$player_pid" 2>/dev/null || true
+            [ "$stopped" = 1 ] && stop_player
+            player_pid=
+            return 0
+        fi
+        # The stop helper signals this sleep too. Keep going to stop_player.
+        sleep 0.25 || true
+        ticks=$((ticks + 1))
+    done
+    wait "$player_pid" 2>/dev/null || true
+    player_pid=
+    [ "$stopped" = 1 ] && exit 0
+    return 1
+}
+
+try_ffplay() {
+    local index="$1"
+    [ "$have_ffplay" = 1 ] || return 1
+    [ "$stopped" = 1 ] && exit 0
+    if [ "$index" = auto ]; then
+        SDL_VIDEODRIVER=kmsdrm SDL_AUDIODRIVER=dummy \
+            ffplay -hide_banner -loglevel error -nostats -fs -an -loop 0 "$video" \
+            </dev/null &
+    else
+        SDL_VIDEODRIVER=kmsdrm SDL_AUDIODRIVER=dummy SDL_KMSDRM_DEVICE_INDEX="$index" \
+            ffplay -hide_banner -loglevel error -nostats -fs -an -loop 0 "$video" \
+            </dev/null &
+    fi
+    player_pid=$!
+    supervise
+}
+
+fb_size() {
+    local line w h
+    if [ -f /sys/class/graphics/fb0/modes ]; then
+        line=$(head -n 1 /sys/class/graphics/fb0/modes 2>/dev/null || true)
+        if [[ "$line" =~ ([0-9]+)x([0-9]+) ]]; then
+            printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+            return 0
+        fi
+    fi
+    if [ -f /sys/class/graphics/fb0/virtual_size ]; then
+        IFS=, read -r w h </sys/class/graphics/fb0/virtual_size || true
+        if [[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]]; then
+            printf '%s %s\n' "$w" "$h"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+fb_pix_fmt() {
+    local bpp
+    bpp=$(cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null || echo 32)
+    case "$bpp" in
+        16) printf '%s\n' rgb565le ;;
+        *) printf '%s\n' bgra ;;
+    esac
+}
+
+try_fbdev() {
+    local w h fmt
+    [ "$have_ffmpeg" = 1 ] || return 1
+    [ -e /dev/fb0 ] || return 1
+    [ "$stopped" = 1 ] && exit 0
+    read -r w h < <(fb_size) || return 1
+    fmt=$(fb_pix_fmt)
+    ffmpeg -hide_banner -loglevel error -nostdin \
+        -stream_loop -1 -re -i "$video" \
+        -vf "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0xF1EFEB" \
+        -pix_fmt "$fmt" -f fbdev /dev/fb0 </dev/null &
+    player_pid=$!
+    supervise
+}
+
+failures=0
+while [ "$stopped" != 1 ]; do
+    if [ "$kms_index" != auto ] && try_ffplay "$kms_index"; then
+        failures=0
+        continue
+    fi
+    if try_ffplay auto; then
+        failures=0
+        continue
+    fi
+    if try_fbdev; then
+        failures=0
+        continue
+    fi
+    failures=$((failures + 1))
+    if [ "$failures" -ge 6 ]; then
+        log "could not play $video on the HDMI screen"
+        exit 0
+    fi
+    sleep 1
+done
+exit 0

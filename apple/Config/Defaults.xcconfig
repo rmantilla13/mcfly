@@ -1,0 +1,13 @@
+// Defaults for every build. Config/Local.xcconfig (gitignored) overrides any
+// of these. A URL must be written https:/$()/host because xcconfig treats
+// // as a comment.
+
+// Your Apple Developer team (10 characters) and the app's bundle id. Leave the
+// team empty for a simulator or an unsigned build.
+MCFLY_TEAM_ID =
+MCFLY_BUNDLE_ID = bot.mcfly.app
+
+// Your Supabase project. Set both in Local.xcconfig. Only the anon
+// (publishable) key: never the service role key.
+SUPABASE_URL =
+SUPABASE_ANON_KEY =

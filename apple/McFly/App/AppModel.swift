@@ -1,0 +1,215 @@
+import Foundation
+import McFlyKit
+import Observation
+
+/// Streams an answer: the `assistant` function in the real app, canned text in
+/// demo mode. Events arrive on the main actor, `done` or `error` last.
+typealias Answerer = @MainActor (_ message: String, _ mode: AssistantClient.Mode, _ history: [AssistantTurn],
+                                 _ provider: AssistantProvider?,
+                                 _ onEvent: @escaping @MainActor @Sendable (AssistantEvent) -> Void) async throws -> Void
+
+/// App-wide state: who is signed in, whether they're the admin, the feeds,
+/// and the links the app was opened with. Screens read from here and call the
+/// services for everything else.
+@MainActor
+@Observable
+final class AppModel {
+    enum Phase: Equatable {
+        case loading
+        case signedOut
+        /// Signed in, but `is_platform_admin` said no.
+        case notAdmin
+        case ready
+        /// A saved account that can't be checked right now (offline).
+        case unreachable
+    }
+
+    private(set) var phase: Phase = .loading
+    var errorMessage: String?
+    let feeds: FeedStore
+    let admin: any AdminService
+    let isDemo: Bool
+    /// A pairing code from a link or QR code, waiting for the pairing sheet.
+    var pendingPairCode: String?
+    /// Set once a sign-in link has been emailed, so the screen can say so.
+    var magicLinkSentTo: String?
+
+    private let client: McFlyClient?
+    private let pairingClient: PairingClient?
+
+    init() {
+        if Config.isDemo {
+            isDemo = true
+            client = nil
+            pairingClient = nil
+            // The demo file is part of the app; if it's unreadable the build is broken, not the network.
+            let demo = try! DemoData.load().rebased()
+            feeds = FeedStore(source: DemoFeedSource(data: demo))
+            admin = DemoAdminService(data: demo)
+        } else {
+            isDemo = false
+            let client = McFlyClient(supabaseURL: Config.supabaseURL, anonKey: Config.supabaseAnonKey,
+                                     authCallbackURL: Config.authCallbackURL)
+            self.client = client
+            pairingClient = client.pairing
+            feeds = FeedStore(source: client.feeds)
+            admin = client.admin
+        }
+    }
+
+    var email: String? { isDemo ? "demo@mcfly.bot" : client?.currentEmail }
+
+    // MARK: Lifecycle
+
+    func start() async {
+        if isDemo {
+            phase = .ready
+            await feeds.refresh()
+            return
+        }
+        guard let client, Config.isConfigured else {
+            errorMessage = Config.unconfiguredMessage
+            phase = .signedOut
+            return
+        }
+        for await state in client.sessionStates {
+            switch state {
+            case .signedIn:
+                await checkAdmin()
+            case .signedOut:
+                phase = .signedOut
+            case .unreachable:
+                errorMessage = "McFly couldn't be reached. Check your connection and try again."
+                phase = .unreachable
+            }
+        }
+    }
+
+    /// RLS lets an admin read every feed; anyone else gets an explanation.
+    func checkAdmin() async {
+        do {
+            if try await admin.isPlatformAdmin() {
+                phase = .ready
+                await feeds.refresh()
+            } else {
+                phase = .notAdmin
+            }
+        } catch {
+            errorMessage = McFlyError.describe(error)
+            phase = .unreachable
+        }
+    }
+
+    // MARK: Auth
+
+    func signIn(email: String, password: String) async {
+        guard let client else { return }
+        do {
+            try await client.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// True when the email went out.
+    func sendMagicLink(email: String) async -> Bool {
+        guard let client else { return false }
+        let address = email.trimmingCharacters(in: .whitespaces)
+        do {
+            try await client.sendMagicLink(email: address)
+            magicLinkSentTo = address
+            return true
+        } catch {
+            report(error)
+            return false
+        }
+    }
+
+    func signOut() async {
+        guard !isDemo else { return }
+        await client?.signOut()
+        magicLinkSentTo = nil
+    }
+
+    // MARK: Links
+
+    /// `mcfly://auth-callback…` finishes an email link; a pairing link
+    /// (`https://mcfly.bot/pair?code=…` or `mcfly://pair?code=…`) opens the
+    /// pairing sheet with the code filled in.
+    func handleOpenURL(_ url: URL) {
+        if let code = PairingCode.code(from: url) {
+            pendingPairCode = code
+            return
+        }
+        guard let client, client.isAuthCallback(url) else { return }
+        Task {
+            do {
+                try await client.handleAuthCallback(url)
+            } catch {
+                report(error)
+            }
+        }
+    }
+
+    // MARK: Services
+
+    /// Claims a display's code (`pair-device` `claim`). Demo: a pretend device.
+    func pairDisplay(code: String, name: String?) async throws -> UUID {
+        if let pairingClient { return try await pairingClient.claim(code: code, name: name) }
+        guard PairingCode.isValid(PairingCode.normalize(code)) else { throw McFlyError.message("Enter the 6 digits on the display.") }
+        try await Task.sleep(for: .milliseconds(600))
+        return UUID()
+    }
+
+    /// The assistant, streamed. Demo mode answers from the loaded feeds.
+    var answer: Answerer {
+        if let client {
+            let assistant = client.assistant
+            // The sheet's own choice first, else the platform setting, so the request says
+            // so even before the server rereads it.
+            let fallback = feeds.settings?.assistantProvider
+            return { message, mode, history, provider, onEvent in
+                try await assistant.stream(message, mode: mode, history: history, provider: provider ?? fallback, onEvent: onEvent)
+            }
+        }
+        let feeds = feeds
+        return { message, mode, _, provider, onEvent in
+            let reply = Self.demoReply(to: message, mode: mode, feeds: feeds, provider: provider)
+            for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
+                try await Task.sleep(for: .milliseconds(45))
+                onEvent(.delta(String(word) + " "))
+            }
+            onEvent(.done(AssistantReply(reply: reply, model: "demo")))
+        }
+    }
+
+    private static func demoReply(to message: String, mode: AssistantClient.Mode, feeds: FeedStore,
+                                  provider: AssistantProvider?) -> String {
+        let lower = message.lowercased()
+        let signoff = provider == .grok ? " (Grok, in the demo.)" : ""
+        if lower.contains("project"), let project = feeds.projectsByAttention.first {
+            return "\(project.name) is \(project.status.label.lowercased())" + (project.nextStep.map { "; next: \($0)" } ?? "") + "." + signoff
+        }
+        if lower.contains("calendar") || lower.contains("event") || lower.contains("next up"),
+           let event = feeds.upcomingEvents(limit: 1).first {
+            return "Next up is \(event.title), \(Format.dayLabel(event.startsAt).lowercased()) at \(Format.time(event.startsAt))." + signoff
+        }
+        if let series = feeds.series.first(where: { lower.contains($0.symbol.lowercased()) || lower.contains($0.displayName.lowercased()) }) {
+            let q = series.latest
+            return "\(series.displayName) is at \(Format.price(q.price, currency: q.currency)), \(Format.change(q.change, pct: q.changePct)) today." + (q.note.map { " " + $0 } ?? "")
+        }
+        if lower.contains("news") || lower.contains("headline"), let story = feeds.latestReport?.hero {
+            return "The top story is \(story.headline). \(story.takeaway)"
+        }
+        if let brief = feeds.latestBrief {
+            let summary = BriefText.summary(brief.body)
+            return mode == .quick ? "From \(brief.title): \(summary)" : "Here's the latest brief, \(brief.title).\n\n\(brief.body)"
+        }
+        return "This is the demo. Connect a Supabase project to talk to the real McFly."
+    }
+
+    func report(_ error: Error) {
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+        errorMessage = McFlyError.describe(error)
+    }
+}

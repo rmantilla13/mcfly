@@ -1,0 +1,32 @@
+# Builds
+build/
+*.user
+CMakeLists.txt.user*
+.DS_Store
+
+# Xcode user state. The project itself is checked in.
+xcuserdata/
+*.xcuserstate
+DerivedData/
+apple/Config/Local.xcconfig
+apple/build/
+apple/McFlyKit/.build/
+
+# Supabase local state
+backend/supabase/.temp/
+backend/supabase/.branches/
+backend/supabase/functions/node_modules/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+.vercel
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
