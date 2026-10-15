@@ -53,11 +53,14 @@ public struct DemoData: Decodable, Sendable {
             q.asOf = moved(q.asOf); q.createdAt = moved(q.createdAt)
             return q
         }
-        // A report's date is a day, not a moment: it moves by as many days as the
-        // newest push did, so the newest report stays today's.
+        // A report's date is a day, not a moment, and the seed's are Chicago's:
+        // the newest report takes the day the newest push now falls on, here,
+        // and the others keep their distance from it.
         let calendar = Calendar.current
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: newest),
-                                           to: calendar.startOfDay(for: moved(newest))).day ?? 0
+        let newestReportDay = reports.max { $0.publishedAt < $1.publishedAt }.flatMap { Self.date($0.reportDate, calendar: calendar) }
+        let days = newestReportDay.flatMap {
+            calendar.dateComponents([.day], from: $0, to: calendar.startOfDay(for: moved(newest))).day
+        } ?? 0
         copy.reports = reports.map { r in
             var r = r
             r.publishedAt = moved(r.publishedAt); r.createdAt = r.createdAt.map(moved)
@@ -94,11 +97,16 @@ public struct DemoData: Decodable, Sendable {
 
     /// "2026-10-14" plus `days`, or the date unchanged if it doesn't parse.
     static func day(_ key: String, plus days: Int, calendar: Calendar) -> String {
-        let parts = key.split(separator: "-").compactMap { Int($0) }
-        guard days != 0, parts.count == 3,
-              let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
+        guard days != 0, let date = date(key, calendar: calendar),
               let shifted = calendar.date(byAdding: .day, value: days, to: date) else { return key }
         return Timeline.dayKey(shifted, calendar: calendar)
+    }
+
+    /// The start of "2026-10-14" in the calendar's time zone.
+    static func date(_ key: String, calendar: Calendar) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 }
 

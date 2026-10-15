@@ -46,7 +46,11 @@ private struct TestSource: FeedSource {
 @MainActor
 final class FeedStoreTests: XCTestCase {
     func testRefreshFillsAndDerives() async throws {
-        let demo = try DemoData.load().rebased()
+        // The seed's newest push at 3 pm today, so its briefs fall on today and
+        // yesterday wherever the clock is: rebased to now, a late-evening run
+        // (CI's 22:50 UTC) put all three on one day.
+        let afternoon = try XCTUnwrap(Calendar.current.date(bySettingHour: 15, minute: 20, second: 0, of: .now))
+        let demo = try DemoData.load().rebased(to: afternoon)
         let store = FeedStore(source: TestSource(data: demo))
         XCTAssertFalse(store.hasLoaded)
         await store.refresh()
