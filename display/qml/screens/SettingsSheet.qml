@@ -255,9 +255,13 @@ Popup {
                 columnSpacing: Theme.compact ? 24 : 32
                 rowSpacing: Theme.compact ? 20 : 26
 
-                // Left: screen saver and voice.
+                // Left: this screen (saver, display, sleep, assistant, voice,
+                // speakers, Wi-Fi, power). Right: about it and your account.
+                // Neither column stretches to the other's height: a layout in
+                // a layout fills by default, and the saver row took the slack.
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.fillHeight: false
                     Layout.preferredWidth: 3
                     Layout.alignment: Qt.AlignTop
                     spacing: 12
@@ -265,6 +269,7 @@ Popup {
                     SectionLabel { text: qsTr("SCREEN SAVER") }
                     RowLayout {
                         Layout.fillWidth: true
+                        Layout.fillHeight: false
                         spacing: 12
                         Repeater {
                             model: [{ id: "ambient", icon: "sparkle", title: qsTr("Ambient"), detail: qsTr("Clock, what's next, cards") },
@@ -274,27 +279,34 @@ Popup {
                                 required property var modelData
                                 readonly property bool chosen: Device.screensaver === modelData.id
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: Math.max(108, saverRow.implicitHeight + 36)
-                                Layout.fillHeight: true
+                                // Fixed: two lines of detail fit beside the icon.
+                                Layout.preferredHeight: Theme.small ? 92 : 104
                                 radius: 24
                                 color: chosen ? Theme.accentSoft : Theme.surfaceAlt
                                 border.width: chosen ? 2 : 0
                                 border.color: Theme.accent
                                 RowLayout {
-                                    id: saverRow
                                     anchors.fill: parent
-                                    anchors.margins: 18
-                                    spacing: 14
+                                    anchors.margins: 16
+                                    spacing: 12
                                     Rectangle {
-                                        Layout.preferredWidth: 52; Layout.preferredHeight: 52; radius: 26
+                                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; radius: 22
                                         color: chosen ? Theme.accent : Theme.surface
-                                        Icon { anchors.centerIn: parent; name: modelData.icon; size: 24; color: chosen ? Theme.accentInk : Theme.text }
+                                        Icon { anchors.centerIn: parent; name: modelData.icon; size: 22; color: chosen ? Theme.accentInk : Theme.text }
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 2
-                                        Label { text: modelData.title; color: Theme.text; font.pixelSize: Theme.fontSm + 1; font.weight: Font.DemiBold }
-                                        Label { Layout.fillWidth: true; text: modelData.detail; color: Theme.textMuted; font.pixelSize: Theme.fontXs; wrapMode: Text.WordWrap }
+                                        Label { Layout.fillWidth: true; text: modelData.title; color: Theme.text; font.pixelSize: Theme.fontSm + 1; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: modelData.detail
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontXs
+                                            wrapMode: Text.WordWrap
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
                                     }
                                 }
                                 TapHandler { onTapped: Device.screensaver = modelData.id }
@@ -608,11 +620,121 @@ Popup {
                             }
                         }
                     }
+
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("WI-FI") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: wifiCard.implicitHeight + 36
+                        radius: 24
+                        color: Theme.surfaceAlt
+                        ColumnLayout {
+                            id: wifiCard
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 20
+                            anchors.rightMargin: 20
+                            spacing: 14
+                            Label {
+                                Layout.fillWidth: true
+                                text: !System.wifiAvailable
+                                      ? qsTr("This computer has no Wi-Fi controls.")
+                                      : System.wifiSsid
+                                      ? qsTr("Joined %1%2").arg(System.wifiSsid).arg(System.wifiSignal >= 0 ? qsTr(" · %1%").arg(System.wifiSignal) : "")
+                                      : System.wifiEnabled ? qsTr("Not joined to a network.") : qsTr("Wi-Fi is off.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontXs + 1
+                                wrapMode: Text.WordWrap
+                            }
+                            PillButton {
+                                Layout.fillWidth: true
+                                text: qsTr("Choose network")
+                                fill: Theme.surface
+                                ink: Theme.text
+                                enabled: System.wifiAvailable
+                                onClicked: sheet.page = "wifi"
+                            }
+                        }
+                    }
+
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("POWER") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: power.implicitHeight + 36
+                        radius: 24
+                        color: sheet.confirmingPower === "" ? Theme.surfaceAlt : Qt.rgba(0.94, 0.5, 0.35, 0.14)
+                        Behavior on color { ColorAnimation { duration: Theme.quick } }
+                        ColumnLayout {
+                            id: power
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 20
+                            anchors.rightMargin: 20
+                            spacing: 14
+                            Label {
+                                Layout.fillWidth: true
+                                text: sheet.confirmingPower === "reboot"
+                                      ? qsTr("Reboot the Pi? The screen stays dark for about a minute.")
+                                      : sheet.confirmingPower === "restart"
+                                      ? qsTr("Restart McFly? The screen goes blank for a few seconds.")
+                                      : qsTr("Restart the app, or reboot the Pi, without unplugging it.")
+                                color: sheet.confirmingPower === "" ? Theme.textMuted : Theme.text
+                                font.pixelSize: Theme.fontXs + 1
+                                wrapMode: Text.WordWrap
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                PillButton {
+                                    visible: sheet.confirmingPower === ""
+                                    Layout.fillWidth: true
+                                    text: qsTr("Restart")
+                                    fill: Theme.surface
+                                    ink: Theme.text
+                                    onClicked: sheet.confirmingPower = "restart"
+                                }
+                                PillButton {
+                                    visible: sheet.confirmingPower === ""
+                                    Layout.fillWidth: true
+                                    text: qsTr("Reboot")
+                                    fill: Theme.surface
+                                    ink: Theme.text
+                                    enabled: System.canReboot
+                                    onClicked: sheet.confirmingPower = "reboot"
+                                }
+                                PillButton {
+                                    visible: sheet.confirmingPower !== ""
+                                    Layout.fillWidth: true
+                                    text: qsTr("Cancel")
+                                    fill: Theme.surface
+                                    ink: Theme.text
+                                    onClicked: sheet.confirmingPower = ""
+                                }
+                                PillButton {
+                                    visible: sheet.confirmingPower !== ""
+                                    Layout.fillWidth: true
+                                    text: sheet.confirmingPower === "reboot" ? qsTr("Reboot") : qsTr("Restart")
+                                    fill: "#E2604A"
+                                    ink: "white"
+                                    onClicked: {
+                                        var which = sheet.confirmingPower
+                                        sheet.close()
+                                        if (which === "reboot")
+                                            System.reboot()
+                                        else
+                                            System.restartApp()
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                // Right: about and re-pair.
+                // Right: about, agents, calendars, memory and re-pair.
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.fillHeight: false
                     Layout.preferredWidth: 2
                     Layout.alignment: Qt.AlignTop
                     spacing: 12
@@ -832,115 +954,6 @@ Popup {
                                 text: qsTr("%1 more on mcfly.bot/memory").arg(Store.memories.length - 6)
                                 color: Theme.textMuted
                                 font.pixelSize: Theme.fontXs
-                            }
-                        }
-                    }
-
-                    SectionLabel { Layout.topMargin: 12; text: qsTr("WI-FI") }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: wifiCard.implicitHeight + 36
-                        radius: 24
-                        color: Theme.surfaceAlt
-                        ColumnLayout {
-                            id: wifiCard
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 20
-                            anchors.rightMargin: 20
-                            spacing: 14
-                            Label {
-                                Layout.fillWidth: true
-                                text: !System.wifiAvailable
-                                      ? qsTr("This computer has no Wi-Fi controls.")
-                                      : System.wifiSsid
-                                      ? qsTr("Joined %1%2").arg(System.wifiSsid).arg(System.wifiSignal >= 0 ? qsTr(" · %1%").arg(System.wifiSignal) : "")
-                                      : System.wifiEnabled ? qsTr("Not joined to a network.") : qsTr("Wi-Fi is off.")
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.fontXs + 1
-                                wrapMode: Text.WordWrap
-                            }
-                            PillButton {
-                                Layout.fillWidth: true
-                                text: qsTr("Choose network")
-                                fill: Theme.surface
-                                ink: Theme.text
-                                enabled: System.wifiAvailable
-                                onClicked: sheet.page = "wifi"
-                            }
-                        }
-                    }
-
-                    SectionLabel { Layout.topMargin: 12; text: qsTr("POWER") }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: power.implicitHeight + 36
-                        radius: 24
-                        color: sheet.confirmingPower === "" ? Theme.surfaceAlt : Qt.rgba(0.94, 0.5, 0.35, 0.14)
-                        Behavior on color { ColorAnimation { duration: Theme.quick } }
-                        ColumnLayout {
-                            id: power
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 20
-                            anchors.rightMargin: 20
-                            spacing: 14
-                            Label {
-                                Layout.fillWidth: true
-                                text: sheet.confirmingPower === "reboot"
-                                      ? qsTr("Reboot the Pi? The screen stays dark for about a minute.")
-                                      : sheet.confirmingPower === "restart"
-                                      ? qsTr("Restart McFly? The screen goes blank for a few seconds.")
-                                      : qsTr("Restart the app, or reboot the Pi, without unplugging it.")
-                                color: sheet.confirmingPower === "" ? Theme.textMuted : Theme.text
-                                font.pixelSize: Theme.fontXs + 1
-                                wrapMode: Text.WordWrap
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 10
-                                PillButton {
-                                    visible: sheet.confirmingPower === ""
-                                    Layout.fillWidth: true
-                                    text: qsTr("Restart")
-                                    fill: Theme.surface
-                                    ink: Theme.text
-                                    onClicked: sheet.confirmingPower = "restart"
-                                }
-                                PillButton {
-                                    visible: sheet.confirmingPower === ""
-                                    Layout.fillWidth: true
-                                    text: qsTr("Reboot")
-                                    fill: Theme.surface
-                                    ink: Theme.text
-                                    enabled: System.canReboot
-                                    onClicked: sheet.confirmingPower = "reboot"
-                                }
-                                PillButton {
-                                    visible: sheet.confirmingPower !== ""
-                                    Layout.fillWidth: true
-                                    text: qsTr("Cancel")
-                                    fill: Theme.surface
-                                    ink: Theme.text
-                                    onClicked: sheet.confirmingPower = ""
-                                }
-                                PillButton {
-                                    visible: sheet.confirmingPower !== ""
-                                    Layout.fillWidth: true
-                                    text: sheet.confirmingPower === "reboot" ? qsTr("Reboot") : qsTr("Restart")
-                                    fill: "#E2604A"
-                                    ink: "white"
-                                    onClicked: {
-                                        var which = sheet.confirmingPower
-                                        sheet.close()
-                                        if (which === "reboot")
-                                            System.reboot()
-                                        else
-                                            System.restartApp()
-                                    }
-                                }
                             }
                         }
                     }
