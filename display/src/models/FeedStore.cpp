@@ -251,6 +251,18 @@ void FeedStore::loadDemo()
 
     m_displayName = root.value("settings").toObject().value("display_name").toString(QStringLiteral("McFly"));
     m_rawAgents = root.value("agents").toArray().toVariantList();
+    m_rawCalendarSources.clear();
+    for (const QJsonValue &v : root.value("calendar_sources").toArray()) {
+        QJsonObject c = v.toObject();
+        c.insert("last_synced_at", nowDt.addSecs(-qint64(c.value("minutesAgo").toDouble() * 60)).toString(Qt::ISODateWithMs));
+        m_rawCalendarSources << c.toVariantMap();
+    }
+    m_rawMemories.clear();
+    for (const QJsonValue &v : root.value("memories").toArray()) {
+        QJsonObject m = v.toObject();
+        m.insert("updated_at", nowDt.addSecs(-qint64(m.value("daysAgo").toDouble() * 86400)).toString(Qt::ISODateWithMs));
+        m_rawMemories << m.toVariantMap();
+    }
 
     // Briefs are stored relative to now so the demo always looks current.
     m_rawBriefs.clear();
@@ -494,8 +506,53 @@ void FeedStore::loadLive()
             if (!provider.isEmpty())
                 m_assistantProvider = provider;
         });
-        load("agents", QUrlQuery("select=id,name,slug,kind,color,last_seen_at,revoked_at&order=created_at"),
-             [this](const QJsonDocument &d) { m_rawAgents = toList(d); });
+        // select=* so a newer column (scopes) comes along without breaking an older backend.
+        load("agents", QUrlQuery("select=*&order=created_at"), [this](const QJsonDocument &d) { m_rawAgents = toList(d); });
+        // Memory arrived later than the other tables: a backend without it
+        // must not make every sync fail, so its errors are only logged.
+        m_client->select("memories", QUrlQuery("select=text,pinned,updated_at&agent_id=is.null&order=pinned.desc,updated_at.desc&limit=100"),
+                         [this, generation](const QJsonDocument &doc, const QString &error) {
+                             if (generation != m_generation)
+                                 return;
+                             if (!error.isEmpty()) {
+                                 qInfo() << "memories not available:" << error;
+                                 return;
+                             }
+                             m_rawMemories = toList(doc);
+                             rebuild();
+                         });
+        // This display's own settings (newer too): optional. Sent on only when
+        // the first read or a change arrives, so a sync with nothing new
+        // leaves the screen alone.
+        const QString deviceId = m_settings.value("device/id").toString();
+        if (!deviceId.isEmpty()) {
+            m_client->select("devices", QUrlQuery("select=settings&id=eq." + deviceId),
+                             [this, generation](const QJsonDocument &doc, const QString &error) {
+                                 if (generation != m_generation)
+                                     return;
+                                 if (!error.isEmpty()) {
+                                     qInfo() << "display settings not available:" << error;
+                                     return;
+                                 }
+                                 const QVariantMap settings = doc.array().first().toObject().value("settings").toObject().toVariantMap();
+                                 if (m_deviceSettingsSeen && settings == m_deviceSettings)
+                                     return;
+                                 m_deviceSettingsSeen = true;
+                                 m_deviceSettings = settings;
+                                 emit deviceSettingsReceived(settings);
+                             });
+        }
+        // Calendar subscriptions (newer too): same, optional.
+        m_client->rpc("list_calendar_sources", QJsonObject(), [this, generation](const QJsonDocument &doc, const QString &error) {
+            if (generation != m_generation)
+                return;
+            if (!error.isEmpty()) {
+                qInfo() << "calendar subscriptions not available:" << error;
+                return;
+            }
+            m_rawCalendarSources = toList(doc);
+            rebuild();
+        });
         load("briefs", QUrlQuery("select=*&order=published_at.desc&limit=100"),
              [this](const QJsonDocument &d) { m_rawBriefs = toList(d); });
         load("symbols", QUrlQuery("select=*&hidden=eq.false&order=sort_order,symbol"),
@@ -699,6 +756,16 @@ void FeedStore::rebuild()
         const QDateTime seen = parseTimestamp(a.value("last_seen_at").toString());
         a.insert("seenLabel", seen.isValid() ? (seen.date() == m_today ? timeLabel(seen) : dayLabel(seen.date())) : tr("Never"));
         a.insert("active", a.value("revoked_at").toString().isEmpty());
+        QStringList scopeLabels;
+        for (const QVariant &sc : a.value("scopes").toList()) {
+            const QString scope = sc.toString();
+            scopeLabels << (scope == QLatin1String("calendar:read") ? tr("Calendar")
+                            : scope == QLatin1String("memory:read")  ? tr("Reads memory")
+                            : scope == QLatin1String("memory:write") ? tr("Keeps notes")
+                                                                     : scope);
+        }
+        a.insert("scopeLabels", scopeLabels);
+        a.insert("seenRecently", seen.isValid() && seen.secsTo(nowDt) < 6 * 3600);
         agentById.insert(a.value("id").toString(), a);
         m_agents << a;
     }
@@ -874,6 +941,26 @@ void FeedStore::rebuild()
     }
     rebuildProductivity(agentById);
     rebuildTimeline(agentById);
+    m_calendarSources.clear();
+    for (const QVariant &v : std::as_const(m_rawCalendarSources)) {
+        QVariantMap c = v.toMap();
+        const QDateTime at = parseTimestamp(c.value("last_synced_at").toString());
+        QVariantMap out{{"name", c.value("name")},
+                        {"color", c.value("color").toString().isEmpty() ? QStringLiteral("#14C2C2") : c.value("color")},
+                        {"enabled", c.value("enabled", true).toBool()},
+                        {"error", c.value("last_error").toString()},
+                        {"eventCount", c.value("event_count").toInt()},
+                        {"syncedLabel", at.isValid() ? (at.date() == m_today ? timeLabel(at) : dayLabel(at.date())) : tr("Not read yet")}};
+        m_calendarSources << out;
+    }
+    m_memories.clear();
+    for (const QVariant &v : std::as_const(m_rawMemories)) {
+        QVariantMap m = v.toMap();
+        const QDateTime at = parseTimestamp(m.value("updated_at").toString());
+        m.insert("pinned", m.value("pinned").toBool());
+        m.insert("updatedLabel", at.isValid() ? (at.date() == m_today ? timeLabel(at) : dayLabel(at.date())) : QString());
+        m_memories << m;
+    }
     emit dataChanged();
 }
 
@@ -1317,5 +1404,22 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         if (ma.value("allDay").toBool() != mb.value("allDay").toBool())
             return ma.value("allDay").toBool();
         return ma.value("startMs").toLongLong() < mb.value("startMs").toLongLong();
+    });
+}
+
+void FeedStore::pushDeviceSettings(const QVariantMap &patch)
+{
+    if (m_mode != "live" || patch.isEmpty())
+        return;
+    withSession([this, patch]() {
+        m_client->rpc("device_update_settings", QJsonObject{{"patch", QJsonObject::fromVariantMap(patch)}},
+                      [this](const QJsonDocument &doc, const QString &error) {
+                          if (!error.isEmpty()) {
+                              qWarning() << "saving display settings failed:" << error;
+                              return;
+                          }
+                          // What the server now has, so the next sync doesn't re-apply it.
+                          m_deviceSettings = doc.object().toVariantMap();
+                      });
     });
 }

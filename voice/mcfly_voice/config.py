@@ -28,6 +28,12 @@ def _default_data_dir() -> str:
 _DEVICE = {"types": (str, int)}
 
 
+# Kokoro-82M's voices that McFly offers: Homestead's four. Heart is the default.
+KOKORO_VOICES = ("af_heart", "af_bella", "am_michael", "am_fenrir")
+# openWakeWord's built-in models a display may switch between.
+BUILTIN_WAKEWORDS = ("hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy")
+
+
 @dataclass
 class ServerConfig:
     host: str = "127.0.0.1"
@@ -79,6 +85,8 @@ class SttConfig:
 class TtsConfig:
     engine: str = "auto"
     voice: str = "en_US-amy-medium"
+    # Kokoro's voice: the one Homestead speaks with (KOKORO_VOICES).
+    kokoro_voice: str = "af_heart"
     speed: float = 1.0
     volume: float = 1.0
     espeak_voice: str = "en-us"
@@ -229,8 +237,10 @@ def validate(cfg: Config) -> None:
     check(s.beam_size >= 1, "stt.beam_size must be 1 or more")
     check(s.threads >= 0, "stt.threads must be 0 (automatic) or more")
     t = cfg.tts
-    check(t.engine in ("auto", "piper", "espeak", "off"),
-          "tts.engine must be auto, piper, espeak or off")
+    check(t.engine in ("auto", "kokoro", "piper", "espeak", "off"),
+          "tts.engine must be auto, kokoro, piper, espeak or off")
+    check(t.kokoro_voice in KOKORO_VOICES,
+          f"tts.kokoro_voice must be one of {', '.join(KOKORO_VOICES)}")
     check(t.speed > 0, "tts.speed must be more than 0")
     check(0 < t.volume <= 4, "tts.volume must be more than 0 (1.0 is normal)")
     if problems:

@@ -23,6 +23,7 @@ import type {
 // a real account or key.
 
 export type DemoAgent = {
+  scopes?: import("@/lib/types").AgentScope[];
   id: string;
   name: string;
   slug: string;
@@ -121,6 +122,9 @@ export type DemoEvent = {
 };
 
 export type DemoState = {
+  bots: import("@/lib/types").Bot[];
+  calendarSources: import("@/lib/types").CalendarSource[];
+  memories: import("@/lib/types").MemoryNote[];
   admin: Admin;
   agents: DemoAgent[];
   briefs: DemoBrief[];
@@ -284,7 +288,7 @@ export function buildDemoState(now = Date.now()): DemoState {
 
   const agents: DemoAgent[] = [
     {
-      id: GROK_ID, name: "Grok", slug: "grok", kind: "grok", color: "#7A64E8",
+      id: GROK_ID, name: "Grok", slug: "grok", kind: "grok", color: "#7A64E8", scopes: ["calendar:read", "memory:read"],
       created_at: days(61), last_seen_at: minutes(20), revoked_at: null, key_prefix: "mcf_00000000", key_created_at: days(61),
     },
     {
@@ -296,7 +300,7 @@ export function buildDemoState(now = Date.now()): DemoState {
       created_at: days(58), last_seen_at: hours(6), revoked_at: null, key_prefix: "mcf_00000000", key_created_at: days(58),
     },
     {
-      id: GITHUB_ID, name: "GitHub watcher", slug: "github-watcher", kind: "other", color: "#5B7CF5",
+      id: GITHUB_ID, name: "GitHub watcher", slug: "github-watcher", kind: "other", color: "#5B7CF5", scopes: ["memory:read", "memory:write"],
       created_at: days(30), last_seen_at: minutes(35), revoked_at: null, key_prefix: "mcf_00000000", key_created_at: days(30),
     },
     {
@@ -490,8 +494,10 @@ export function buildDemoState(now = Date.now()): DemoState {
   const ingest: IngestEntry[] = ingestRaw.map((e, i) => ({ id: ingestRaw.length - i, ...e }));
 
   const devices: Device[] = [
-    { id: uuid(), user_id: uuid(), name: "Kitchen wall", last_seen_at: minutes(2), created_at: days(40) },
-    { id: uuid(), user_id: uuid(), name: "Office", last_seen_at: days(3), created_at: days(9) },
+    { id: uuid(), user_id: uuid(), name: "Kitchen wall", last_seen_at: minutes(2), created_at: days(40),
+      settings: { screensaver: "ambient", darkMode: false, animatedTiles: true, idleSeconds: 120, offAfterSeconds: 0, offAtNight: true,
+                  bedtime: 1320, wakeTime: 390, assistantProvider: "", speakReplies: true, wakeword: true } },
+    { id: uuid(), user_id: uuid(), name: "Office", last_seen_at: days(3), created_at: days(9), settings: {} },
   ];
 
   const settings: Settings = {
@@ -525,7 +531,42 @@ export function buildDemoState(now = Date.now()): DemoState {
   ];
   const audit: AuditEntry[] = auditRaw.map((e, i) => ({ id: auditRaw.length - i, ...e }));
 
+  const note = (agentId: string | null, text: string, pinned: boolean, key: string | null, ago: string) => ({
+    id: uuid(), agent_id: agentId, agent_name: agents.find((a) => a.id === agentId)?.name ?? null,
+    agent_color: agents.find((a) => a.id === agentId)?.color ?? null, key, text, pinned,
+    source: (agentId ? "agent" : "admin") as "admin" | "agent", created_at: ago, updated_at: ago,
+  });
+  const memories = [
+    note(null, "Ricky lives in Austin and works on Onyx and McFly.", true, null, days(20)),
+    note(null, "Prefers short briefs: three bullets, no filler.", true, null, days(12)),
+    note(null, "Follows NVDA, TSLA and the Fed closely.", false, null, days(5)),
+    note(GITHUB_ID, "Last reported: CI green on main, PR #12 opened.", false, "last-run", minutes(35)),
+  ];
+
+  const calendarSources = [
+    { id: uuid(), name: "Work", host: "calendar.google.com", color: "#5B7CF5", enabled: true, last_synced_at: minutes(9),
+      last_error: null, event_count: 14, created_at: days(10) },
+    { id: uuid(), name: "Family", host: "p52-caldav.icloud.com", color: "#F07F5A", enabled: true, last_synced_at: hours(3),
+      last_error: "the link answered 404; it may have been reset", event_count: 6, created_at: days(4) },
+  ];
+
+  const bots: import("@/lib/types").Bot[] = [
+    {
+      id: uuid(), agent_id: GROK_ID, name: "Grok", color: "#7A64E8", scopes: ["calendar:read", "memory:read"],
+      prompt: "Every morning, brief me on what matters today: markets before the open, the AI and tech news worth knowing, and anything on X about my projects. Three short sections.",
+      output: "brief", every_minutes: 1440, at_minute: 420, web_search: true, x_search: true, model: "", enabled: true,
+      next_run_at: hours(-20), last_run_at: hours(4), last_status: "ok", last_error: null, runs_7d: 7,
+      runs: [
+        { id: 3, started_at: hours(4), finished_at: hours(4), status: "ok", title: "Morning briefing", error: null, sources: 9, model: "grok-4.7" },
+        { id: 2, started_at: days(1), finished_at: days(1), status: "ok", title: "Morning briefing", error: null, sources: 7, model: "grok-4.7" },
+      ],
+    },
+  ];
+
   return {
+    bots,
+    calendarSources,
+    memories,
     admin,
     agents,
     briefs,

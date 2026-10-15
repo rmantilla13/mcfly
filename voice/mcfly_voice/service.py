@@ -99,6 +99,10 @@ class StateStore:
             return {}
         return data if isinstance(data, dict) else {}
 
+    def update(self, changes: dict[str, Any]) -> None:
+        """Merges `changes` into what's saved."""
+        self.save({**self.load(), **changes})
+
     def save(self, data: dict[str, Any]) -> None:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,9 +129,15 @@ class VoiceService:
         self.backend = backend
         self.store = store
         self.allowed_origins = list(allowed_origins)
-        remembered = store.load().get("wakeword_enabled") if store else None
+        saved = store.load() if store else {}
+        remembered = saved.get("wakeword_enabled")
         if isinstance(remembered, bool):
             wakeword_enabled = remembered
+        # The voice and speed the display chose last time; the wake word model
+        # reloads once serving starts (it takes a moment).
+        if isinstance(saved.get("voice"), str) or isinstance(saved.get("speed"), (int, float)):
+            self._apply_voice(saved.get("voice"), saved.get("speed"))
+        self._pending_wakeword_model = saved.get("wakeword_model") if isinstance(saved.get("wakeword_model"), str) else None
         self.gate = WakeGate(
             enabled=wakeword_enabled,
             available=backend.wakeword_available,
@@ -150,6 +160,9 @@ class VoiceService:
     # Clients
 
     async def serve(self, host: str, port: int) -> Server:
+        if self._pending_wakeword_model:
+            model, self._pending_wakeword_model = self._pending_wakeword_model, None
+            self._spawn(self.set_wakeword_model(model))
         # Any web page open in a browser on the device can reach localhost, and
         # browsers always send Origin. The display and local tools send none, so
         # a handshake with an Origin is refused (403) unless it's allowed.
@@ -190,7 +203,12 @@ class VoiceService:
         elif kind == "stop_speaking":
             self.stop_speaking()
         elif kind == "set":
-            self.set_wakeword_enabled(msg["wakeword_enabled"], client)
+            if "wakeword_enabled" in msg:
+                self.set_wakeword_enabled(msg["wakeword_enabled"], client)
+            if "voice" in msg or "speed" in msg:
+                self.set_voice(msg.get("voice"), msg.get("speed"), client)
+            if "wakeword_model" in msg:
+                self._spawn(self.set_wakeword_model(msg["wakeword_model"], client))
 
     def hello(self) -> dict[str, Any]:
         return protocol.hello(
@@ -199,6 +217,9 @@ class VoiceService:
             tts=self.backend.tts_available,
             stt=self.backend.stt_available,
             mic=getattr(self.backend, "mic_name", ""),
+            voice=getattr(self.backend, "voice", ""),
+            speed=getattr(self.backend, "speed", 1.0),
+            wakeword_model=getattr(self.backend, "wakeword_model", ""),
         )
 
     def broadcast(self, msg: dict[str, Any]) -> None:
@@ -396,13 +417,43 @@ class VoiceService:
     def set_wakeword_enabled(self, enabled: bool, client: ServerConnection | None = None) -> None:
         self.gate.enabled = enabled
         if self.store is not None:
-            self.store.save({"wakeword_enabled": enabled})
+            self.store.update({"wakeword_enabled": enabled})
         log.info("wake word turned %s", "on" if enabled else "off")
         if enabled and not self.gate.available:
             self._reply(client, protocol.error(
                 "The wake word isn't available: no microphone or wake word model "
                 "(see docs/VOICE.md)"))
         # Every client learns the new setting from a fresh hello.
+        self.broadcast(self.hello())
+
+    def _apply_voice(self, voice: Any, speed: Any) -> None:
+        set_voice = getattr(self.backend, "set_voice", None)
+        if set_voice is not None:
+            set_voice(voice if isinstance(voice, str) else None,
+                      float(speed) if isinstance(speed, (int, float)) and not isinstance(speed, bool) else None)
+
+    def set_voice(self, voice: str | None, speed: float | None, client: ServerConnection | None = None) -> None:
+        """The spoken replies' voice (Kokoro) and speed, from the display."""
+        self._apply_voice(voice, speed)
+        if self.store is not None:
+            self.store.update({k: v for k, v in (("voice", voice), ("speed", speed)) if v is not None})
+        log.info("voice set to %s at %sx", getattr(self.backend, "voice", "") or "the engine's own", getattr(self.backend, "speed", 1.0))
+        self.broadcast(self.hello())
+
+    async def set_wakeword_model(self, model: str, client: ServerConnection | None = None) -> None:
+        """Switches the wake word (a built-in openWakeWord model)."""
+        switch = getattr(self.backend, "set_wakeword_model", None)
+        if switch is None:
+            return
+        problem = await switch(model)
+        if problem:
+            log.warning("wake word %s unavailable: %s", model, problem)
+            self._reply(client, protocol.error(f"The wake word couldn't be changed: {problem}"))
+            return
+        if self.store is not None:
+            self.store.update({"wakeword_model": model})
+        self.gate.available = self.backend.wakeword_available
+        log.info("wake word is now %s", self.backend.wakeword_name)
         self.broadcast(self.hello())
 
     async def close(self) -> None:

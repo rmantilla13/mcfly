@@ -55,7 +55,7 @@ sudo chown "$user": "$venv"
 # Every dependency has a prebuilt wheel for the Pi (about 180 MB in all), so
 # nothing is compiled; --only-binary keeps it that way, failing in seconds
 # rather than starting an hour-long build that couldn't work anyway.
-"$venv/bin/pip" install --upgrade --only-binary=:all: "$repo/voice[audio,stt,tts,wake]"
+"$venv/bin/pip" install --upgrade --only-binary=:all: "$repo/voice[audio,stt,tts,kokoro,wake]"
 # openwakeword requires tflite-runtime, which has no wheels for Python 3.12+
 # (Raspberry Pi OS Trixie has 3.13). We run its ONNX models, so it goes in
 # without its dependencies; the `wake` extra above brought everything else.

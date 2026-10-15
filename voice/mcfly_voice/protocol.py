@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from . import PROTOCOL_VERSION
+from .config import BUILTIN_WAKEWORDS, KOKORO_VOICES
 
 STATES = ("idle", "listening", "transcribing", "speaking")
 WAKE_SOURCES = ("wakeword", "button")
@@ -25,9 +26,12 @@ class ProtocolError(ValueError):
 
 
 def hello(*, wakeword: bool, wakeword_name: str, tts: bool, stt: bool,
-          mic: str = "") -> dict[str, Any]:
-    # `mic` is the open microphone's name, "" when none is open. Clients that
-    # predate it ignore the key.
+          mic: str = "", voice: str = "", speed: float = 1.0,
+          wakeword_model: str = "") -> dict[str, Any]:
+    # `mic` is the open microphone's name, "" when none is open. `voice` is the
+    # Kokoro voice ("" when another engine speaks), `speed` the speaking rate,
+    # `wakeword_model` the wake word's model. Clients that predate a key
+    # ignore it.
     return {
         "type": "hello",
         "version": PROTOCOL_VERSION,
@@ -36,6 +40,9 @@ def hello(*, wakeword: bool, wakeword_name: str, tts: bool, stt: bool,
         "tts": tts,
         "stt": stt,
         "mic": mic,
+        "voice": voice,
+        "speed": round(float(speed), 2),
+        "wakeword_model": wakeword_model,
     }
 
 
@@ -106,8 +113,25 @@ def parse_client_message(raw: str | bytes) -> dict[str, Any]:
                 raise ProtocolError(f"speak id must be at most {MAX_ID_CHARS} characters")
         return {"type": "speak", "text": text, "id": speech_id}
     if kind == "set":
-        enabled = msg.get("wakeword_enabled")
-        if not isinstance(enabled, bool):
-            raise ProtocolError("set needs wakeword_enabled: true or false")
-        return {"type": "set", "wakeword_enabled": enabled}
+        out: dict[str, Any] = {"type": "set"}
+        if "wakeword_enabled" in msg:
+            if not isinstance(msg["wakeword_enabled"], bool):
+                raise ProtocolError("wakeword_enabled must be true or false")
+            out["wakeword_enabled"] = msg["wakeword_enabled"]
+        if "voice" in msg:
+            if msg["voice"] not in KOKORO_VOICES:
+                raise ProtocolError(f"voice must be one of {', '.join(KOKORO_VOICES)}")
+            out["voice"] = msg["voice"]
+        if "speed" in msg:
+            speed = msg["speed"]
+            if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not 0.5 <= speed <= 2.0:
+                raise ProtocolError("speed must be a number from 0.5 to 2")
+            out["speed"] = float(speed)
+        if "wakeword_model" in msg:
+            if msg["wakeword_model"] not in BUILTIN_WAKEWORDS:
+                raise ProtocolError(f"wakeword_model must be one of {', '.join(BUILTIN_WAKEWORDS)}")
+            out["wakeword_model"] = msg["wakeword_model"]
+        if len(out) == 1:
+            raise ProtocolError("set needs wakeword_enabled, voice, speed or wakeword_model")
+        return out
     return {"type": kind}

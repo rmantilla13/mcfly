@@ -1,0 +1,204 @@
+"use client";
+
+// Speaking McFly's replies in the browser, with the voice Homestead uses:
+// Kokoro-82M ("Heart" by default; Bella, Michael and Fenrir too), rendered
+// a sentence ahead in a worker and played through Web Audio, whose level
+// drives the voice glow. Until the model has downloaded (or if it can't run
+// here), the browser's own voice speaks instead.
+
+import { speechPieces } from "@/lib/sentences";
+
+export type VoiceId = "af_heart" | "af_bella" | "am_michael" | "am_fenrir" | "system";
+export const VOICES: { id: VoiceId; name: string }[] = [
+  { id: "af_heart", name: "Heart" },
+  { id: "af_bella", name: "Bella" },
+  { id: "am_michael", name: "Michael" },
+  { id: "am_fenrir", name: "Fenrir" },
+  { id: "system", name: "This device's voice" },
+];
+export type KokoroState = { status: "idle" | "loading" | "ready" | "failed"; percent: number };
+
+const VOICE_KEY = "mcfly.voice";
+
+export function storedVoice(): VoiceId {
+  try {
+    const v = localStorage.getItem(VOICE_KEY) as VoiceId | null;
+    return v && VOICES.some((x) => x.id === v) ? v : "af_heart";
+  } catch {
+    return "af_heart";
+  }
+}
+export function storeVoice(v: VoiceId) {
+  try {
+    localStorage.setItem(VOICE_KEY, v);
+  } catch {
+    // Remembered for this page only.
+  }
+}
+
+class KokoroPlayer {
+  state: KokoroState = { status: "idle", percent: 0 };
+  private listeners = new Set<() => void>();
+  private worker: Worker | null = null;
+  private ctx: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private bins: Uint8Array<ArrayBuffer> | null = null;
+  private sources = new Set<AudioBufferSourceNode>();
+  private nextStart = 0;
+  private generation = 0;
+  private pending = new Map<number, (r: { samples?: Float32Array; rate?: number; error?: string }) => void>();
+  private nextId = 1;
+  speaking = false;
+
+  subscribe = (fn: () => void) => {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  };
+  getState = () => this.state;
+  private set(state: Partial<KokoroState>) {
+    this.state = { ...this.state, ...state };
+    for (const fn of this.listeners) fn();
+  }
+
+  private ensureWorker(): Worker | null {
+    if (this.worker || typeof Worker === "undefined") return this.worker;
+    try {
+      this.worker = new Worker(new URL("./kokoro.worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      this.set({ status: "failed" });
+      return null;
+    }
+    this.worker.onmessage = (e: MessageEvent) => {
+      const m = e.data as { type: string; id?: number; percent?: number; samples?: Float32Array; rate?: number; error?: string };
+      if (m.type === "progress") this.set({ status: "loading", percent: m.percent ?? 0 });
+      else if (m.type === "ready") this.set({ status: "ready", percent: 100 });
+      else if (m.type === "failed") {
+        console.warn("Kokoro voice unavailable:", m.error);
+        this.set({ status: "failed" });
+      } else if ((m.type === "audio" || m.type === "error") && m.id != null) {
+        this.pending.get(m.id)?.(m);
+        this.pending.delete(m.id);
+      }
+    };
+    this.worker.onerror = () => this.set({ status: "failed" });
+    return this.worker;
+  }
+
+  // Starts the one-time download early (the voice page does on open).
+  load() {
+    if (this.state.status !== "idle") return;
+    const w = this.ensureWorker();
+    if (!w) return;
+    this.set({ status: "loading", percent: 0 });
+    w.postMessage({ type: "load" });
+  }
+
+  private render(text: string, voice: VoiceId, speed: number) {
+    const id = this.nextId++;
+    return new Promise<{ samples?: Float32Array; rate?: number; error?: string }>((resolve) => {
+      this.pending.set(id, resolve);
+      this.worker?.postMessage({ type: "speak", id, text, voice, speed });
+    });
+  }
+
+  private audio(): AudioContext {
+    if (!this.ctx) {
+      this.ctx = new AudioContext();
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 512;
+      this.analyser.smoothingTimeConstant = 0.55;
+      this.analyser.connect(this.ctx.destination);
+      this.bins = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
+    }
+    return this.ctx;
+  }
+
+  // The playing voice's level in three bands, for the glow (0..1).
+  levels(): { level: number; low: number; mid: number; high: number } {
+    if (!this.analyser || !this.bins || !this.sources.size) return { level: 0, low: 0, mid: 0, high: 0 };
+    this.analyser.getByteFrequencyData(this.bins);
+    const avg = (a: number, b: number) => {
+      let s = 0;
+      for (let i = a; i < b; i++) s += this.bins![i];
+      return Math.min(1, (s / (b - a) / 255) * 2.2);
+    };
+    const low = avg(2, 12);
+    const mid = avg(12, 48);
+    const high = avg(48, 120);
+    return { level: Math.max(low, mid, high), low, mid, high };
+  }
+
+  // Speaks `text`, a piece ahead; resolves when it has all played (or was stopped).
+  async speak(text: string, voice: VoiceId, speed = 1): Promise<void> {
+    this.stop();
+    const gen = ++this.generation;
+    const ctx = this.audio();
+    if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+    this.speaking = true;
+    this.nextStart = ctx.currentTime + 0.05;
+    const pieces = speechPieces(text);
+    let ahead = pieces.length ? this.render(pieces[0], voice, speed) : null;
+    for (let i = 0; i < pieces.length && ahead; i++) {
+      const result = await ahead;
+      if (gen !== this.generation) return;
+      ahead = i + 1 < pieces.length ? this.render(pieces[i + 1], voice, speed) : null;
+      if (!result.samples || !result.rate) continue;
+      const buffer = ctx.createBuffer(1, result.samples.length, result.rate);
+      buffer.copyToChannel(new Float32Array(result.samples), 0);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(this.analyser!);
+      const at = Math.max(ctx.currentTime, this.nextStart);
+      src.start(at);
+      this.nextStart = at + buffer.duration + 0.08;
+      this.sources.add(src);
+      src.onended = () => this.sources.delete(src);
+    }
+    // Wait for the last piece to finish.
+    while (gen === this.generation && (this.sources.size || ctx.currentTime < this.nextStart - 0.08)) {
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    if (gen === this.generation) this.speaking = false;
+  }
+
+  stop() {
+    this.generation++;
+    for (const s of this.sources) {
+      try {
+        s.stop();
+      } catch {
+        // Already stopped.
+      }
+    }
+    this.sources.clear();
+    this.speaking = false;
+  }
+}
+
+let player: KokoroPlayer | null = null;
+export function kokoro(): KokoroPlayer {
+  player ??= new KokoroPlayer();
+  return player;
+}
+
+// Speaks a reply: Kokoro when it's ready, else the browser's voice (and
+// Kokoro starts downloading for next time). Resolves when done speaking.
+export async function speakReply(text: string, voice: VoiceId, speed = 1): Promise<void> {
+  const k = kokoro();
+  if (voice !== "system" && k.state.status === "ready") return k.speak(text, voice, speed);
+  if (voice !== "system") k.load();
+  if (typeof speechSynthesis === "undefined") return;
+  speechSynthesis.cancel();
+  await new Promise<void>((resolve) => {
+    const u = new SpeechSynthesisUtterance(text.replace(/[*_#`>[\]()]/g, ""));
+    u.rate = speed;
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    speechSynthesis.speak(u);
+  });
+}
+
+export function stopSpeaking() {
+  kokoro().stop();
+  if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+}

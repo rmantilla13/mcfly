@@ -30,6 +30,12 @@ class VoiceClient : public QObject
     Q_PROPERTY(bool canSpeak READ canSpeak NOTIFY infoChanged)              // service has TTS
     Q_PROPERTY(bool canTranscribe READ canTranscribe NOTIFY infoChanged)    // service has STT
     Q_PROPERTY(QString micName READ micName NOTIFY infoChanged)             // the open mic, "" for none
+    // The spoken replies' Kokoro voice (af_heart, af_bella, am_michael,
+    // am_fenrir; "" when another engine speaks), speed, and the wake word's
+    // model, as the service reports them.
+    Q_PROPERTY(QString voiceId READ voiceId NOTIFY infoChanged)
+    Q_PROPERTY(qreal speechSpeed READ speechSpeed NOTIFY infoChanged)
+    Q_PROPERTY(QString wakewordModel READ wakewordModel NOTIFY infoChanged)
     Q_PROPERTY(QString url READ urlString CONSTANT)
     // Read quick answers out loud (QSettings voice/speakReplies, default on).
     Q_PROPERTY(bool speakReplies READ speakReplies WRITE setSpeakReplies NOTIFY speakRepliesChanged)
@@ -51,6 +57,9 @@ public:
     bool canSpeak() const { return m_tts; }
     bool canTranscribe() const { return m_stt; }
     QString micName() const { return m_micName; }
+    QString voiceId() const { return m_voiceId; }
+    qreal speechSpeed() const { return m_speechSpeed; }
+    QString wakewordModel() const { return m_wakewordModel; }
     QString urlString() const { return m_url.toString(); }
     bool speakReplies() const { return m_speakReplies; }
     void setSpeakReplies(bool on);
@@ -62,6 +71,9 @@ public:
     Q_INVOKABLE QString speak(const QString &text);
     Q_INVOKABLE void stopSpeaking();
     Q_INVOKABLE void setWakewordEnabled(bool enabled);
+    // Any of: voice (a Kokoro voice id), speed (0.5..2), wakewordModel. The
+    // service answers with a fresh hello carrying what it applied.
+    Q_INVOKABLE void setVoiceOptions(const QString &voice, qreal speed, const QString &wakewordModel);
 
 signals:
     void availableChanged();
@@ -106,6 +118,9 @@ private:
     bool m_wakewordEnabled = false;
     QString m_wakewordName;
     QString m_micName;
+    QString m_voiceId;
+    qreal m_speechSpeed = 1.0;
+    QString m_wakewordModel;
     bool m_tts = false;
     bool m_stt = false;
     QString m_transcript;

@@ -10,17 +10,21 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
+    "predev": "node scripts/copy-voice-runtime.mjs",
+    "prebuild": "node scripts/copy-voice-runtime.mjs"
   },
   "engines": {
     "node": ">=20.9.0"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
+    "@huggingface/transformers": "3.8.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
+    "kokoro-js": "1.2.1",
     "lucide-react": "^1.57.0",
     "next": "16.3.8",
     "next-themes": "^0.4.6",

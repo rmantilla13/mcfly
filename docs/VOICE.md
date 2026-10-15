@@ -11,7 +11,7 @@ service to speak the answer.
  USB mic ──▶ wake word ──▶ end of speech ──▶ Whisper ──┐ transcript   ┌──────────────┐  text  ┌───────────┐
             (openWakeWord)   (webrtcvad)     (on CPU)  ├─────────────▶│   display    │───────▶│ assistant │
                                                        │  WebSocket   │ (VoiceClient)│◀───────│ (Claude)  │
- speakers ◀── aplay ◀── Piper / espeak-ng ◀────────────┘◀─────────────│              │ reply  └───────────┘
+ speakers ◀── aplay ◀── Kokoro / Piper / espeak-ng ◀───┘◀─────────────│              │ reply  └───────────┘
                                                           speak       └──────────────┘
 ```
 
@@ -70,8 +70,11 @@ The script:
   Python 3.12 and later; the service runs its ONNX models instead.
 - writes `/etc/mcfly/voice.toml` from `voice/voice.example.toml` (kept on
   re-runs)
-- downloads the models once (about 220 MB) into `~/.local/share/mcfly-voice`:
-  the Piper voice and the Whisper model from Hugging Face
+- downloads the models once (about 340 MB) into `~/.local/share/mcfly-voice`:
+  Kokoro-82M, the voice Homestead speaks with (the int8 model and its voices,
+  from [kokoro-onnx's release](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0),
+  checked against pinned SHA-256s), the Piper voice it falls back to, and the
+  Whisper model from Hugging Face
   ([rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices),
   [Systran/faster-whisper-base.en](https://huggingface.co/Systran/faster-whisper-base.en)),
   and the wake-word model from openWakeWord's
@@ -175,7 +178,9 @@ defaults. The ones you're most likely to touch:
 | `vad.no_speech` | `4.0` s | How long it waits for you to start after the wake word |
 | `stt.model` | `base.en` | `tiny.en` is faster but sloppier; `small.en` is more accurate but noticeably slower on a Pi |
 | `stt.initial_prompt` | empty | Names and odd words, e.g. `"McFly, Grok, NVDA, Daily Pulse."` |
-| `tts.voice` | `en_US-amy-medium` | Any [Piper voice](https://rhasspy.github.io/piper-samples/), then `--download-models` |
+| `tts.engine` | `auto` | `kokoro`, `piper`, `espeak` or `off`; `auto` tries them in that order |
+| `tts.kokoro_voice` | `af_heart` | Homestead's voices: `af_heart` (Heart), `af_bella` (Bella), `am_michael` (Michael), `am_fenrir` (Fenrir). The display's Settings and the web console's display settings change it while running |
+| `tts.voice` | `en_US-amy-medium` | The Piper fallback: any [Piper voice](https://rhasspy.github.io/piper-samples/), then `--download-models` |
 | `tts.speed` | `1.0` | `1.1`–`1.2` for snappier answers |
 | `audio.input_device` / `output_device` | auto | When it picks the wrong mic or speaker |
 
@@ -318,6 +323,7 @@ can open the devices, and start it again afterwards.
 | Cuts you off | Raise `vad.silence` to 1.0 |
 | Waits long after you stop talking | Background noise reads as speech: try `vad.aggressiveness = 3`, or move the mic |
 | Wrong words | Add names to `stt.initial_prompt`; try `stt.model = "small.en"`; speak closer to the mic |
-| Robotic voice | Piper isn't loading, so it fell back to espeak-ng. The log says why; usually the voice needs `--download-models` |
+| Not Homestead's voice | Kokoro isn't loading, so it fell back to Piper (or espeak-ng). The log says why; usually the models need `--download-models` |
+| Robotic voice | Neither Kokoro nor Piper loaded, so it fell back to espeak-ng. The log says why |
 | `GPU device discovery failed ... /sys/class/drm/...vendor` in the log | Harmless: onnxruntime looks for a GPU it could use, and the Pi's doesn't describe itself that way. Ignore it |
 | Display says "Voice needs the McFly voice service" | `systemctl status mcfly-voice`; the service listens on `127.0.0.1:8765` |

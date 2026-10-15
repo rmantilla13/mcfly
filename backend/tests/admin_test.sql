@@ -42,7 +42,8 @@ insert into tests.admin_calls values
   ('select admin_update_settings(display_name => ''x'')'),
   (format('select admin_set_admin(%L, true)', :'stranger')),
   ('select * from admin_list_audit()'),
-  ('select prune_feed()');
+  ('select prune_feed()'),
+  ('select admin_backend_status()');
 grant select on tests.admin_calls to anon, authenticated;
 
 select tests.ok(not has_function_privilege('anon', 'admin_overview()', 'execute'), 'anon cannot call admin RPCs');

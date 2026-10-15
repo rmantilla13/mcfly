@@ -142,6 +142,14 @@ const ACTIONS: Record<string, string> = {
   delete_dashboard: "Deleted dashboard",
   delete_event: "Deleted event",
   delete_calendar: "Removed calendar",
+  set_agent_scopes: "Changed agent permissions",
+  save_memory: "Saved a note",
+  delete_memory: "Deleted a note",
+  add_calendar_source: "Added a calendar",
+  update_calendar_source: "Changed a calendar",
+  delete_calendar_source: "Removed a calendar",
+  update_device_settings: "Changed display settings",
+  save_bot: "Saved a Grok bot",
 };
 
 // set_symbol, set_metric and set_dashboard record only what changed; the

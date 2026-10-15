@@ -490,6 +490,15 @@ private slots:
         QVERIFY(rig->store.eventDays().size() >= 4);
         QVERIFY(rig->store.newsSources().size() >= 1);
         QCOMPARE(rig->store.lastSyncLabel(), QStringLiteral("Sample data"));
+        // Memory and agent scopes (migration 20261015000001).
+        QCOMPARE(rig->store.memories().size(), 3);
+        QCOMPARE(rig->store.calendarSources().size(), 2);
+        QVERIFY(!rig->store.calendarSources().at(1).toMap().value("error").toString().isEmpty());
+        QCOMPARE(rig->store.calendarSources().first().toMap().value("eventCount").toInt(), 14);
+        QVERIFY(rig->store.memories().first().toMap().value("pinned").toBool());
+        QVERIFY(!rig->store.memories().first().toMap().value("updatedLabel").toString().isEmpty());
+        const QVariantMap grok = rig->store.agents().first().toMap();
+        QCOMPARE(grok.value("scopeLabels").toStringList(), (QStringList{QStringLiteral("Calendar"), QStringLiteral("Reads memory")}));
         QVERIFY(m_server.requests().isEmpty());
     }
 

@@ -2,6 +2,7 @@
 // the service role key, which never leaves the server.
 //
 //   { action: "revoke_device", device_id } -> { ok: true, auth_user_removed }
+//   { action: "status" } -> { ok: true, secrets: { NAME: set? }, models }   (never the values)
 //
 // The caller is checked with their own JWT (admin_revoke_device refuses
 // non-admins and writes the audit row); the auth user is then removed with
@@ -54,8 +55,27 @@ Deno.serve(async (req) => {
         }
         return json({ ok: true, auth_user_removed: removed });
       }
+      case "status": {
+        // Which secrets are set, never their values: for Settings → Backend.
+        const { data: isAdmin } = await db.rpc("is_platform_admin");
+        if (isAdmin !== true) return json({ error: "platform admins only" }, 403);
+        const has = (name: string) => (Deno.env.get(name) ?? "").trim().length > 0;
+        return json({
+          ok: true,
+          secrets: {
+            ANTHROPIC_API_KEY: has("ANTHROPIC_API_KEY"),
+            XAI_API_KEY: has("XAI_API_KEY"),
+            MCFLY_CRON_SECRET: has("MCFLY_CRON_SECRET"),
+          },
+          models: {
+            assistant: Deno.env.get("ASSISTANT_MODEL") ?? null,
+            grok: Deno.env.get("GROK_MODEL") ?? null,
+            bots: Deno.env.get("GROK_BOT_MODEL") ?? null,
+          },
+        });
+      }
       default:
-        return json({ error: "action must be revoke_device" }, 400);
+        return json({ error: "action must be revoke_device or status" }, 400);
     }
   } catch (err) {
     console.error(`admin ${String(body.action)} failed:`, err);

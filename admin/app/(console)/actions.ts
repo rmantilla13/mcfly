@@ -7,7 +7,8 @@ import * as data from "@/lib/data";
 import { DataError } from "@/lib/errors";
 import { isCompleteCode, sanitizeCode } from "@/lib/pairing";
 import { knownTimeZone } from "@/lib/timezones";
-import { AGENT_KINDS, ASSISTANT_PROVIDERS, type AgentKind, type AssistantProvider, type SettingsPatch } from "@/lib/types";
+import type { DisplaySettings } from "@/lib/types";
+import { AGENT_KINDS, AGENT_SCOPES, ASSISTANT_PROVIDERS, type AgentKind, type AgentScope, type AssistantProvider, type SettingsPatch } from "@/lib/types";
 
 // Mutations behind the console's forms. Each one re-checks that the caller is
 // a platform admin (server actions are public endpoints), validates its input,
@@ -41,6 +42,10 @@ const kind = (fd: FormData, name: string): AgentKind => {
   if (!AGENT_KINDS.includes(v as AgentKind)) throw new DataError("Kind must be grok, stocks, news or other.");
   return v as AgentKind;
 };
+// Checked boxes named `scope` (one per granted permission).
+const scopes = (fd: FormData): AgentScope[] =>
+  [...new Set(fd.getAll("scope").map(String))].filter((v): v is AgentScope => AGENT_SCOPES.includes(v as AgentScope));
+
 const color = (fd: FormData, name: string): string | null => {
   const v = text(fd, name, 16);
   if (!v) return null;
@@ -75,8 +80,10 @@ export async function createAgentAction(_prev: ActionResult, fd: FormData): Prom
     const name = text(fd, "name", 80);
     if (!name) throw new DataError("Give the agent a name.");
     const agent = await data.createAgent(name, kind(fd, "kind"), color(fd, "color"));
+    const granted = scopes(fd);
+    if (granted.length) await data.setAgentScopes(agent.id, granted);
     // The key rides back to the form and nowhere else.
-    return { ok: true, message: `${name} created.`, key: agent.key, slug: agent.slug };
+    return { ok: true, message: `${name} created.`, key: agent.key, slug: agent.slug, agentId: agent.id };
   });
 }
 
@@ -94,6 +101,7 @@ export async function updateAgentAction(_prev: ActionResult, fd: FormData): Prom
     if (!name) throw new DataError("Give the agent a name.");
     const c = color(fd, "color");
     await data.updateAgent(id, { name, kind: kind(fd, "kind"), ...(c ? { color: c } : {}) });
+    if (fd.get("scopes_present")) await data.setAgentScopes(id, scopes(fd));
     return { ok: true, message: "Agent updated." };
   });
 }
@@ -320,4 +328,197 @@ export async function signOutAction(): Promise<void> {
     if (!(err instanceof DataError)) throw err; // not configured: nobody is signed in
   }
   redirect("/login?signed_out=1");
+}
+
+export async function setAgentScopesAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const saved = await data.setAgentScopes(uuid(fd, "agent_id"), scopes(fd));
+    return { ok: true, message: saved.length ? `Permissions saved: ${saved.join(", ")}.` : "Permissions removed." };
+  });
+}
+
+// For the setup panel's "waiting for the first push": when the agent was last
+// heard from, or null. Read-only, so no rerender.
+export async function agentLastSeenAction(agentId: string): Promise<string | null> {
+  await data.requireAdmin();
+  if (!UUID.test(agentId)) return null;
+  const agents = await data.listAgents();
+  return agents.find((a) => a.id === agentId.toLowerCase())?.last_seen_at ?? null;
+}
+
+// ───────────────────────────── Memory ─────────────────────────────
+
+export async function saveMemoryAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const id = text(fd, "memory_id", 64);
+    const body = text(fd, "text", 2000);
+    const pinnedRaw = text(fd, "pinned", 8);
+    const agentRaw = text(fd, "agent_id", 64);
+    if (!id && !body) throw new DataError("Write the note first.");
+    await data.saveMemory({
+      id: id ? uuid(fd, "memory_id") : null,
+      text: body || null,
+      pinned: pinnedRaw === "" ? null : pinnedRaw === "true",
+      agentId: agentRaw ? uuid(fd, "agent_id") : null,
+    });
+    return { ok: true, message: id ? "Note saved." : "Note added." };
+  });
+}
+
+export async function deleteMemoryAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    await data.deleteMemory(uuid(fd, "memory_id"));
+    return { ok: true, message: "Note deleted." };
+  });
+}
+
+// ───────────────────────────── Calendar subscriptions ─────────────────────────────
+
+export async function addCalendarSourceAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const name = text(fd, "name", 80);
+    const link = text(fd, "url", 2000);
+    if (!name) throw new DataError("Give the calendar a name.");
+    if (!link) throw new DataError("Paste the calendar's iCal link.");
+    const id = await data.addCalendarSource(name, link, color(fd, "color"));
+    // Read it right away so the events show up now, not in 15 minutes.
+    const result: { count?: number; error?: string } = await data.syncCalendarSource(id).catch(() => ({ error: "it will be read in the next 15 minutes" }));
+    return {
+      ok: true,
+      message: result.error ? `${name} added. ${sentence(result.error)}` : `${name} added with ${result.count ?? 0} events.`,
+    };
+  });
+}
+
+export async function updateCalendarSourceAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const id = uuid(fd, "source_id");
+    const enabled = text(fd, "enabled", 8);
+    await data.updateCalendarSource(id, {
+      ...(text(fd, "name", 80) ? { name: text(fd, "name", 80) } : {}),
+      ...(color(fd, "color") ? { color: color(fd, "color") as string } : {}),
+      ...(enabled ? { enabled: enabled === "true" } : {}),
+    });
+    return { ok: true, message: enabled === "false" ? "Paused." : enabled === "true" ? "Resumed." : "Calendar saved." };
+  });
+}
+
+export async function deleteCalendarSourceAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    await data.deleteCalendarSource(uuid(fd, "source_id"));
+    return { ok: true, message: "Calendar removed, with its events." };
+  });
+}
+
+export async function syncCalendarSourceAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const result = await data.syncCalendarSource(uuid(fd, "source_id"));
+    if (result.error) throw new DataError(result.error);
+    return { ok: true, message: `Synced: ${result.count ?? 0} events.` };
+  });
+}
+
+// ───────────────────────────── Display settings ─────────────────────────────
+
+const SAVERS = ["ambient", "clock", "headlines"] as const;
+const WAKEWORDS = ["hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"] as const;
+const KOKORO_VOICES = ["af_heart", "af_bella", "am_michael", "am_fenrir"] as const;
+
+// "HH:MM" → minutes after midnight.
+const minuteOfDay = (fd: FormData, name: string, label: string) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(text(fd, name, 5));
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) throw new DataError(`${label} must be a time like 22:00.`);
+  return Number(m[1]) * 60 + Number(m[2]);
+};
+
+export async function updateDeviceSettingsAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const id = uuid(fd, "device_id");
+    const saver = text(fd, "screensaver", 16);
+    const provider = text(fd, "assistantProvider", 16);
+    const wake = text(fd, "wakewordModel", 16);
+    const speed = Number(text(fd, "voiceSpeed", 8) || "1");
+    if (!SAVERS.includes(saver as (typeof SAVERS)[number])) throw new DataError("Pick a screen saver.");
+    if (!["", "claude", "grok"].includes(provider)) throw new DataError("Pick who answers.");
+    if (!WAKEWORDS.includes(wake as (typeof WAKEWORDS)[number])) throw new DataError("Pick a wake word.");
+    const voice = text(fd, "voice", 16);
+    if (!KOKORO_VOICES.includes(voice as (typeof KOKORO_VOICES)[number])) throw new DataError("Pick a voice.");
+    if (!(speed >= 0.5 && speed <= 2)) throw new DataError("Voice speed must be 0.5 to 2.");
+    const on = (name: string) => fd.get(name) === "true";
+    const patch: DisplaySettings = {
+      screensaver: saver as DisplaySettings["screensaver"],
+      darkMode: on("darkMode"),
+      animatedTiles: on("animatedTiles"),
+      idleSeconds: int(fd, "idleSeconds", 30, 3600, "Screen saver after"),
+      offAfterSeconds: int(fd, "offAfterSeconds", 0, 86400, "Turn off after"),
+      offAtNight: on("offAtNight"),
+      bedtime: minuteOfDay(fd, "bedtime", "Bedtime"),
+      wakeTime: minuteOfDay(fd, "wakeTime", "Wake time"),
+      assistantProvider: provider as DisplaySettings["assistantProvider"],
+      speakReplies: on("speakReplies"),
+      wakeword: on("wakeword"),
+      wakewordModel: wake as DisplaySettings["wakewordModel"],
+      voice: voice as DisplaySettings["voice"],
+      voiceSpeed: Math.round(speed * 100) / 100,
+    };
+    await data.updateDeviceSettings(id, patch);
+    return { ok: true, message: "Saved. The display picks it up within a minute." };
+  });
+}
+
+// ───────────────────────────── Grok bots ─────────────────────────────
+
+const BOT_EVERY = [15, 30, 60, 180, 360, 720, 1440];
+
+export async function saveBotAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const id = text(fd, "bot_id", 64);
+    const name = text(fd, "name", 80);
+    const prompt = text(fd, "prompt", 8000);
+    const output = text(fd, "output", 8);
+    const every = Number(text(fd, "every_minutes", 6));
+    const at = text(fd, "at_time", 5);
+    if (!name) throw new DataError("Give the bot a name.");
+    if (prompt.length < 10) throw new DataError("Write what the bot should do (at least a sentence).");
+    if (output !== "brief" && output !== "news") throw new DataError("Pick what it writes.");
+    if (!BOT_EVERY.includes(every)) throw new DataError("Pick how often it runs.");
+    const web = fd.get("web_search") === "true";
+    const x = fd.get("x_search") === "true";
+    await data.saveBot(id ? uuid(fd, "bot_id") : null, {
+      name,
+      color: color(fd, "color"),
+      prompt,
+      output,
+      every_minutes: every,
+      at_minute: at ? minuteOfDay(fd, "at_time", "Start time") : null,
+      web_search: web,
+      x_search: x,
+      model: text(fd, "model", 60),
+      scopes: scopes(fd),
+    });
+    return { ok: true, message: id ? `${name} saved.` : `${name} created. Use "Run now" to see its first report.` };
+  });
+}
+
+export async function setBotEnabledAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const on = text(fd, "enabled", 8) === "true";
+    await data.saveBot(uuid(fd, "bot_id"), { enabled: on });
+    return { ok: true, message: on ? "Resumed." : "Paused." };
+  });
+}
+
+export async function deleteBotAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    await data.deleteBot(uuid(fd, "bot_id"));
+    return { ok: true, message: "Bot deleted, with everything it wrote." };
+  });
+}
+
+export async function runBotAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const result = await data.runBot(uuid(fd, "bot_id"));
+    if (result.error) throw new DataError(result.error);
+    return { ok: true, message: `Done: "${result.title ?? "report"}" is on the display.` };
+  });
 }

@@ -10,7 +10,7 @@ import { AgentsTable } from "@/components/AgentsTable";
 import { NewAgentForm } from "@/components/NewAgentForm";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { listAgents, requireAdmin } from "@/lib/data";
+import { isDemo, listAgents, requireAdmin } from "@/lib/data";
 import { supabaseProjectUrl } from "@/lib/env";
 import { plural } from "@/lib/format";
 
@@ -32,10 +32,10 @@ export default async function AgentsPage() {
         <Card>
           <CardHeader>
             <CardTitle>New agent</CardTitle>
-            <CardDescription>Make a key for an agent. Give it the key and the push below, and it is set up.</CardDescription>
+            <CardDescription>Pick what it&apos;s for, then paste the prompt it gives you into the AI that runs it.</CardDescription>
           </CardHeader>
           <CardContent>
-            <NewAgentForm action={createAgentAction} baseUrl={baseUrl} />
+            <NewAgentForm action={createAgentAction} baseUrl={baseUrl} demo={await isDemo()} />
           </CardContent>
         </Card>
 

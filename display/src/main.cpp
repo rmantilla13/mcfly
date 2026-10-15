@@ -19,6 +19,7 @@
 #include "hardware/SystemController.h"
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
+#include "models/SettingsBridge.h"
 #include "models/QrImageProvider.h"
 #include "voice/VoiceClient.h"
 
@@ -149,6 +150,8 @@ int main(int argc, char *argv[])
     PanelPower panelPower(&display);
     SystemController system;
     system.start();
+    // The web console and this screen edit the same settings.
+    SettingsBridge settingsBridge(&store, &display, &assistant, &voice);
 
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Store", &store);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &display);

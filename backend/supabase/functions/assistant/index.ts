@@ -111,7 +111,7 @@ function modelOutcome(err: unknown): "busy" | "unavailable" | null {
 async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
   const now = new Date().toISOString();
   const weekAhead = new Date(Date.now() + SNAPSHOT.eventDays * 86_400_000).toISOString();
-  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports] = await Promise.all([
+  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories] = await Promise.all([
     db.from("platform_settings").select("display_name, timezone, assistant_provider").maybeSingle(),
     db.from("briefs").select("title, kind, published_at, body")
       .or(`expires_at.is.null,expires_at.gt.${now}`)
@@ -134,6 +134,9 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     db.from("news_reports")
       .select("display_date, report_date, hero_item, news_items(section_name, section_order, position, item_key, headline, takeaway, source_domain)")
       .order("report_date", { ascending: false }).order("published_at", { ascending: false }).limit(1),
+    // Shared notes only: an agent's own working notes stay with the agent.
+    db.from("memories").select("text, pinned").is("agent_id", null)
+      .order("pinned", { ascending: false }).order("updated_at", { ascending: false }).limit(SNAPSHOT.memories),
   ]);
   const failed = (what: string, r: { error: { message: string } | null }) => {
     if (r.error) console.error(`snapshot ${what} failed:`, r.error.message);
@@ -150,6 +153,7 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     dashboards: failed("dashboards", dashboards) ? null : dashboards.data ?? [],
     events: failed("events", events) ? null : events.data ?? [],
     reports: failed("report", reports) ? null : reports.data ?? [],
+    memories: failed("notes", memories) ? null : memories.data ?? [],
   };
 }
 

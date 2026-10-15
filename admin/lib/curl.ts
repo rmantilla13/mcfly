@@ -94,8 +94,8 @@ export function ingestUrl(baseUrl: string, feed: Feed): string {
   return `${baseUrl.replace(/\/+$/, "")}/functions/v1/ingest/${feed}`;
 }
 
-export function curlExample({ baseUrl, key, kind }: { baseUrl: string; key: string; kind: AgentKind }): string {
-  const feed = feedForKind(kind);
+export function curlExample({ baseUrl, key, kind, feed: chosen }: { baseUrl: string; key: string; kind: AgentKind; feed?: Feed }): string {
+  const feed = chosen ?? feedForKind(kind);
   return [
     `curl -X POST ${shellQuote(ingestUrl(baseUrl, feed))}`,
     `  -H ${shellQuote(`Authorization: Bearer ${key}`)}`,

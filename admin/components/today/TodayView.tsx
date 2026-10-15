@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AskPanel } from "./AskPanel";
 import { cssColor } from "@/lib/format";
 import type { TodayData } from "@/lib/today-data";
 import { focusIndex, formatClock, greeting, rowState, untilLabel, upNext, type TimelineItem } from "@/lib/today";
@@ -111,7 +112,10 @@ export function TodayView({ data }: { data: TodayData }) {
           </Link>
         ) : null}
 
-        <div className="mt-auto flex flex-wrap gap-2.5 pt-2">
+        <div className="mt-auto pt-2">
+          <AskPanel />
+        </div>
+        <div className="flex flex-wrap gap-2.5">
           <Button asChild size="lg" className="rounded-full">
             <Link href="/ambient">
               <MonitorIcon data-icon="inline-start" />

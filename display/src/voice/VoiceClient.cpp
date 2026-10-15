@@ -108,6 +108,9 @@ void VoiceClient::onMessage(const QString &text)
         m_tts = msg.value("tts").toBool();
         m_stt = msg.value("stt").toBool();
         m_micName = msg.value("mic").toString();
+        m_voiceId = msg.value("voice").toString();
+        m_speechSpeed = msg.value("speed").toDouble(1.0);
+        m_wakewordModel = msg.value("wakeword_model").toString();
         emit infoChanged();
         const bool wake = msg.value("wakeword").toBool();
         if (wake != m_wakewordEnabled) {
@@ -178,6 +181,19 @@ void VoiceClient::setWakewordEnabled(bool enabled)
         return;
     m_wakewordEnabled = enabled;
     emit wakewordEnabledChanged();
+}
+
+void VoiceClient::setVoiceOptions(const QString &voice, qreal speed, const QString &wakewordModel)
+{
+    QJsonObject message{{"type", "set"}};
+    if (!voice.isEmpty() && voice != m_voiceId)
+        message.insert("voice", voice);
+    if (speed >= 0.5 && speed <= 2.0 && !qFuzzyCompare(speed, m_speechSpeed))
+        message.insert("speed", speed);
+    if (!wakewordModel.isEmpty() && wakewordModel != m_wakewordModel)
+        message.insert("wakeword_model", wakewordModel);
+    if (message.size() > 1)
+        send(message);
 }
 
 void VoiceClient::setSpeakReplies(bool on)

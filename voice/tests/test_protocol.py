@@ -29,6 +29,9 @@ async def test_hello_then_state_on_connect():
             "tts": True,
             "stt": True,
             "mic": "Simulated mic",
+            "voice": "af_heart",
+            "speed": 1.0,
+            "wakeword_model": "hey_jarvis",
         }
         assert await c.recv() == IDLE
 
@@ -414,3 +417,39 @@ def test_message_builders_match_the_spec():
     assert protocol.error("x") == {"type": "error", "message": "x"}
     assert protocol.parse_client_message('{"type":"speak","text":"a","id":5}')["id"] == "5"
     assert protocol.parse_client_message('{"type":"cancel","extra":1}') == {"type": "cancel"}
+
+
+async def test_set_voice_speed_and_wake_word_broadcast_and_survive_a_restart(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    async with running(store=store) as (_, backend, url), client(url) as a, client(url) as b:
+        await a.send(type="set", voice="am_michael", speed=1.15)
+        for c in (a, b):
+            hello = await c.until({"type": "hello"})
+            assert hello[-1]["voice"] == "am_michael" and hello[-1]["speed"] == 1.15
+        assert (backend.voice, backend.speed) == ("am_michael", 1.15)
+        await a.send(type="set", wakeword_model="alexa")
+        hello = (await a.until({"type": "hello"}))[-1]
+        assert hello["wakeword_model"] == "alexa" and hello["wakeword_name"] == "Alexa"
+        # The wake-word switch saved alongside, not over them.
+        await a.send(type="set", wakeword_enabled=False)
+        await a.until({"type": "hello"})
+    assert json.loads((tmp_path / "state.json").read_text()) == {
+        "voice": "am_michael", "speed": 1.15, "wakeword_model": "alexa", "wakeword_enabled": False}
+    restarted = fast_sim()
+    async with running(restarted, store=StateStore(tmp_path / "state.json")) as (_, _, url), \
+            client(url, greeted=False) as c:
+        hello = await c.recv()
+        assert (hello["voice"], hello["speed"], hello["wakeword"]) == ("am_michael", 1.15, False)
+        await asyncio.sleep(0.05)
+        assert restarted.wakeword_model == "alexa"
+
+
+def test_set_messages_are_checked():
+    assert protocol.parse_client_message(json.dumps({"type": "set", "voice": "af_bella"})) == {
+        "type": "set", "voice": "af_bella"}
+    assert protocol.parse_client_message(json.dumps({"type": "set", "speed": 2, "wakeword_enabled": True})) == {
+        "type": "set", "speed": 2.0, "wakeword_enabled": True}
+    for bad in ({"type": "set"}, {"type": "set", "voice": "robot"}, {"type": "set", "speed": 3},
+                {"type": "set", "speed": True}, {"type": "set", "wakeword_model": "computer"}):
+        with pytest.raises(protocol.ProtocolError):
+            protocol.parse_client_message(json.dumps(bad))

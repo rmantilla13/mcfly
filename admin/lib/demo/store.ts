@@ -3,6 +3,13 @@ import { buildDemoState, type DemoAgent, type DemoState } from "@/lib/demo/fixtu
 import { DataError } from "@/lib/errors";
 import { ONLINE_WINDOW_MS } from "@/lib/format";
 import type {
+  BackendStatus,
+  Bot,
+  BotDraft,
+  AgentScope,
+  CalendarSource,
+  DisplaySettings,
+  MemoryNote,
   AgentKind,
   AgentRow,
   AuditEntry,
@@ -109,6 +116,8 @@ export function demoListAgents(): AgentRow[] {
     .sort((a, b) => Number(!!a.revoked_at) - Number(!!b.revoked_at) || a.created_at.localeCompare(b.created_at))
     .map((a) => ({
       ...a,
+      scopes: a.scopes ?? [],
+      memory_count: s.memories.filter((m) => m.agent_id === a.id).length,
       pushes_7d: s.ingest.filter((e) => e.agent_id === a.id && e.status === "ok" && since(e.created_at, 7 * DAY)).length,
       last_error: s.ingest.find((e) => e.agent_id === a.id && e.status === "error")?.message ?? null,
     }));
@@ -328,6 +337,7 @@ export function demoClaimDevice(code: string, name: string | null): { deviceId: 
     name: name || "Display",
     last_seen_at: null,
     created_at: new Date().toISOString(),
+    settings: {},
   };
   s.devices.push(device);
   audit("pair_device", "device", device.id, { name: device.name });
@@ -489,4 +499,190 @@ export function demoDeleteCalendar(agentId: string, calendar: string): number {
   const removed = before - s.events.length;
   audit("delete_calendar", "calendar", calendar, { agent: agentId, events_removed: removed });
   return removed;
+}
+
+// ───────────────────────────── Scopes and memory ─────────────────────────────
+
+const SCOPES: AgentScope[] = ["memory:read", "memory:write", "calendar:read"];
+
+export function demoSetAgentScopes(id: string, scopes: AgentScope[]): AgentScope[] {
+  const agent = findAgent(id);
+  const clean = [...new Set(scopes)].filter((x) => SCOPES.includes(x)).sort();
+  agent.scopes = clean;
+  audit("set_agent_scopes", "agent", id, { scopes: clean });
+  return clean;
+}
+
+export function demoListMemories(): MemoryNote[] {
+  return [...state().memories].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at.localeCompare(a.updated_at));
+}
+
+export function demoSaveMemory(id: string | null, text: string | null, pinned: boolean | null, agentId: string | null): string {
+  const s = state();
+  const now = new Date().toISOString();
+  if (!id) {
+    if (!text) throw new DataError("a note is 1 to 2000 characters");
+    if (s.memories.length >= 500) throw new DataError("memory is full (500 notes); delete some first");
+    const agent = agentId ? findAgent(agentId) : null;
+    const note: MemoryNote = {
+      id: crypto.randomUUID(), agent_id: agent?.id ?? null, agent_name: agent?.name ?? null, agent_color: agent?.color ?? null,
+      key: null, text, pinned: pinned ?? false, source: "admin", created_at: now, updated_at: now,
+    };
+    s.memories.unshift(note);
+    audit("save_memory", "memory", note.id, {});
+    return note.id;
+  }
+  const note = s.memories.find((m) => m.id === id);
+  if (!note) throw new DataError("note not found");
+  if (text) note.text = text;
+  if (pinned !== null) note.pinned = pinned;
+  note.updated_at = now;
+  audit("save_memory", "memory", id, pinned === null ? {} : { pinned });
+  return id;
+}
+
+export function demoDeleteMemory(id: string) {
+  const s = state();
+  const at = s.memories.findIndex((m) => m.id === id);
+  if (at < 0) throw new DataError("note not found");
+  s.memories.splice(at, 1);
+  audit("delete_memory", "memory", id, {});
+}
+
+// ───────────────────────────── Calendar subscriptions ─────────────────────────────
+
+export function demoListCalendarSources(): CalendarSource[] {
+  return [...state().calendarSources];
+}
+
+function findSource(id: string): CalendarSource {
+  const c = state().calendarSources.find((x) => x.id === id);
+  if (!c) throw new DataError("calendar not found");
+  return c;
+}
+
+export function demoAddCalendarSource(name: string, url: string, color: string | null): string {
+  const s = state();
+  const link = url.replace(/^webcal:\/\//i, "https://");
+  if (!/^https?:\/\/[^/]+/i.test(link)) throw new DataError("paste the calendar's iCal link (it starts with https:// or webcal://)");
+  if (s.calendarSources.some((c) => c.name === name)) throw new DataError(`there is already a calendar called ${name}`);
+  const id = crypto.randomUUID();
+  s.calendarSources.push({
+    id, name, host: new URL(link).host, color, enabled: true, last_synced_at: null, last_error: null, event_count: 0,
+    created_at: new Date().toISOString(),
+  });
+  audit("add_calendar_source", "calendar_source", id, { name });
+  return id;
+}
+
+export function demoUpdateCalendarSource(id: string, patch: { name?: string; color?: string; enabled?: boolean }) {
+  const c = findSource(id);
+  if (patch.name) c.name = patch.name;
+  if (patch.color) c.color = patch.color;
+  if (patch.enabled !== undefined) c.enabled = patch.enabled;
+  audit("update_calendar_source", "calendar_source", id, patch);
+}
+
+export function demoDeleteCalendarSource(id: string) {
+  const s = state();
+  findSource(id);
+  s.calendarSources = s.calendarSources.filter((c) => c.id !== id);
+  audit("delete_calendar_source", "calendar_source", id, {});
+}
+
+export function demoSyncCalendarSource(id: string): { count?: number; error?: string } {
+  const c = findSource(id);
+  if (!c.enabled) return { error: "that calendar is paused" };
+  c.last_synced_at = new Date().toISOString();
+  c.last_error = null;
+  c.event_count = Math.max(c.event_count, 3);
+  return { count: c.event_count };
+}
+
+export function demoUpdateDeviceSettings(id: string, patch: DisplaySettings) {
+  const d = state().devices.find((x) => x.id === id);
+  if (!d) throw new DataError("display not found");
+  d.settings = { ...d.settings, ...patch };
+  audit("update_device_settings", "device", id, patch);
+}
+
+// ───────────────────────────── Grok bots ─────────────────────────────
+
+export function demoListBots(): Bot[] {
+  return [...state().bots];
+}
+
+export function demoSaveBot(id: string | null, draft: Partial<BotDraft> & { enabled?: boolean }): string {
+  const s = state();
+  if (!id) {
+    if (!draft.prompt || draft.prompt.trim().length < 10) throw new DataError("write what the bot should do (at least a sentence)");
+    const agent = demoCreateAgent(draft.name || "Grok bot", "grok", draft.color ?? null);
+    const bot: Bot = {
+      id: crypto.randomUUID(), agent_id: agent.id, name: draft.name || "Grok bot", color: draft.color ?? "#7A64E8", scopes: draft.scopes ?? [],
+      prompt: draft.prompt.trim(), output: draft.output ?? "brief", every_minutes: draft.every_minutes ?? 60, at_minute: draft.at_minute ?? null,
+      web_search: draft.web_search ?? true, x_search: draft.x_search ?? true, model: draft.model ?? "", enabled: true,
+      next_run_at: new Date().toISOString(), last_run_at: null, last_status: null, last_error: null, runs_7d: 0, runs: [],
+    };
+    s.bots.push(bot);
+    if (bot.scopes.length) demoSetAgentScopes(agent.id, bot.scopes);
+    audit("save_bot", "bot", bot.id, {});
+    return bot.id;
+  }
+  const bot = s.bots.find((b) => b.id === id);
+  if (!bot) throw new DataError("bot not found");
+  Object.assign(bot, Object.fromEntries(Object.entries(draft).filter(([, v]) => v !== undefined)));
+  audit("save_bot", "bot", id, { enabled: draft.enabled });
+  return id;
+}
+
+export function demoDeleteBot(id: string) {
+  const s = state();
+  const bot = s.bots.find((b) => b.id === id);
+  if (!bot) throw new DataError("bot not found");
+  s.bots = s.bots.filter((b) => b.id !== id);
+  s.agents = s.agents.filter((a) => a.id !== bot.agent_id);
+}
+
+export function demoRunBot(id: string): { title?: string; error?: string } {
+  const bot = state().bots.find((b) => b.id === id);
+  if (!bot) throw new DataError("bot not found");
+  return { error: "demo mode doesn't call Grok; deploy McFly and add XAI_API_KEY to run bots" };
+}
+
+// A canned streamed answer: demo mode has no assistant to ask.
+export function demoAsk(message: string): Response {
+  const reply = `In demo mode I can't look anything up, but on your real McFly I'd answer "${message.slice(0, 80)}" from what's on the display: your briefs, markets, projects, calendar and today's Pulse.`;
+  const words = reply.split(/(?<= )/);
+  const encoder = new TextEncoder();
+  const body = new ReadableStream({
+    async start(controller) {
+      for (const w of words) {
+        controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify({ text: w })}\n\n`));
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ reply, model: "demo" })}\n\n`));
+      controller.close();
+    },
+  });
+  return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+}
+
+export function demoBackendStatus(expected: string): BackendStatus {
+  const s = state();
+  return {
+    functions: ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots"].map((name) => ({ name, ok: true })),
+    secrets: { ANTHROPIC_API_KEY: true, XAI_API_KEY: false, MCFLY_CRON_SECRET: true },
+    latestMigration: expected,
+    expectedMigration: expected,
+    cron: [
+      { name: "mcfly-bots", schedule: "*/5 * * * *", active: true },
+      { name: "mcfly-calendar-sync", schedule: "*/15 * * * *", active: true },
+    ],
+    vault: { project_url: true, cron_secret: true },
+    calendars: s.calendarSources.length,
+    lastCalendarSync: s.calendarSources[0]?.last_synced_at ?? null,
+    bots: s.bots.length,
+    lastBotRun: s.bots[0]?.last_run_at ?? null,
+    projectRef: null,
+  };
 }

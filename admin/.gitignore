@@ -16,3 +16,6 @@ next-env.d.ts
 
 # debug
 npm-debug.log*
+
+# Copied from node_modules by scripts/copy-voice-runtime.mjs
+public/voice-runtime/

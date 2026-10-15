@@ -4,13 +4,21 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import * as demo from "@/lib/demo/store";
-import { demoMode, supabaseConfig } from "@/lib/env";
+import { demoMode, supabaseConfig, supabaseProjectUrl } from "@/lib/env";
 import { DataError } from "@/lib/errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   Admin,
   AgentKind,
   AgentRow,
+  AgentScope,
+  BackendStatus,
+  Bot,
+  BotDraft,
+  BotRun,
+  CalendarSource,
+  DisplaySettings,
+  MemoryNote,
   AuditEntry,
   Brief,
   DashboardRow,
@@ -207,6 +215,8 @@ export async function listAgents(): Promise<AgentRow[]> {
     ...a,
     kind: (["grok", "stocks", "news", "other"].includes(a.kind) ? a.kind : "other") as AgentKind,
     pushes_7d: num(a.pushes_7d),
+    scopes: Array.isArray(a.scopes) ? a.scopes.filter((x): x is AgentScope => SCOPES.includes(x as AgentScope)) : [],
+    memory_count: num(a.memory_count),
     key_prefix: a.key_prefix ?? null,
     key_created_at: a.key_created_at ?? null,
     last_error: a.last_error ?? null,
@@ -285,7 +295,14 @@ export const getNewsReport = cache(async (id: string): Promise<NewsReportDetail 
 
 export async function listDevices(): Promise<Device[]> {
   const src = await source();
-  return src.demo ? demo.demoListDevices() : list<Device>(await rpc(src.db, "admin_list_devices"), "admin_list_devices");
+  const rows = src.demo ? demo.demoListDevices() : list<Device>(await rpc(src.db, "admin_list_devices"), "admin_list_devices");
+  return rows.map((d) => ({ ...d, settings: d.settings && typeof d.settings === "object" ? d.settings : {} }));
+}
+
+export async function updateDeviceSettings(id: string, patch: DisplaySettings): Promise<void> {
+  const src = await source();
+  if (src.demo) return demo.demoUpdateDeviceSettings(id, patch);
+  await rpc(src.db, "admin_update_device_settings", { device: id, patch });
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -572,4 +589,184 @@ export async function deleteCalendar(agentId: string, calendar: string): Promise
   const src = await source();
   if (src.demo) return demo.demoDeleteCalendar(agentId, calendar);
   return num(await rpc(src.db, "admin_delete_calendar", { agent: agentId, calendar }));
+}
+
+// ───────────────────────────── Scopes and memory ─────────────────────────────
+
+const SCOPES: AgentScope[] = ["memory:read", "memory:write", "calendar:read"];
+
+export async function setAgentScopes(id: string, scopes: AgentScope[]): Promise<AgentScope[]> {
+  const src = await source();
+  if (src.demo) return demo.demoSetAgentScopes(id, scopes);
+  const saved = await rpc<string[]>(src.db, "admin_set_agent_scopes", { agent: id, scopes });
+  return (Array.isArray(saved) ? saved : []).filter((x): x is AgentScope => SCOPES.includes(x as AgentScope));
+}
+
+export async function listMemories(): Promise<MemoryNote[]> {
+  const src = await source();
+  const rows = src.demo ? demo.demoListMemories() : list<MemoryNote>(await rpc(src.db, "admin_list_memories"), "admin_list_memories");
+  return rows.map((m) => ({ ...m, pinned: m.pinned === true, source: m.source === "agent" ? "agent" : "admin", key: m.key ?? null }));
+}
+
+export async function saveMemory(note: { id?: string | null; text?: string | null; pinned?: boolean | null; agentId?: string | null }): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoSaveMemory(note.id ?? null, note.text ?? null, note.pinned ?? null, note.agentId ?? null);
+  return rpc<string>(src.db, "admin_save_memory", {
+    id: note.id ?? null,
+    text: note.text ?? null,
+    pinned: note.pinned ?? null,
+    agent: note.agentId ?? null,
+  });
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  const src = await source();
+  if (src.demo) return demo.demoDeleteMemory(id);
+  await rpc(src.db, "admin_delete_memory", { memory: id });
+}
+
+// ───────────────────────────── Calendar subscriptions ─────────────────────────────
+
+export async function listCalendarSources(): Promise<CalendarSource[]> {
+  const src = await source();
+  const rows = src.demo
+    ? demo.demoListCalendarSources()
+    : list<CalendarSource>(await rpc(src.db, "admin_list_calendar_sources"), "admin_list_calendar_sources");
+  return rows.map((c) => ({ ...c, enabled: c.enabled !== false, event_count: num(c.event_count), color: c.color ?? null }));
+}
+
+export async function addCalendarSource(name: string, url: string, color: string | null): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoAddCalendarSource(name, url, color);
+  return rpc<string>(src.db, "admin_add_calendar_source", { name, url, color });
+}
+
+export async function updateCalendarSource(id: string, patch: { name?: string; color?: string; enabled?: boolean }): Promise<void> {
+  const src = await source();
+  if (src.demo) return demo.demoUpdateCalendarSource(id, patch);
+  await rpc(src.db, "admin_update_calendar_source", { source: id, name: patch.name ?? null, color: patch.color ?? null, enabled: patch.enabled ?? null });
+}
+
+export async function deleteCalendarSource(id: string): Promise<void> {
+  const src = await source();
+  if (src.demo) return demo.demoDeleteCalendarSource(id);
+  await rpc(src.db, "admin_delete_calendar_source", { source: id });
+}
+
+// Reads the link now (the calendar-sync function, with the admin's JWT).
+export async function syncCalendarSource(id: string): Promise<{ count?: number; error?: string }> {
+  const src = await source();
+  if (src.demo) return demo.demoSyncCalendarSource(id);
+  const res = await invokeFunction<{ synced?: { count?: number; error?: string }[] }>(src.db, "calendar-sync", { source: id });
+  return res.synced?.[0] ?? { error: "that calendar is paused or gone" };
+}
+
+// ───────────────────────────── Grok bots ─────────────────────────────
+
+export async function listBots(): Promise<Bot[]> {
+  const src = await source();
+  if (src.demo) return demo.demoListBots();
+  const rows = list<Omit<Bot, "runs">>(await rpc(src.db, "admin_list_bots"), "admin_list_bots");
+  const runs = await Promise.all(rows.map((b) => rpc<BotRun[]>(src.db, "admin_list_bot_runs", { bot: b.id, lim: 5 }).catch(() => [])));
+  return rows.map((b, i) => ({
+    ...b,
+    scopes: Array.isArray(b.scopes) ? b.scopes.filter((x): x is AgentScope => SCOPES.includes(x as AgentScope)) : [],
+    every_minutes: num(b.every_minutes),
+    at_minute: b.at_minute == null ? null : num(b.at_minute),
+    runs_7d: num(b.runs_7d),
+    runs: (Array.isArray(runs[i]) ? runs[i] : []).map((r) => ({ ...r, id: num(r.id), sources: num(r.sources) })),
+  }));
+}
+
+export async function saveBot(id: string | null, draft: Partial<BotDraft> & { enabled?: boolean }): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoSaveBot(id, draft);
+  return rpc<string>(src.db, "admin_save_bot", {
+    id,
+    name: draft.name ?? null,
+    color: draft.color ?? null,
+    prompt: draft.prompt ?? null,
+    output: draft.output ?? null,
+    every_minutes: draft.every_minutes ?? null,
+    at_minute: draft.at_minute ?? null,
+    clear_at_minute: "at_minute" in draft && draft.at_minute === null,
+    web_search: draft.web_search ?? null,
+    x_search: draft.x_search ?? null,
+    model: draft.model ?? null,
+    enabled: draft.enabled ?? null,
+    scopes: draft.scopes ?? null,
+  });
+}
+
+export async function deleteBot(id: string): Promise<void> {
+  const src = await source();
+  if (src.demo) return demo.demoDeleteBot(id);
+  await rpc(src.db, "admin_delete_bot", { bot: id });
+}
+
+// Runs a bot now (the bots function, with the admin's JWT). Up to ~2 minutes.
+export async function runBot(id: string): Promise<{ title?: string; error?: string }> {
+  const src = await source();
+  if (src.demo) return demo.demoRunBot(id);
+  const res = await invokeFunction<{ ran?: { title?: string; error?: string }[] }>(src.db, "bots", { bot: id });
+  return res.ran?.[0] ?? { error: "the bot didn't run" };
+}
+
+// ───────────────────────────── Assistant (web voice and chat) ─────────────────────────────
+
+export type AskTurn = { role: "user" | "assistant"; text: string };
+
+// The assistant's answer as a text/event-stream (delta…, then done or error),
+// asked with the admin's own JWT, so it sees what they see. The token stays on
+// the server: the browser talks to /api/ask, never to Supabase.
+export async function askAssistant(message: string, history: AskTurn[], mode: "chat" | "quick"): Promise<Response> {
+  const src = await source();
+  if (src.demo) return demo.demoAsk(message);
+  const { data } = await src.db.auth.getSession();
+  const token = data.session?.access_token;
+  const config = supabaseConfig();
+  if (!token || !config) throw new DataError("sign in again");
+  return fetch(`${config.url}/functions/v1/assistant`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, apikey: config.anonKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history, mode, stream: true }),
+  });
+}
+
+// ───────────────────────────── Backend status ─────────────────────────────
+
+// The newest migration this console was built for (backend/supabase/migrations).
+export const EXPECTED_MIGRATION = "20261015000007";
+const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots"];
+
+export async function getBackendStatus(): Promise<BackendStatus> {
+  const src = await source();
+  if (src.demo) return demo.demoBackendStatus(EXPECTED_MIGRATION);
+  const base = supabaseProjectUrl()!;
+  const [db, fn, functions] = await Promise.all([
+    rpc<Record<string, unknown>>(src.db, "admin_backend_status").catch(() => null),
+    invokeFunction<{ secrets?: Record<string, boolean> }>(src.db, "admin", { action: "status" }).catch(() => null),
+    Promise.all(
+      FUNCTIONS.map(async (name) => {
+        // A deployed function answers the CORS preflight; a missing one is a 404.
+        const res = await fetch(`${base}/functions/v1/${name}`, { method: "OPTIONS", signal: AbortSignal.timeout(8000) }).catch(() => null);
+        return { name, ok: !!res && res.ok };
+      }),
+    ),
+  ]);
+  const cron = Array.isArray(db?.cron) ? (db.cron as BackendStatus["cron"]) : null;
+  const vault = db?.vault && typeof db.vault === "object" ? (db.vault as BackendStatus["vault"]) : null;
+  return {
+    functions,
+    secrets: fn?.secrets ?? null,
+    latestMigration: typeof db?.latest_migration === "string" ? db.latest_migration : null,
+    expectedMigration: EXPECTED_MIGRATION,
+    cron,
+    vault,
+    calendars: num(db?.calendars),
+    lastCalendarSync: typeof db?.last_calendar_sync === "string" ? db.last_calendar_sync : null,
+    bots: num(db?.bots),
+    lastBotRun: typeof db?.last_bot_run === "string" ? db.last_bot_run : null,
+    projectRef: new URL(base).host.split(".")[0] ?? null,
+  };
 }

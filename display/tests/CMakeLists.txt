@@ -107,3 +107,15 @@ target_compile_definitions(tst_dialogs PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRE
 target_link_libraries(tst_dialogs PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
 add_test(NAME tst_dialogs COMMAND tst_dialogs)
 set_tests_properties(tst_dialogs PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+# The settings bridge with a real DisplayController (no store, assistant or voice).
+qt_add_executable(tst_settingsbridge tst_settingsbridge.cpp
+    ../src/models/SettingsBridge.h ../src/models/SettingsBridge.cpp
+    ../src/models/FeedStore.h ../src/models/FeedStore.cpp
+    ../src/models/Assistant.h ../src/models/Assistant.cpp
+    ../src/hardware/DisplayController.h ../src/hardware/DisplayController.cpp)
+target_include_directories(tst_settingsbridge PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(tst_settingsbridge PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_settingsbridge PRIVATE mcfly-core Qt6::Gui Qt6::Test)
+add_test(NAME tst_settingsbridge COMMAND tst_settingsbridge)
+set_tests_properties(tst_settingsbridge PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")

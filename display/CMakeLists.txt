@@ -41,6 +41,7 @@ qt_add_executable(mcfly-display
     src/main.cpp
     src/models/FeedStore.h         src/models/FeedStore.cpp
     src/models/Assistant.h         src/models/Assistant.cpp
+    src/models/SettingsBridge.h    src/models/SettingsBridge.cpp
     src/hardware/DisplayController.h src/hardware/DisplayController.cpp
     src/hardware/SystemController.h src/hardware/SystemController.cpp
     src/hardware/PanelPower.h      src/hardware/PanelPower.cpp

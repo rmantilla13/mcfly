@@ -37,6 +37,12 @@ class FeedStore : public QObject
     Q_PROPERTY(QString lastSyncLabel READ lastSyncLabel NOTIFY statusChanged)
 
     Q_PROPERTY(QVariantList agents READ agents NOTIFY dataChanged)
+    // Shared notes McFly keeps about the user (memory), pinned first:
+    // { text, pinned, updatedLabel }. Read-only here; edited on the web.
+    Q_PROPERTY(QVariantList memories READ memories NOTIFY dataChanged)
+    // Calendar subscriptions and their health: { name, color, enabled,
+    // syncedLabel, error, eventCount }. Managed on the web.
+    Q_PROPERTY(QVariantList calendarSources READ calendarSources NOTIFY dataChanged)
     Q_PROPERTY(QVariantList briefs READ briefs NOTIFY dataChanged)     // newest first
     Q_PROPERTY(QVariantMap latestBrief READ latestBrief NOTIFY dataChanged)
     Q_PROPERTY(QVariantList quotes READ quotes NOTIFY dataChanged)     // in display order, hidden ones left out
@@ -73,6 +79,11 @@ public:
     QString lastSyncLabel() const;
 
     QVariantList agents() const { return m_agents; }
+    QVariantList memories() const { return m_memories; }
+    QVariantList calendarSources() const { return m_calendarSources; }
+    // Sends a patch of this display's settings to the server
+    // (device_update_settings). Live mode only.
+    void pushDeviceSettings(const QVariantMap &patch);
     QVariantList briefs() const { return m_briefs; }
     QVariantMap latestBrief() const { return m_latestBrief; }
     QVariantList quotes() const { return m_quotes; }
@@ -117,6 +128,9 @@ public:
     void setSyncIntervalMs(int ms);
 
 signals:
+    // This display's settings as the server has them (devices.settings),
+    // after each sync that read them; empty when the server has none yet.
+    void deviceSettingsReceived(const QVariantMap &settings);
     void modeChanged();
     void statusChanged();
     void pairingChanged();
@@ -175,6 +189,10 @@ private:
     // Raw rows as loaded (demo JSON or Supabase).
     QString m_displayName = QStringLiteral("McFly");
     QVariantList m_rawAgents, m_rawBriefs, m_rawQuotes, m_rawSymbols, m_rawReports;
+    QVariantList m_rawMemories, m_memories;
+    QVariantList m_rawCalendarSources, m_calendarSources;
+    QVariantMap m_deviceSettings;
+    bool m_deviceSettingsSeen = false;
     QVariantList m_rawProjects, m_rawMetrics, m_rawMetricSettings, m_rawDashboards, m_rawEvents;
     QString m_shownReportId; // "" = the newest
     QString m_newsSourceId;  // "" = every source

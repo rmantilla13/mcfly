@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { KeyReveal } from "@/components/KeyReveal";
+import { AgentSetup } from "@/components/agents/AgentSetup";
+import { ScopeSwitches } from "@/components/agents/ScopeSwitches";
 import { useFormAction } from "@/components/useFormAction";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -10,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import type { FormAction } from "@/lib/action-result";
-import type { AgentKind } from "@/lib/types";
+import { AGENT_TEMPLATES, type AgentTemplate } from "@/lib/templates";
+import type { AgentKind, AgentScope } from "@/lib/types";
 
 export const KIND_OPTIONS: { value: AgentKind; label: string; hint: string }[] = [
   { value: "grok", label: "Grok", hint: "Briefs: hourly and daily notes" },
@@ -65,47 +67,77 @@ export function ColorField({ name, defaultValue, id }: { name: string; defaultVa
   );
 }
 
-export function NewAgentForm({ action, baseUrl }: { action: FormAction; baseUrl: string }) {
-  const [made, setMade] = useState<{ name: string; kind: AgentKind; key: string } | null>(null);
+// The new-agent wizard: pick what it's for (a template fills the rest), name
+// it, choose what it may read, then the setup panel takes over.
+export function NewAgentForm({ action, baseUrl, demo = false }: { action: FormAction; baseUrl: string; demo?: boolean }) {
+  const [template, setTemplate] = useState<AgentTemplate>(AGENT_TEMPLATES[0]);
+  const [scopes, setScopes] = useState<AgentScope[]>(AGENT_TEMPLATES[0].scopes);
+  const [made, setMade] = useState<{ id: string; name: string; key: string; template: AgentTemplate; scopes: AgentScope[] } | null>(null);
   const { result, pending, submit } = useFormAction(action, (res, form) => {
-    if (!res?.ok || !res.key) return;
+    if (!res?.ok || !res.key || !res.agentId) return;
     const fd = new FormData(form);
-    setMade({ name: String(fd.get("name") ?? "Agent"), kind: String(fd.get("kind") ?? "other") as AgentKind, key: res.key });
+    setMade({ id: res.agentId, name: String(fd.get("name") ?? "Agent"), key: res.key, template, scopes });
     toast.success(res.message ?? "Agent created.");
-    form.reset();
   });
+
+  const pick = (t: AgentTemplate) => {
+    setTemplate(t);
+    setScopes(t.scopes);
+    setMade(null);
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      <form onSubmit={submit}>
+      <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-2 max-sm:grid-cols-1" role="radiogroup" aria-label="What is it for?">
+        {AGENT_TEMPLATES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={t.id === template.id}
+            onClick={() => pick(t)}
+            className="flex items-start gap-3 rounded-xl border bg-card px-3.5 py-3 text-left transition-colors hover:bg-accent/40 aria-checked:border-primary/50 aria-checked:bg-accent/60"
+          >
+            <span className="mt-1 size-3 shrink-0 rounded-full" style={{ background: t.color }} aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">{t.label}</span>
+              <span className="block text-xs text-muted-foreground">{t.description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Remounted per template so the fields take its defaults. */}
+      <form key={template.id} onSubmit={submit}>
         <FieldGroup>
-          <div className="grid grid-cols-[minmax(0,1fr)_160px_auto] items-end gap-4 max-md:grid-cols-1">
+          <input type="hidden" name="kind" value={template.kind} />
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 max-md:grid-cols-1">
             <Field>
               <FieldLabel htmlFor="new-agent-name">Name</FieldLabel>
-              <Input id="new-agent-name" name="name" required maxLength={80} placeholder="Market desk" autoComplete="off" />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="new-agent-kind">Kind</FieldLabel>
-              <KindSelect name="kind" defaultValue="other" id="new-agent-kind" />
+              <Input id="new-agent-name" name="name" required maxLength={80} defaultValue={template.name} placeholder="Weather bot" autoComplete="off" />
             </Field>
             <Field>
               <FieldLabel htmlFor="new-agent-color">Color</FieldLabel>
-              <ColorField name="color" defaultValue="#4f7cf7" id="new-agent-color" />
+              <ColorField name="color" defaultValue={template.color.toLowerCase()} id="new-agent-color" />
             </Field>
           </div>
-          <FieldDescription>
-            Kind only picks the icon, the color and the example below; any agent may push to any feed.
-          </FieldDescription>
+          <Field>
+            <FieldLabel>What it may read</FieldLabel>
+            <ScopeSwitches value={scopes} onChange={setScopes} idPrefix="new-agent" />
+            <FieldDescription>Every agent may push to any feed. These let it read back; change them any time.</FieldDescription>
+          </Field>
           {result && !result.ok ? <FieldError>{result.error}</FieldError> : null}
           <div>
             <Button type="submit" disabled={pending}>
               {pending ? <Spinner data-icon="inline-start" /> : null}
-              {pending ? "Creating…" : "Create agent and show its key"}
+              {pending ? "Creating…" : "Create agent"}
             </Button>
           </div>
         </FieldGroup>
       </form>
-      {made ? <KeyReveal agentName={made.name} kind={made.kind} apiKey={made.key} baseUrl={baseUrl} /> : null}
+      {made ? (
+        <AgentSetup agentId={made.id} name={made.name} template={made.template} scopes={made.scopes} apiKey={made.key} baseUrl={baseUrl} demo={demo} />
+      ) : null}
     </div>
   );
 }

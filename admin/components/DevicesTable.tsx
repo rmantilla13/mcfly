@@ -3,6 +3,7 @@
 import { MonitorIcon, PencilIcon, ShieldOffIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { DisplaySettingsDialog } from "@/components/DisplaySettingsDialog";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { EmptyState, Time } from "@/components/bits";
 import { useFormAction } from "@/components/useFormAction";
@@ -16,7 +17,7 @@ import type { FormAction } from "@/lib/action-result";
 import { isOnline } from "@/lib/format";
 import type { Device } from "@/lib/types";
 
-export function DevicesTable({ devices, renameAction, revokeAction }: { devices: Device[]; renameAction: FormAction; revokeAction: FormAction }) {
+export function DevicesTable({ devices, renameAction, revokeAction, settingsAction }: { devices: Device[]; renameAction: FormAction; revokeAction: FormAction; settingsAction: FormAction }) {
   if (devices.length === 0) {
     return (
       <EmptyState title="No displays paired" icon={<MonitorIcon />}>
@@ -39,14 +40,14 @@ export function DevicesTable({ devices, renameAction, revokeAction }: { devices:
       </TableHeader>
       <TableBody>
         {devices.map((d) => (
-          <DeviceRow key={d.id} device={d} renameAction={renameAction} revokeAction={revokeAction} />
+          <DeviceRow key={d.id} device={d} renameAction={renameAction} revokeAction={revokeAction} settingsAction={settingsAction} />
         ))}
       </TableBody>
     </Table>
   );
 }
 
-function DeviceRow({ device, renameAction, revokeAction }: { device: Device; renameAction: FormAction; revokeAction: FormAction }) {
+function DeviceRow({ device, renameAction, revokeAction, settingsAction }: { device: Device; renameAction: FormAction; revokeAction: FormAction; settingsAction: FormAction }) {
   const [editing, setEditing] = useState(false);
   const id = useId();
   const { result, pending, submit, reset } = useFormAction(renameAction, (res) => {
@@ -107,7 +108,8 @@ function DeviceRow({ device, renameAction, revokeAction }: { device: Device; ren
         <Time iso={device.created_at} />
       </TableCell>
       <TableCell className="pr-4">
-        <div className="flex justify-end gap-1.5">
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <DisplaySettingsDialog device={device} action={settingsAction} />
           <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={editing}>
             <PencilIcon data-icon="inline-start" />
             Rename

@@ -4,6 +4,15 @@
     "timezone": "America/Chicago",
     "assistant_provider": "claude"
   },
+  "calendar_sources": [
+    { "name": "Work", "color": "#5B7CF5", "enabled": true, "minutesAgo": 9, "event_count": 14, "last_error": null },
+    { "name": "Family", "color": "#F07F5A", "enabled": true, "minutesAgo": 190, "event_count": 6, "last_error": "the link answered 404; it may have been reset" }
+  ],
+    "memories": [
+    { "text": "Prefers short briefs: three bullets, no filler.", "pinned": true, "daysAgo": 12 },
+    { "text": "Lives in Austin; works on Onyx and McFly.", "pinned": true, "daysAgo": 20 },
+    { "text": "Follows NVDA, TSLA and the Fed closely.", "pinned": false, "daysAgo": 5 }
+  ],
   "agents": [
     {
       "id": "a-grok",
@@ -11,6 +20,7 @@
       "slug": "grok",
       "kind": "grok",
       "color": "#7A64E8",
+      "scopes": ["calendar:read", "memory:read"],
       "last_seen_at": ""
     },
     {
@@ -35,6 +45,7 @@
       "slug": "github-watcher",
       "kind": "other",
       "color": "#5B7CF5",
+      "scopes": ["memory:read", "memory:write"],
       "last_seen_at": ""
     },
     {

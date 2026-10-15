@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { KeyReveal } from "@/components/KeyReveal";
 import { ColorField, KindSelect } from "@/components/NewAgentForm";
+import { SCOPE_INFO, ScopeSwitches } from "@/components/agents/ScopeSwitches";
 import { EmptyState, KindBadge, Swatch, Time, numCell } from "@/components/bits";
 import { useFormAction } from "@/components/useFormAction";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { FormAction } from "@/lib/action-result";
 import { formatNumber } from "@/lib/format";
-import type { AgentRow } from "@/lib/types";
+import type { AgentRow, AgentScope } from "@/lib/types";
 
 type Actions = { rotate: FormAction; update: FormAction; revoke: FormAction; remove: FormAction };
 type Pending = { type: "edit" | "rotate" | "revoke" | "delete"; agent: AgentRow } | null;
@@ -51,6 +52,7 @@ export function AgentsTable({ agents, actions, baseUrl }: { agents: AgentRow[]; 
             <TableRow>
               <TableHead className="pl-4">Agent</TableHead>
               <TableHead>Kind</TableHead>
+              <TableHead className="max-lg:hidden">May read</TableHead>
               <TableHead>Key</TableHead>
               <TableHead className={numCell}>Pushes, 7d</TableHead>
               <TableHead>Last push</TableHead>
@@ -75,6 +77,19 @@ export function AgentsTable({ agents, actions, baseUrl }: { agents: AgentRow[]; 
                 </TableCell>
                 <TableCell>
                   <KindBadge kind={a.kind} />
+                </TableCell>
+                <TableCell className="max-lg:hidden">
+                  {a.scopes.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {a.scopes.map((sc) => (
+                        <Badge key={sc} variant="outline" className="font-normal">
+                          {SCOPE_INFO.find((x) => x.scope === sc)?.label ?? sc}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">Push only</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   {a.revoked_at ? (
@@ -192,6 +207,11 @@ export function AgentsTable({ agents, actions, baseUrl }: { agents: AgentRow[]; 
   );
 }
 
+function EditScopes({ initial, idPrefix }: { initial: AgentScope[]; idPrefix: string }) {
+  const [value, setValue] = useState<AgentScope[]>(initial);
+  return <ScopeSwitches value={value} onChange={setValue} idPrefix={idPrefix} />;
+}
+
 function EditAgentDialog({ agent, action, close }: { agent: AgentRow; action: FormAction; close: () => void }) {
   const id = useId();
   const { result, pending, submit } = useFormAction(action, (res) => {
@@ -219,6 +239,11 @@ function EditAgentDialog({ agent, action, close }: { agent: AgentRow; action: Fo
             <Field>
               <FieldLabel htmlFor={`${id}-color`}>Color</FieldLabel>
               <ColorField name="color" defaultValue={/^#[0-9a-f]{6}$/i.test(agent.color) ? agent.color.toLowerCase() : "#4f7cf7"} id={`${id}-color`} />
+            </Field>
+            <Field>
+              <FieldLabel>What it may read</FieldLabel>
+              <input type="hidden" name="scopes_present" value="1" />
+              <EditScopes initial={agent.scopes} idPrefix={id} />
             </Field>
             {result && !result.ok ? <FieldError>{result.error}</FieldError> : null}
           </FieldGroup>

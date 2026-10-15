@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { claimDeviceAction, renameDeviceAction, revokeDeviceAction } from "@/app/(console)/actions";
+import { claimDeviceAction, renameDeviceAction, revokeDeviceAction, updateDeviceSettingsAction } from "@/app/(console)/actions";
 import { DevicesTable } from "@/components/DevicesTable";
 import { PageHeader } from "@/components/PageHeader";
 import { PairForm } from "@/components/PairForm";
@@ -26,7 +26,7 @@ export default async function DisplaysPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-0 pt-2 pb-2">
-            <DevicesTable devices={devices} renameAction={renameDeviceAction} revokeAction={revokeDeviceAction} />
+            <DevicesTable devices={devices} renameAction={renameDeviceAction} revokeAction={revokeDeviceAction} settingsAction={updateDeviceSettingsAction} />
           </CardContent>
         </Card>
         <Card>

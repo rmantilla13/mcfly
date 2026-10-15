@@ -89,9 +89,15 @@
 #initial_prompt = ""
 
 [tts]
-# "piper", "espeak" (espeak-ng), "off", or "auto" (piper, else espeak-ng).
+# "kokoro", "piper", "espeak" (espeak-ng), "off", or "auto" (kokoro, else
+# piper, else espeak-ng).
 #engine = "auto"
-# A Piper voice name (fetched by --download-models) or a .onnx file.
+# Kokoro's voice, the one Homestead speaks with: af_heart (Heart), af_bella
+# (Bella), am_michael (Michael) or am_fenrir (Fenrir). The display's Settings
+# and the web console change it while running.
+#kokoro_voice = "af_heart"
+# A Piper voice name (fetched by --download-models) or a .onnx file: the
+# fallback when Kokoro isn't installed.
 #voice = "en_US-amy-medium"
 # Speaking rate: 1.0 is normal, 1.2 is 20% faster.
 #speed = 1.0

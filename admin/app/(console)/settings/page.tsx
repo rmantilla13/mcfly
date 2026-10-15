@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import { updateSettingsAction } from "@/app/(console)/actions";
+import { BackendStatusCard } from "@/components/BackendStatusCard";
 import { PageHeader } from "@/components/PageHeader";
 import { SettingsForm } from "@/components/SettingsForm";
 import { Time } from "@/components/bits";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getSettings, requireAdmin } from "@/lib/data";
+import { getBackendStatus, getSettings, requireAdmin } from "@/lib/data";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   await requireAdmin();
-  const settings = await getSettings();
+  const [settings, backend] = await Promise.all([getSettings(), getBackendStatus()]);
 
   return (
     <>
@@ -32,6 +33,9 @@ export default async function SettingsPage() {
           <SettingsForm action={updateSettingsAction} settings={settings} />
         </CardContent>
       </Card>
+      <div className="mt-5">
+        <BackendStatusCard status={backend} />
+      </div>
     </>
   );
 }

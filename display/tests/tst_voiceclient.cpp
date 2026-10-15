@@ -133,6 +133,28 @@ private slots:
         QCOMPARE(voice.state(), QStringLiteral("transcribing"));
     }
 
+    void voiceOptions()
+    {
+        // The voice, speed and wake word come from the hello; a change is sent
+        // as one `set` with only what differs.
+        VoiceClient voice(url());
+        voice.start();
+        QTRY_VERIFY(voice.available());
+        serverSend({{"type", "hello"}, {"version", "1"}, {"wakeword", true}, {"wakeword_name", "Hey Jarvis"},
+                    {"tts", true}, {"stt", true}, {"voice", "af_heart"}, {"speed", 1.0}, {"wakeword_model", "hey_jarvis"}});
+        QTRY_COMPARE(voice.voiceId(), QStringLiteral("af_heart"));
+        QCOMPARE(voice.wakewordModel(), QStringLiteral("hey_jarvis"));
+        m_received.clear();
+        voice.setVoiceOptions(QStringLiteral("af_heart"), 1.0, QStringLiteral("hey_jarvis")); // nothing new
+        voice.setVoiceOptions(QStringLiteral("am_michael"), 1.15, QStringLiteral("hey_jarvis"));
+        QTRY_COMPARE(m_received.size(), 1);
+        const QJsonObject set = m_received.first();
+        QCOMPARE(set.value("type").toString(), QStringLiteral("set"));
+        QCOMPARE(set.value("voice").toString(), QStringLiteral("am_michael"));
+        QCOMPARE(set.value("speed").toDouble(), 1.15);
+        QVERIFY(!set.contains("wakeword_model"));
+    }
+
     void helloAtAnyTime()
     {
         // The service re-sends hello after `set` and when the mic comes or

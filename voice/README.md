@@ -51,5 +51,5 @@ tuning `wakeword.threshold` for your room.
 | `protocol.py` | Message shapes and client message checks |
 | `pipeline.py` | Real backend: mic → wake word → end of speech → Whisper; TTS → speaker |
 | `simulate.py` | Simulate backend, driven by stdin |
-| `audio.py`, `vad.py`, `wakeword.py`, `stt.py`, `tts.py` | sounddevice/aplay, webrtcvad + energy, openWakeWord, faster-whisper, Piper + espeak-ng |
+| `audio.py`, `vad.py`, `wakeword.py`, `stt.py`, `tts.py` | sounddevice/aplay, webrtcvad + energy, openWakeWord, faster-whisper, Kokoro (Homestead's voice) + Piper + espeak-ng |
 | `config.py` | TOML settings (`voice.example.toml` documents every key) |

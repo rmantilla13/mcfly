@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING
 
 from . import stt, wakeword
 from .audio import AudioError, Microphone, make_player
-from .config import Config
+from .config import BUILTIN_WAKEWORDS, Config
 from .pcm import level, rms
-from .tts import Speaker, create_synth, piper_voice_path
+from .tts import Speaker, create_synth, download_kokoro, piper_voice_path
 from .vad import Endpointer, detector_factory
 from .wakeword import WakeWordDetector, display_name
 
@@ -36,6 +36,7 @@ class AudioBackend:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.wakeword_name = display_name(cfg.wakeword.model, cfg.wakeword.name)
+        self._wakeword_model = cfg.wakeword.model
         self._service: VoiceService | None = None
         self._detector: WakeWordDetector | None = None
         self._transcriber: stt.Transcriber | None = None
@@ -66,6 +67,50 @@ class AudioBackend:
     @property
     def tts_available(self) -> bool:
         return self._speaker is not None
+
+    # Voice and wake word, changed from the display while running.
+
+    @property
+    def voice(self) -> str:
+        """The Kokoro voice, or "" when another engine speaks."""
+        return getattr(self._speaker.synth, "voice", "") if self._speaker else ""
+
+    @property
+    def speed(self) -> float:
+        synth = self._speaker.synth if self._speaker else None
+        return float(getattr(synth, "speed", getattr(synth, "_speed", self.cfg.tts.speed)))
+
+    @property
+    def wakeword_model(self) -> str:
+        return self._wakeword_model
+
+    def set_voice(self, voice: str | None, speed: float | None) -> None:
+        synth = self._speaker.synth if self._speaker else None
+        if synth is None:
+            return
+        if voice and hasattr(synth, "set_voice"):
+            synth.set_voice(voice)
+        if speed is not None and hasattr(synth, "set_speed"):
+            synth.set_speed(speed)
+
+    async def set_wakeword_model(self, model: str) -> str | None:
+        """Loads `model` and swaps it in; returns why it couldn't, or None."""
+        if model == self._wakeword_model and self._detector is not None:
+            return None
+        w = self.cfg.wakeword
+        loop = asyncio.get_running_loop()
+        try:
+            detector = await loop.run_in_executor(
+                self._wake_pool,
+                lambda: WakeWordDetector(model, framework=w.inference_framework, data_dir=self.cfg.data_path))
+        except Exception as e:  # missing download, openwakeword absent
+            return str(e)
+        self._detector = detector
+        self._wakeword_model = model
+        self.wakeword_name = display_name(model)
+        if self._service is not None:
+            self._service.capabilities_changed()
+        return None
 
     # Startup
 
@@ -261,6 +306,14 @@ def download_models(cfg: Config) -> int:
     data_dir.mkdir(parents=True, exist_ok=True)
     failed = []
 
+    if cfg.tts.engine in ("auto", "kokoro"):
+        try:
+            download_kokoro(data_dir)
+        except Exception as e:
+            log.error("kokoro voice: %s", e)
+            failed.append("kokoro voice")
+
+    # Piper stays as the fallback if Kokoro can't run (or is too slow).
     if cfg.tts.engine in ("auto", "piper"):
         target = piper_voice_path(cfg.tts.voice, data_dir)
         if target.exists():
@@ -286,6 +339,11 @@ def download_models(cfg: Config) -> int:
     log.info("fetching wake word model %s", cfg.wakeword.model)
     try:
         wakeword.download_models(cfg.wakeword.model, data_dir)
+        # The other built-in wake words too (small), so a display can switch.
+        if cfg.wakeword.model in BUILTIN_WAKEWORDS:
+            for other in BUILTIN_WAKEWORDS:
+                if other != cfg.wakeword.model:
+                    wakeword.download_models(other, data_dir)
         WakeWordDetector(cfg.wakeword.model, framework=cfg.wakeword.inference_framework,
                          data_dir=data_dir)
     except Exception as e:

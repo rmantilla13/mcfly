@@ -11,6 +11,8 @@
 //   POST /ingest/events      { calendar?, replace?, events: [{ id?, title, starts_at, ends_at?, all_day?, location? }] }
 //   POST /ingest             any of the above with "type": "briefs" | "quotes" | ... | "events"
 //   GET  /ingest             who the key belongs to and its last few pushes
+//   GET  /ingest/memory      notes (memory:read)      POST /ingest/memory   keep notes (memory:write)
+//   GET  /ingest/events      upcoming events (calendar:read)   (reads.ts)
 //
 //   Authorization: Bearer mcf_…   (or X-Agent-Key: mcf_…)
 //
@@ -22,6 +24,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { json, preflight, readJson } from "../_shared/http.ts";
 import { resolveImages } from "./images.ts";
 import { agentKey, feedFromBody, feedFromPath, FEEDS, KEY_SHAPE, parse, type Parsed } from "./parse.ts";
+import { eventDays, hasScope, parseMemoryPush, readRoute, scopeMissing } from "./reads.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -31,7 +34,7 @@ const service = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-type Agent = { id: string; name: string; slug: string; kind: string };
+type Agent = { id: string; name: string; slug: string; kind: string; scopes?: string[] };
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -124,6 +127,39 @@ async function store(agent: Agent, parsed: Parsed): Promise<{ count: number; ext
   }
 }
 
+// Agent reads and memory writes (reads.ts), each behind its scope.
+async function memory(agent: Agent, req: Request): Promise<Response> {
+  if (req.method === "GET") {
+    if (!hasScope(agent.scopes, "memory:read")) return reply({ error: scopeMissing("memory:read") }, 403);
+    const { data, error } = await service.rpc("agent_read_memory", { agent: agent.id });
+    if (error) return reply({ error: "couldn't read memory; try again in a moment" }, 503);
+    return reply({ ok: true, memories: data ?? [] });
+  }
+  if (!hasScope(agent.scopes, "memory:write")) return reply({ error: scopeMissing("memory:write") }, 403);
+  const read = await readJson(req, MAX_BODY);
+  if ("error" in read) return read.error;
+  const push = parseMemoryPush(read.body);
+  if ("error" in push) {
+    await record(agent, "memory", 0, "error", push.error);
+    return reply({ error: push.error }, 400);
+  }
+  const { data, error } = await service.rpc("agent_write_memory", { agent: agent.id, items: push.items, remove: push.remove });
+  if (error) {
+    await record(agent, "memory", 0, "error", error.message);
+    return reply({ error: error.message }, 400);
+  }
+  const result = (data ?? {}) as { written?: number; removed?: number };
+  await record(agent, "memory", Number(result.written ?? 0), "ok");
+  return reply({ ok: true, feed: "memory", agent: agent.slug, ...result });
+}
+
+async function events(agent: Agent, search: string): Promise<Response> {
+  if (!hasScope(agent.scopes, "calendar:read")) return reply({ error: scopeMissing("calendar:read") }, 403);
+  const { data, error } = await service.rpc("agent_read_events", { days: eventDays(search) });
+  if (error) return reply({ error: "couldn't read the calendar; try again in a moment" }, 503);
+  return reply({ ok: true, events: data ?? [] });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     const res = preflight();
@@ -139,7 +175,12 @@ Deno.serve(async (req) => {
   if (agent === "down") return reply({ error: "couldn't check the key; try again in a moment" }, 503);
   if (!agent) return reply({ error: "unknown or revoked agent key" }, 401);
 
-  const path = feedFromPath(new URL(req.url).pathname);
+  const url = new URL(req.url);
+  const route = readRoute(url.pathname);
+  if (route === "memory") return memory(agent, req);
+  if (route === "events" && req.method === "GET") return events(agent, url.search);
+
+  const path = feedFromPath(url.pathname);
   if (path === null) return reply({ error: `the feed must be ${FEEDS.slice(0, -1).join(", ")} or ${FEEDS.at(-1)}` }, 404);
   if (req.method === "GET") return whoami(agent);
 

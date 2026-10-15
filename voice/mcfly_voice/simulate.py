@@ -18,6 +18,8 @@ import threading
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, TextIO
 
+from .wakeword import display_name
+
 if TYPE_CHECKING:
     from .service import Session, VoiceService
 
@@ -35,6 +37,20 @@ class SimBackend:
     stt_available = True
     tts_available = True
     mic_name = "Simulated mic"
+    voice = "af_heart"
+    speed = 1.0
+    wakeword_model = "hey_jarvis"
+
+    def set_voice(self, voice: str | None, speed: float | None) -> None:
+        if voice:
+            self.voice = voice
+        if speed is not None:
+            self.speed = speed
+
+    async def set_wakeword_model(self, model: str) -> str | None:
+        self.wakeword_model = model
+        self.wakeword_name = display_name(model)
+        return None
 
     def __init__(
         self,

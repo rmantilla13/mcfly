@@ -213,7 +213,8 @@ cd ~/mcfly
 ./voice/deploy/install-voice.sh
 ```
 
-This downloads about 220 MB of speech models and starts the voice service on
+This downloads about 340 MB of speech models (Kokoro, the voice Homestead
+speaks with, plus speech recognition) and starts the voice service on
 every boot, as the same user as the display. Spoken replies use the screen
 speakers: the gear menu's **Screen speakers** switch and **Volume** apply to
 them. Without a microphone yet, check the speakers with
@@ -399,7 +400,7 @@ cd ~/mcfly && ./display/deploy/install-pi.sh --with-voice && sudo reboot
 ```
 
 The uninstall removes the app, its services, `/etc/mcfly`, the display's
-pairing and the voice service (add `--keep-models` to keep the 220 MB of
+pairing and the voice service (add `--keep-models` to keep the 340 MB of
 speech models). Wi-Fi, your user and SSH stay. After the reboot McFly opens on
 its own on the pairing screen; pair it again.
 

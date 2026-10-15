@@ -46,6 +46,28 @@ export type AgentRow = {
   key_created_at: string | null;
   pushes_7d: number;
   last_error: string | null;
+  scopes: AgentScope[];
+  memory_count: number;
+};
+
+// What an agent may read back through ingest, beyond pushing (migration
+// 20261015000001). Granted by the admin; off by default.
+export type AgentScope = "memory:read" | "memory:write" | "calendar:read";
+export const AGENT_SCOPES: AgentScope[] = ["memory:read", "memory:write", "calendar:read"];
+
+// A note McFly keeps: shared (about the user) when agent_id is null, else an
+// agent's own working note.
+export type MemoryNote = {
+  id: string;
+  agent_id: string | null;
+  agent_name: string | null;
+  agent_color: string | null;
+  key: string | null;
+  text: string;
+  pinned: boolean;
+  source: "admin" | "agent";
+  created_at: string;
+  updated_at: string;
 };
 
 // admin_create_agent: the key is shown once and never stored in the clear.
@@ -235,7 +257,28 @@ export type Device = {
   name: string;
   last_seen_at: string | null;
   created_at: string;
+  settings: DisplaySettings;
 };
+
+// A display's own settings, kept on the server so the console and the screen
+// edit the same thing (migration 20261015000004, clean_device_settings).
+export type DisplaySettings = Partial<{
+  screensaver: "ambient" | "clock" | "headlines";
+  darkMode: boolean;
+  animatedTiles: boolean;
+  idleSeconds: number;
+  offAfterSeconds: number;
+  offAtNight: boolean;
+  bedtime: number; // minutes after midnight
+  wakeTime: number;
+  assistantProvider: "" | "claude" | "grok";
+  speakReplies: boolean;
+  wakeword: boolean;
+  wakewordModel: "hey_jarvis" | "alexa" | "hey_mycroft" | "hey_rhasspy";
+  voice: "af_heart" | "af_bella" | "am_michael" | "am_fenrir"; // Kokoro: Homestead's voices
+  voiceSpeed: number;
+  volume: number;
+}>;
 
 export type AssistantProvider = "claude" | "grok";
 export const ASSISTANT_PROVIDERS: AssistantProvider[] = ["claude", "grok"];
@@ -266,3 +309,79 @@ export type AuditEntry = {
 };
 
 export type Page<T> = { rows: T[]; page: number; hasMore: boolean };
+
+// A calendar subscription (an iCal link McFly reads every 15 minutes). The
+// link itself never reaches the console: only its host.
+export type CalendarSource = {
+  id: string;
+  name: string;
+  host: string;
+  color: string | null;
+  enabled: boolean;
+  last_synced_at: string | null;
+  last_error: string | null;
+  event_count: number;
+  created_at: string;
+};
+
+// A Grok bot: an agent McFly runs itself on a schedule, through xAI's API
+// with web and X search (migration 20261015000005).
+export type BotOutput = "brief" | "news";
+export type Bot = {
+  id: string;
+  agent_id: string;
+  name: string;
+  color: string;
+  scopes: AgentScope[];
+  prompt: string;
+  output: BotOutput;
+  every_minutes: number;
+  at_minute: number | null;
+  web_search: boolean;
+  x_search: boolean;
+  model: string;
+  enabled: boolean;
+  next_run_at: string;
+  last_run_at: string | null;
+  last_status: "ok" | "error" | null;
+  last_error: string | null;
+  runs_7d: number;
+  runs: BotRun[];
+};
+export type BotRun = {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "ok" | "error";
+  title: string | null;
+  error: string | null;
+  sources: number;
+  model: string | null;
+};
+export type BotDraft = {
+  name: string;
+  color: string | null;
+  prompt: string;
+  output: BotOutput;
+  every_minutes: number;
+  at_minute: number | null;
+  web_search: boolean;
+  x_search: boolean;
+  model: string;
+  scopes: AgentScope[];
+};
+
+// Settings → Backend: what's deployed and configured (never a secret's value).
+export type BackendStatus = {
+  functions: { name: string; ok: boolean }[];
+  secrets: Record<string, boolean> | null; // null: the admin function didn't answer
+  latestMigration: string | null;
+  expectedMigration: string;
+  cron: { name: string; schedule: string; active: boolean }[] | null; // null: no pg_cron
+  vault: { project_url: boolean; cron_secret: boolean } | null;
+  calendars: number;
+  lastCalendarSync: string | null;
+  bots: number;
+  lastBotRun: string | null;
+  projectRef: string | null;
+};

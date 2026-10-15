@@ -3,7 +3,7 @@
 // `key` is an agent key, carried back exactly once (create, rotate); the
 // form shows it and nothing stores it. `deviceId` comes back from pairing.
 export type ActionResult =
-  | { ok: true; message?: string; key?: string; slug?: string; deviceId?: string }
+  | { ok: true; message?: string; key?: string; slug?: string; agentId?: string; deviceId?: string }
   | { ok: false; error: string }
   | null;
 

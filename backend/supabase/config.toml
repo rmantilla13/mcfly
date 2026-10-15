@@ -18,3 +18,9 @@ verify_jwt = false
 
 [functions.assistant]
 verify_jwt = false
+
+[functions.calendar-sync]
+verify_jwt = false
+
+[functions.bots]
+verify_jwt = false

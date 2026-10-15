@@ -482,6 +482,41 @@ Popup {
                                 }
                             }
                             Rectangle { Layout.fillWidth: true; Layout.leftMargin: 68; height: 1; color: Theme.divider }
+                            // Homestead's Kokoro voices, when the service speaks with Kokoro.
+                            SettingRow {
+                                visible: Voice.available && Voice.voiceId.length > 0
+                                icon: "speaker"
+                                title: qsTr("Voice")
+                                detail: qsTr("The voice McFly answers in, as in Homestead")
+                                RowLayout {
+                                    spacing: 6
+                                    Repeater {
+                                        model: [{ id: "af_heart", name: qsTr("Heart") }, { id: "af_bella", name: qsTr("Bella") },
+                                                { id: "am_michael", name: qsTr("Michael") }, { id: "am_fenrir", name: qsTr("Fenrir") }]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            readonly property bool chosen: Voice.voiceId === modelData.id
+                                            implicitWidth: voiceName.implicitWidth + 28
+                                            implicitHeight: 44
+                                            radius: 22
+                                            color: chosen ? Theme.accent : Theme.surface
+                                            Label {
+                                                id: voiceName
+                                                anchors.centerIn: parent
+                                                text: modelData.name
+                                                color: parent.chosen ? Theme.accentInk : Theme.text
+                                                font.pixelSize: Theme.fontSm - 1
+                                                font.weight: Font.DemiBold
+                                            }
+                                            TapHandler { onTapped: Voice.setVoiceOptions(modelData.id, 0, "") }
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                visible: Voice.available && Voice.voiceId.length > 0
+                                Layout.fillWidth: true; Layout.leftMargin: 68; height: 1; color: Theme.divider
+                            }
                             SettingRow {
                                 icon: "speaker"
                                 title: qsTr("Spoken replies")
@@ -620,6 +655,183 @@ Popup {
                                 name: qsTr("Wake word")
                                 value: !Voice.available ? "—"
                                      : (Voice.wakewordLabel || qsTr("None")) + (Voice.wakewordEnabled ? "" : qsTr(" · off"))
+                            }
+                        }
+                    }
+
+                    // Agents: who feeds this screen, how recently, and what
+                    // each may read. Adding or changing one happens on the web.
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("AGENTS") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: agentRows.implicitHeight + 20
+                        radius: 24
+                        color: Theme.surfaceAlt
+                        ColumnLayout {
+                            id: agentRows
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            anchors.leftMargin: 20
+                            anchors.rightMargin: 20
+                            spacing: 0
+                            Label {
+                                visible: Store.agents.length === 0
+                                Layout.fillWidth: true
+                                Layout.topMargin: 8
+                                Layout.bottomMargin: 8
+                                text: qsTr("No agents yet.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSm - 1
+                            }
+                            Repeater {
+                                model: Store.agents.filter(a => a.active)
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 56
+                                    spacing: 12
+                                    Rectangle {
+                                        Layout.preferredWidth: 32; Layout.preferredHeight: 32; radius: 16
+                                        color: modelData.color
+                                        Label { anchors.centerIn: parent; text: modelData.initial; color: "white"; font.pixelSize: Theme.fontXs; font.weight: Font.Bold }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+                                        Label { Layout.fillWidth: true; text: modelData.name; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: [qsTr("Last push %1").arg(modelData.seenLabel)].concat(modelData.scopeLabels || []).join(" · ")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontXs
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    Rectangle {
+                                        Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5
+                                        color: modelData.seenRecently ? Theme.success : Theme.textMuted
+                                        opacity: modelData.seenRecently ? 1 : 0.5
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    QrPanel {
+                        Layout.fillWidth: true
+                        visible: sheet.paired
+                        url: "https://mcfly.bot/agents"
+                        title: qsTr("Add or change agents")
+                        caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
+                        domain: "mcfly.bot/agents"
+                        codeSize: Theme.small ? 96 : 120
+                    }
+
+                    // Calendars: the subscriptions McFly reads every 15 minutes.
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("CALENDARS") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: calendarRows.implicitHeight + 20
+                        radius: 24
+                        color: Theme.surfaceAlt
+                        ColumnLayout {
+                            id: calendarRows
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            anchors.leftMargin: 20
+                            anchors.rightMargin: 20
+                            spacing: 0
+                            Label {
+                                visible: Store.calendarSources.length === 0
+                                Layout.fillWidth: true
+                                Layout.topMargin: 8
+                                Layout.bottomMargin: 8
+                                text: qsTr("No calendars yet. Subscribe to Google, iCloud or Outlook on mcfly.bot/calendars.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSm - 1
+                                wrapMode: Text.WordWrap
+                            }
+                            Repeater {
+                                model: Store.calendarSources
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 52
+                                    spacing: 12
+                                    Rectangle { Layout.preferredWidth: 12; Layout.preferredHeight: 12; radius: 6; color: modelData.color }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+                                        Label { Layout.fillWidth: true; text: modelData.name; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: !modelData.enabled ? qsTr("Paused")
+                                                : modelData.error ? modelData.error
+                                                : qsTr("%1 events · synced %2").arg(modelData.eventCount).arg(modelData.syncedLabel)
+                                            color: modelData.error && modelData.enabled ? Theme.danger : Theme.textMuted
+                                            font.pixelSize: Theme.fontXs
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    QrPanel {
+                        Layout.fillWidth: true
+                        visible: sheet.paired
+                        url: "https://mcfly.bot/calendars"
+                        title: qsTr("Add a calendar")
+                        caption: qsTr("Scan to paste your calendar's iCal link on your phone. The link stays on the server.")
+                        domain: "mcfly.bot/calendars"
+                        codeSize: Theme.small ? 96 : 120
+                    }
+
+                    // Memory: what McFly knows about you. The assistant and
+                    // agents you allow read these notes.
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("MEMORY") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: memoryRows.implicitHeight + 24
+                        radius: 24
+                        color: Theme.surfaceAlt
+                        ColumnLayout {
+                            id: memoryRows
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            anchors.leftMargin: 20
+                            anchors.rightMargin: 20
+                            spacing: 8
+                            Label {
+                                visible: Store.memories.length === 0
+                                Layout.fillWidth: true
+                                text: qsTr("Nothing yet. Add notes on mcfly.bot/memory: where you live, what you follow, how you like briefs.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSm - 1
+                                wrapMode: Text.WordWrap
+                            }
+                            Repeater {
+                                model: Store.memories.slice(0, 6)
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: 10
+                                    Icon { Layout.alignment: Qt.AlignTop; Layout.topMargin: 3; name: modelData.pinned ? "star" : "brief"; size: 16; color: modelData.pinned ? Theme.accent : Theme.textMuted }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.text
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fontSm - 1
+                                        wrapMode: Text.WordWrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                            Label {
+                                visible: Store.memories.length > 6
+                                text: qsTr("%1 more on mcfly.bot/memory").arg(Store.memories.length - 6)
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontXs
                             }
                         }
                     }
