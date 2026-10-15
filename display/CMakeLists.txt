@@ -111,6 +111,7 @@ qt_add_qml_module(mcfly-display
         qml/components/ChipRow.qml
         qml/components/EmptyState.qml
         qml/components/QrPanel.qml
+        qml/components/SuggestionChips.qml
         qml/screens/HomeScreen.qml
         qml/screens/BriefsScreen.qml
         qml/screens/MarketsScreen.qml

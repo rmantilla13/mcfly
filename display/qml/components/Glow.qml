@@ -20,7 +20,21 @@ Canvas {
         if (w <= 0 || h <= 0) return
 
         // Arch centred low and to the right, sweeping up from the bottom-left.
-        const cx = w * 0.62, cy = h * 1.18, r = Math.max(w, h) * 0.78
+        // The widest pass spreads `reach` either side of the arc, and all of
+        // it has to stay inside the canvas, or the top edge slices the glow
+        // in a straight line. A radius from the width puts a landscape arc's
+        // crest far above that, so there the arc is fitted instead: through
+        // the bottom-left corner, cresting at `crest`.
+        const band = h * 0.16
+        const reach = band * (0.35 + 15 * 0.16) / 2
+        const crest = reach + h * 0.12
+        const cx = w * 0.62
+        let cy = h * 1.18, r = Math.max(w, h) * 0.78
+        if (cy - r < crest) {
+            const rise = h - crest
+            r = (rise + cx * cx / rise) / 2
+            cy = crest + r
+        }
         const grad = ctx.createLinearGradient(0, 0, w, 0)
         grad.addColorStop(0.00, glow.colors[0])
         grad.addColorStop(0.40, glow.colors[1])
@@ -30,7 +44,6 @@ Canvas {
         ctx.lineCap = "round"
 
         // Many wide, faint passes approximate a blur without shader effects.
-        const band = h * 0.16
         for (let i = 0; i < 16; ++i) {
             ctx.globalAlpha = 0.06 * glow.intensity
             ctx.lineWidth = band * (0.35 + i * 0.16)

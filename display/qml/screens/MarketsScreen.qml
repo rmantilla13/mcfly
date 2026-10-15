@@ -42,6 +42,7 @@ Item {
 
             // Metrics, grouped.
             FocusFlickable {
+                id: metricsView
                 visible: markets.segment === "metrics"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -92,11 +93,17 @@ Item {
                     }
                     Item { Layout.preferredHeight: 1; visible: Store.metrics.length === 0 }
                 }
+                // Over the view, not in its (empty) content.
                 EmptyState {
+                    parent: metricsView
                     anchors.fill: parent
                     visible: Store.metrics.length === 0
-                    text: qsTr("No metrics yet.")
-                    hint: qsTr("Agents push numbers to McFly; see docs/AGENTS.md.")
+                    icon: "chart"
+                    text: qsTr("No metrics yet")
+                    hint: qsTr("Agents send the numbers you track: sign-ups, uptime, revenue.")
+                    url: "https://mcfly.bot/agents"
+                    action: qsTr("Add an agent")
+                    caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
                 }
             }
 
@@ -157,8 +164,12 @@ Item {
                 EmptyState {
                     anchors.fill: parent
                     visible: Store.quotes.length === 0
-                    text: qsTr("No quotes yet.")
-                    hint: qsTr("A stocks agent pushes them to McFly; see docs/AGENTS.md.")
+                    icon: "chart"
+                    text: qsTr("No quotes yet")
+                    hint: qsTr("A stocks agent sends the symbols you follow.")
+                    url: "https://mcfly.bot/agents"
+                    action: qsTr("Add an agent")
+                    caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
                 }
             }
         }

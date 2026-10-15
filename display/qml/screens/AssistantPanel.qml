@@ -220,22 +220,11 @@ Rectangle {
                     font.weight: Font.Medium
                     wrapMode: Text.WordWrap
                 }
-                Flow {
+                // Centred under the heading, row by row.
+                SuggestionChips {
                     width: parent.width
-                    spacing: 10
-                    Repeater {
-                        model: AI.suggestions
-                        delegate: Rectangle {
-                            required property string modelData
-                            width: sLabel.implicitWidth + 36
-                            height: 52
-                            radius: 26
-                            color: Theme.surface
-                            border.color: Theme.divider
-                            Label { id: sLabel; anchors.centerIn: parent; text: modelData; color: Theme.text; font.pixelSize: Theme.fontSm - 1 }
-                            TapHandler { onTapped: panel.send(modelData) }
-                        }
-                    }
+                    items: AI.suggestions
+                    onPicked: text => panel.send(text)
                 }
             }
         }

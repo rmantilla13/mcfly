@@ -488,11 +488,48 @@ Item {
         }
     }
 
-    component EmptyDay: Label {
-        text: qsTr("Nothing yet today. Briefs, the Pulse, project updates and your calendar land here as your agents push them.")
-        color: Theme.textMuted
-        font.pixelSize: Theme.fontSm
-        wrapMode: Text.WordWrap
+    // A day with nothing in it yet, as on a new account: what lands here,
+    // and a code apiece to scan for the pages on mcfly.bot that set it up.
+    component EmptyDay: ColumnLayout {
+        spacing: Theme.mini ? 8 : 12
+        Label {
+            Layout.fillWidth: true
+            text: qsTr("Your day shows up here")
+            color: Theme.text
+            font.pixelSize: Theme.mini ? Theme.fontSm + 1 : Theme.fontMd
+            font.weight: Font.DemiBold
+            wrapMode: Text.WordWrap
+        }
+        Label {
+            Layout.fillWidth: true
+            visible: !Theme.mini
+            text: qsTr("Briefs, the Daily Pulse, projects and your calendar, in time order, as they come in. Set them up from your phone:")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+        }
+        GridLayout {
+            visible: Store.mode !== "pairing"
+            Layout.fillWidth: true
+            Layout.topMargin: Theme.mini ? 0 : 6
+            columns: Theme.wide ? 3 : 1
+            rowSpacing: Theme.mini ? 8 : 10
+            columnSpacing: 10
+            Repeater {
+                model: [{ url: "https://mcfly.bot/bots", title: qsTr("Grok bots"), caption: qsTr("Briefs and a Daily Pulse, written on a schedule.") },
+                        { url: "https://mcfly.bot/calendars", title: qsTr("Calendars"), caption: qsTr("Google, iCloud or Outlook, read every 15 minutes.") },
+                        { url: "https://mcfly.bot/agents", title: qsTr("Agents"), caption: qsTr("Your own scripts and tools, each with its own key.") }]
+                delegate: QrPanel {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    url: modelData.url
+                    title: modelData.title
+                    caption: modelData.caption
+                    domain: modelData.url.replace("https://", "")
+                    codeSize: Theme.mini ? 64 : Theme.wide ? 112 : 96
+                }
+            }
+        }
     }
 
     // ---- Landscape (Wide, Compact, Mini): the moment | the day.
@@ -512,6 +549,15 @@ Item {
             NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
             BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
             Item { Layout.fillHeight: true }
+            // Questions to ask in one tap, over the bar that asks anything.
+            SuggestionChips {
+                Layout.fillWidth: true
+                visible: !Theme.mini
+                items: AI.suggestions
+                centred: false
+                maxRows: 2
+                onPicked: text => home.openAssistant(text)
+            }
             AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; visible: !Theme.mini; live: !Theme.tall }
         }
 
@@ -522,7 +568,15 @@ Item {
             spacing: Theme.mini ? 10 : 14
             MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
             TodayHeading { Layout.fillWidth: true }
-            EmptyDay { Layout.fillWidth: true; visible: home.timeline.length === 0 }
+            // Filling the column keeps TODAY at the top; scrolls where it's short.
+            FocusFlickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: home.timeline.length === 0
+                fadeColor: Theme.background
+                contentHeight: emptyDay.implicitHeight
+                EmptyDay { id: emptyDay; width: parent.width }
+            }
             ListView {
                 id: dayList
                 Layout.fillWidth: true
@@ -536,12 +590,76 @@ Item {
 
                 // Keep "now" in view: one row of what came before, then the rest.
                 property bool touched: false
+                // Room under the last row, so the list never rests with a row
+                // half under TODAY (see trimTop).
+                property real endRoom: 0
+                footer: Item { width: 1; height: dayList.endRoom }
+                // A flick comes to rest on a row too.
+                snapMode: ListView.SnapToItem
                 function settle() {
-                    if (!touched && count > 0)
-                        positionViewAtIndex(Math.max(0, home.focusIndex - 1), ListView.Beginning)
+                    if (touched || count === 0)
+                        return
+                    endRoom = 0
+                    positionViewAtIndex(Math.max(0, home.focusIndex - 1), ListView.Beginning)
+                    trimTop()
+                }
+                // Late in the day the list rests on its end, where the row at
+                // the top edge can be cut in half. Start at the next row then,
+                // and leave that much room under the last one instead.
+                function trimTop() {
+                    if (!atYEnd)
+                        return
+                    const row = itemAtIndex(indexAt(width / 2, contentY + 1))
+                    if (!row || row.y >= contentY - 1)
+                        return
+                    const next = row.y + row.height + spacing
+                    endRoom = next - contentY
+                    contentY = next
                 }
                 onMovementStarted: { touched = true; settleTimer.restart() }
                 onCountChanged: Qt.callLater(settle)
+                // Rows wrap to the width, so place them again once it (or the
+                // room) is known.
+                onWidthChanged: if (!touched) Qt.callLater(settle)
+                onHeightChanged: if (!touched) Qt.callLater(settle)
+
+                // Whichever edge cuts a row (while scrolling, or a row the
+                // snap can't reach) fades it out rather than slicing it.
+                // Over the list, not in it, so they stay at the edges.
+                // (contentHeight: asked again once the rows are laid out.)
+                readonly property bool cutAtTop: {
+                    const row = contentHeight > 0 ? itemAtIndex(indexAt(width / 2, contentY + 1)) : null
+                    return !!row && row.y < contentY - 1
+                }
+                readonly property bool cutAtBottom: {
+                    const row = contentHeight > 0 ? itemAtIndex(indexAt(width / 2, contentY + height - 1)) : null
+                    return !!row && row.y + row.height > contentY + height + 1
+                }
+                Rectangle {
+                    parent: dayList
+                    z: 1
+                    width: dayList.width
+                    height: Theme.mini ? 28 : 48
+                    opacity: dayList.cutAtTop ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: Theme.quick } }
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: Theme.background }
+                        GradientStop { position: 1; color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0) }
+                    }
+                }
+                Rectangle {
+                    parent: dayList
+                    z: 1
+                    y: dayList.height - height
+                    width: dayList.width
+                    height: Theme.mini ? 20 : 32
+                    opacity: dayList.cutAtBottom ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: Theme.quick } }
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0) }
+                        GradientStop { position: 1; color: Theme.background }
+                    }
+                }
                 Timer { id: settleTimer; interval: 45000; onTriggered: { dayList.touched = false; dayList.settle() } }
                 Connections {
                     target: home

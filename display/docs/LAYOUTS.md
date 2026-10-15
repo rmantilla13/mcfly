@@ -95,18 +95,18 @@ offline pill moves to the top centre so it never covers a header's controls.
 
 | screen | Wide | Compact | Mini | Tall |
 |---|---|---|---|---|
-| Home | [greeting, clock 112, date; up next; blocked; ask 88] ≤ 520 · [markets strip 5; TODAY; the day list, kept at now] | same, clock 88, 4 tickers | same, clock 64, 3 tickers, no ask bar | feed: clock, up next, blocked, ask, markets 4, every row of the day |
+| Home | [greeting, clock 112, date; up next; blocked; quick questions, 2 rows; ask 88] ≤ 520 · [markets strip 5; TODAY; the day list, kept at now, resting on a whole row] | same, clock 88, 4 tickers | same, clock 64, 3 tickers, no questions or ask bar | feed: clock, up next, blocked, ask, markets 4, every row of the day |
 | Briefs | list 520 \| reader | list 440 \| reader | one-line rows → push reader | rows → push reader |
 | Markets | grid 3 \| pane 440 | grid 2 \| pane 380 | grid 3 × 112 → push | grid 2 × 150 → push |
 | Metrics | grid 4 | grid 3 | grid 2 | grid 2 |
 | News | hero 360; cards 4 × 280 | hero 300; cards 3 × 250 | lead row (no picture); rows 2 × 88 → story without a picture | hero 240; cards 2 × 290 → picture on top |
 | Projects | board 3 \| pane 460 | board 2 \| pane 400 | board 2 × 124 → push | board 2 × 170 → push |
 | Boards | grid 6 | grid 4 | grid 2, chips scroll | grid 2 |
-| Calendar | 14 days \| agenda \| day tile 420 | 10 days \| agenda \| tile 360 | 7 days; agenda | 7 days; tile 230; agenda |
+| Calendar | 14 days \| agenda \| day tile 420: the day's hours with its events, then its calendars | 10 days \| agenda \| tile 360, same | 7 days; agenda | 7 days; tile 230 (two rows); agenda |
 | Assistant | as today | as today | subtitle dropped; bubbles 85 % | bubbles 85 % |
 | QuickAnswer | 880 wide | 760 | page − 32, orb 120×88, 4 lines | 680, 6 lines |
 | Setup | card ≤ 1240, 2 columns | ≤ 1120, 2 columns | page − 32, 2 columns, digits 56×76, QR 120 | page − 40, 1 column, scrolls |
-| Settings | 1100, 2 columns | 1100, 2 columns | page − 16, 1 column | page − 32, 1 column |
+| Settings | 1100, 2 columns: this screen \| about and your account | 1100, 2 columns, same | page − 16, 1 column | page − 32, 1 column |
 | Ambient saver | clock 200, rail of 4 cards 260 | clock 168, 3 cards 220 | clock 104, 2 cards 150, no "then" line | clock 150, cards 2 × 2 at 220 |
 | Clock saver | clock 0.2 w, 5 symbols | same | 3 symbols | symbols wrap |
 | Headlines saver | headline 64 | 54 | 36, clock 56 | 44 |
@@ -161,7 +161,10 @@ offline pill moves to the top centre so it never covers a header's controls.
 
 ## Common behaviour
 
-- **Empty**: `EmptyState` with the feed's hint, centred in the region.
+- **Empty**: `EmptyState`, centred in the region: an icon, a line, where the
+  feed comes from and a code to scan for the mcfly.bot page that sets it up
+  (`/bots`, `/agents`, `/calendars`, `/memory`). A new account sees these
+  everywhere, so they say what to do; Home's empty day has all three codes.
 - **Offline**: nothing blanks; the last rows stay and the pill shows.
 - **Overflow**: lists scroll; grids sit in a `FocusFlickable`; text elides
   with `maximumLineCount`; only a `ChipRow` scrolls sideways.

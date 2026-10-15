@@ -801,7 +801,8 @@ Popup {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 8
                                 Layout.bottomMargin: 8
-                                text: qsTr("No agents yet.")
+                                text: qsTr("No agents yet. Scan the code below to add one.")
+                                wrapMode: Text.WordWrap
                                 color: Theme.textMuted
                                 font.pixelSize: Theme.fontSm - 1
                             }
@@ -956,6 +957,15 @@ Popup {
                                 font.pixelSize: Theme.fontXs
                             }
                         }
+                    }
+                    QrPanel {
+                        Layout.fillWidth: true
+                        visible: sheet.paired && Store.memories.length === 0
+                        url: "https://mcfly.bot/memory"
+                        title: qsTr("Tell McFly about you")
+                        caption: qsTr("Scan to add notes on your phone. The assistant reads them, and agents you allow.")
+                        domain: "mcfly.bot/memory"
+                        codeSize: Theme.small ? 96 : 120
                     }
 
                     SectionLabel { visible: sheet.paired; Layout.topMargin: 12; text: qsTr("PAIRING") }

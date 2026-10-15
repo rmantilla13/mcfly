@@ -35,6 +35,7 @@ Item {
         }
 
         FocusFlickable {
+            id: boardsView
             Layout.fillWidth: true
             Layout.fillHeight: true
             fadeColor: Theme.background
@@ -159,11 +160,17 @@ Item {
                     }
                 }
             }
+            // Over the view, not in its (empty, zero-height) content.
             EmptyState {
+                parent: boardsView
                 anchors.fill: parent
                 visible: Store.dashboards.length === 0
-                text: qsTr("No dashboards yet.")
-                hint: qsTr("An agent pushes one with a title and its widgets; see docs/AGENTS.md.")
+                icon: "grid"
+                text: qsTr("No dashboards yet")
+                hint: qsTr("An agent sends one with a title and its widgets.")
+                url: "https://mcfly.bot/agents"
+                action: qsTr("Add an agent")
+                caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
             }
         }
     }

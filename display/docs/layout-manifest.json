@@ -194,7 +194,8 @@
       "MasterDetail",
       "ChipRow",
       "EmptyState",
-      "QrPanel"
+      "QrPanel",
+      "SuggestionChips"
     ],
     "changed": [
       "Theme",

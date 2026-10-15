@@ -124,8 +124,12 @@ Item {
                 EmptyState {
                     anchors.fill: parent
                     visible: Store.briefs.length === 0
-                    text: qsTr("No briefs yet.")
-                    hint: qsTr("Agents push them to McFly; see docs/AGENTS.md.")
+                    icon: "brief"
+                    text: qsTr("No briefs yet")
+                    hint: qsTr("A Grok bot writes one on a schedule, and any agent can send them.")
+                    url: "https://mcfly.bot/bots"
+                    action: qsTr("Make a Grok bot")
+                    caption: qsTr("Scan to make one on your phone: what to ask Grok, and when.")
                 }
             }
         }

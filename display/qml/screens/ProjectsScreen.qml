@@ -110,8 +110,12 @@ Item {
                 EmptyState {
                     anchors.fill: parent
                     visible: Store.projects.length === 0
-                    text: qsTr("No projects yet.")
-                    hint: qsTr("A code or task agent pushes them to McFly; see docs/AGENTS.md.")
+                    icon: "chores"
+                    text: qsTr("No projects yet")
+                    hint: qsTr("A code or task agent reports what it's working on here.")
+                    url: "https://mcfly.bot/agents"
+                    action: qsTr("Add an agent")
+                    caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
                 }
             }
         }

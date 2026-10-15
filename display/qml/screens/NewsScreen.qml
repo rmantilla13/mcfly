@@ -63,6 +63,7 @@ Item {
         }
 
         FocusFlickable {
+            id: storiesView
             Layout.fillWidth: true
             Layout.fillHeight: true
             fadeColor: Theme.background
@@ -144,12 +145,17 @@ Item {
                     }
                 }
 
+                // Centred in the room the stories would take.
                 EmptyState {
                     visible: Store.stories.length === 0
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 160
-                    text: qsTr("Today's report hasn't arrived yet.")
-                    hint: qsTr("The Daily Pulse pipeline pushes it to McFly; see docs/AGENTS.md.")
+                    Layout.preferredHeight: Math.max(implicitHeight, storiesView.height - Theme.pageMargin)
+                    icon: "news"
+                    text: qsTr("Today's report hasn't arrived yet")
+                    hint: qsTr("A Grok bot can write you a Daily Pulse report every morning.")
+                    url: "https://mcfly.bot/bots"
+                    action: qsTr("Make a Grok bot")
+                    caption: qsTr("Scan to make one on your phone: what to ask Grok, and when.")
                 }
                 Item { height: Theme.pageMargin }
             }
