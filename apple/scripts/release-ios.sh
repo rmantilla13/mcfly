@@ -23,7 +23,7 @@
 #     Or an App Store Connect API key instead: MCFLY_ASC_KEY_ID and
 #     MCFLY_ASC_ISSUER_ID, with the key at
 #     ~/.appstoreconnect/private_keys/AuthKey_<MCFLY_ASC_KEY_ID>.p8 (or MCFLY_ASC_KEY_PATH)
-#   - the app in App Store Connect, for the bundle ID bot.mcfly.app
+#   - the app in App Store Connect, for the bundle ID com.bot.mcfly
 #   - brew install xcodegen
 set -euo pipefail
 cd "$(dirname "$0")/.."

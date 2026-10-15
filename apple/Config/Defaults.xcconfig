@@ -5,7 +5,7 @@
 // Your Apple Developer team (10 characters) and the app's bundle id. Leave the
 // team empty for a simulator or an unsigned build.
 MCFLY_TEAM_ID =
-MCFLY_BUNDLE_ID = bot.mcfly.app
+MCFLY_BUNDLE_ID = com.bot.mcfly
 
 // Your Supabase project. Set both in Local.xcconfig. Only the anon
 // (publishable) key: never the service role key.

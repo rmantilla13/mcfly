@@ -8,4 +8,4 @@ SUPABASE_ANON_KEY = YOUR-ANON-KEY
 
 // Required to run on an iPhone or to sign the Mac app.
 // MCFLY_TEAM_ID = ABCDE12345
-// MCFLY_BUNDLE_ID = bot.mcfly.app
+// MCFLY_BUNDLE_ID = com.bot.mcfly

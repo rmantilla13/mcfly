@@ -30,7 +30,7 @@ apple/
    comment) and `SUPABASE_ANON_KEY`. Only the anon/publishable key ever goes
    in: the app reads them from Info.plist at launch (`Config.swift`) and
    refuses placeholders. Add `MCFLY_TEAM_ID` to run on an iPhone or to sign
-   the Mac app; `MCFLY_BUNDLE_ID` defaults to `bot.mcfly.app`.
+   the Mac app; `MCFLY_BUNDLE_ID` defaults to `com.bot.mcfly`.
 2. In Supabase → Authentication → URL Configuration, add
    `mcfly://auth-callback` to **Redirect URLs**, so "Email me a link" opens
    the app.
@@ -99,11 +99,11 @@ Before the first upload:
    URLs** (Configure, above): without it an emailed sign-in link opens the
    console, not the app.
 2. At [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list),
-   **Identifiers → + → App IDs → App**: bundle ID `bot.mcfly.app` (explicit),
+   **Identifiers → + → App IDs → App**: bundle ID `com.bot.mcfly` (explicit),
    with **Associated Domains** ticked. (The upload would register it too, but
    App Store Connect lists only bundle IDs that already exist.)
 3. In [App Store Connect](https://appstoreconnect.apple.com/apps), **+ → New
-   App**: iOS, bundle ID `bot.mcfly.app`, any SKU. The name must be unique on
+   App**: iOS, bundle ID `com.bot.mcfly`, any SKU. The name must be unique on
    the App Store; the home screen still says McFly (`CFBundleDisplayName`).
    Without it the upload ends in "No suitable application records were
    found".
@@ -191,7 +191,7 @@ Three ways in:
   `mcfly://pair?code=123456` opens the app on Displays with the sheet filled
   in. The universal link needs `mcfly.bot` to serve
   `/.well-known/apple-app-site-association` with the app's
-  `<team id>.bot.mcfly.app` under `applinks` (that file lives with the
+  `<team id>.com.bot.mcfly` under `applinks` (that file lives with the
   console, in `admin/`); until then the `mcfly://` scheme works and the QR
   code's https link still opens Safari.
 

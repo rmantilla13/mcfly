@@ -3,7 +3,7 @@
 # come from Config/*.xcconfig; see README.md.
 name: McFly
 options:
-  bundleIdPrefix: bot.mcfly
+  bundleIdPrefix: com.bot
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
@@ -61,7 +61,7 @@ targets:
         # mcfly://auth-callback (email links) and mcfly://pair?code=123456.
         # The https://mcfly.bot/pair link is the associated domain in the entitlements.
         CFBundleURLTypes:
-          - CFBundleURLName: bot.mcfly.app
+          - CFBundleURLName: com.bot.mcfly
             CFBundleURLSchemes: [mcfly]
     configFiles:
       Debug: Config/Signing.xcconfig
