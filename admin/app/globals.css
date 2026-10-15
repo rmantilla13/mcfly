@@ -183,7 +183,8 @@
 
 /* The ambient view (components/today/AmbientView.tsx): the display's moving
    gradient as three soft blobs in the glow colours, slow enough to be calm,
-   deep and dim at night. Off for people who ask for less motion. */
+   deep and dim at night, under the film grain (.film-grain, with the sign-in
+   page's styles below). Off for people who ask for less motion. */
 .ambient {
   background: #f6e6d2;
 }
@@ -300,13 +301,21 @@
   background: radial-gradient(420px circle at var(--login-x) var(--login-y), color-mix(in oklab, var(--glow-1) 18%, transparent), transparent 70%);
   transition: background 0.2s;
 }
-/* A whisper of film grain so the gradients don't band. */
-.login-grain {
+/* Film grain over the moving gradients (this page and the ambient view), as
+   on the display's GradientTile: static monochrome noise for texture, in
+   plain alpha so the drifting blobs under it never have to be re-blended.
+   A little lighter on dark backgrounds, where the same noise reads stronger. */
+.film-grain {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.05;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* Dark: the sign-in page follows the theme, the ambient view its own clock. */
+.dark .login-scene .film-grain,
+.ambient-night .film-grain {
+  opacity: 0.08;
 }
 .login-rise {
   animation: login-rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;

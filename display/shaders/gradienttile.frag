@@ -1,10 +1,15 @@
 #version 440
 // GradientTile (qml/components/GradientTile.qml), "Poster glow": a luminous
 // pastel mesh gradient with one or two frosted-glass rings drifting across it,
-// static film grain against banding, and an antialiased rounded-corner mask.
-// One pass, no textures, no loops. Built into a .qsb by qt_add_shaders.
+// static film grain, and an antialiased rounded-corner mask. One pass, no
+// textures, no loops. Built into a .qsb by qt_add_shaders.
 //
-// Per pixel: 6 exp, ~7 smoothstep/clamp, 4 length, 1 hash.
+// `soft` blurs the rings into the gradient: the lens edge, the frost, the rim
+// and its halo fade over a fraction of the ring's radius instead of over a
+// pixel, so the blur reads the same on every panel. All of it is analytic:
+// no blur pass, nothing sampled twice. The tile's own corners stay 1 px sharp.
+//
+// Per pixel: 8 exp, ~5 smoothstep/clamp, 4 length, 2 hash.
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -22,7 +27,8 @@ layout(std140, binding = 0) uniform buf {
     float ringScale;  // ring size multiplier
     float ringBias;   // 0..1, horizontal home of the rings
     float glass;      // glass strength: rims x glass, frost x glass^2 (dimmed at night)
-    float grain;      // film-grain amplitude (0.01 ~ +-1.3/255)
+    float grain;      // film-grain amplitude (0.035: most pixels within +-4/255)
+    float soft;       // ring softness: 0 = crisp glass edges, 1 = blurred into the gradient
     vec4 c0;          // palette: main hue
     vec4 c1;          // analogous, warmer/cooler
     vec4 c2;          // analogous, the other way
@@ -79,13 +85,18 @@ void main()
     float l2 = length(d2);
     float on1 = step(0.5, rings);
     float on2 = step(1.5, rings);
-    float in1 = on1 * (1.0 - smoothstep(R1 - px, R1 + px, l1));
-    float in2 = on2 * (1.0 - smoothstep(R2 - px, R2 + px, l2));
+    // Edge width: one pixel when crisp, 7% of the radius when soft.
+    float ew1 = max(px, soft * 0.07 * R1);
+    float ew2 = max(px, soft * 0.07 * R2);
+    float in1 = on1 * (1.0 - smoothstep(R1 - ew1, R1 + ew1, l1));
+    float in2 = on2 * (1.0 - smoothstep(R2 - ew2, R2 + ew2, l2));
 
     // Lens: inside a ring the gradient is sampled slightly magnified and
-    // shifted, so the ring edge reads as glass; overlaps bend twice.
-    vec2 ps = p - in1 * (0.14 * d1 + vec2(0.07, -0.05) * R1)
-                - in2 * (0.14 * d2 + vec2(-0.05, 0.07) * R2);
+    // shifted, so the ring reads as glass; overlaps bend twice. Soft rings
+    // bend less, and the bend eases in across the edge instead of jumping.
+    float lens = 1.0 - 0.35 * soft;
+    vec2 ps = p - lens * in1 * (0.14 * d1 + vec2(0.07, -0.05) * R1)
+                - lens * in2 * (0.14 * d2 + vec2(-0.05, 0.07) * R2);
 
     // ---- Mesh gradient: three drifting colour fields + a soft highlight.
     float S = sqrt(size.x * size.y);
@@ -111,25 +122,36 @@ void main()
     // Qt hands colour uniforms over premultiplied; the palette is opaque, the rim is not.
     vec3 rim = rimColor.rgb / max(rimColor.a, 0.001);
 
-    // ---- Frost: a faint fill that brightens toward the rim; tint the overlap.
-    float e1 = l1 / max(R1, 1.0);
-    float e2 = l2 / max(R2, 1.0);
-    float frost = in1 * (0.07 + 0.16 * e1 * e1 * e1) + in2 * (0.07 + 0.16 * e2 * e2 * e2);
+    // ---- Frost: a faint fill that brightens toward the rim (less when soft,
+    // or the bright band would still end in a line); tint the overlap.
+    float e1 = min(l1 / max(R1, 1.0), 1.0);
+    float e2 = min(l2 / max(R2, 1.0), 1.0);
+    float toRim = 0.16 * (1.0 - 0.55 * soft);
+    float frost = in1 * (0.07 + toRim * e1 * e1 * e1) + in2 * (0.07 + toRim * e2 * e2 * e2);
     col = mix(col, c2.rgb, 0.30 * in1 * in2);
     col = mix(col, rim, glass * glass * frost);
 
-    // ---- Rims: thin, lit from the top-left, with a soft halo.
+    // ---- Rims: a ridge across the ring's edge, lit from the top-left, with a
+    // halo. Crisp: about a pixel wide. Soft: 3% of the radius wide (the halo
+    // 10%), and fainter, so a wider ridge isn't a brighter one.
     vec2 L = vec2(-0.6, -0.8);
     float g1 = abs(l1 - R1);
     float g2 = abs(l2 - R2);
-    float hw = 0.55;   // rim half-width, logical px
-    float rim1 = on1 * (1.0 - smoothstep(hw, hw + px, g1)) * (0.6 + 0.4 * dot(d1 / max(l1, 0.001), L));
-    float rim2 = on2 * (1.0 - smoothstep(hw, hw + px, g2)) * (0.6 + 0.4 * dot(d2 / max(l2, 0.001), L));
-    float halo = on1 * exp(-g1 * g1 * 0.06) + on2 * exp(-g2 * g2 * 0.06);
-    col = mix(col, rim, glass * rimColor.a * clamp(rim1 + rim2 + 0.22 * halo, 0.0, 1.0));
+    float k1 = max(0.55 + 0.5 * px, soft * 0.03 * R1);
+    float k2 = max(0.55 + 0.5 * px, soft * 0.03 * R2);
+    float rim1 = on1 * exp(-g1 * g1 / (k1 * k1)) * (0.6 + 0.4 * dot(d1 / max(l1, 0.001), L));
+    float rim2 = on2 * exp(-g2 * g2 / (k2 * k2)) * (0.6 + 0.4 * dot(d2 / max(l2, 0.001), L));
+    float h1 = max(4.0, soft * 0.10 * R1);
+    float h2 = max(4.0, soft * 0.10 * R2);
+    float halo = on1 * exp(-g1 * g1 / (h1 * h1)) + on2 * exp(-g2 * g2 / (h2 * h2));
+    float lines = (1.0 - 0.5 * soft) * (rim1 + rim2) + (0.22 - 0.06 * soft) * halo;
+    col = mix(col, rim, glass * rimColor.a * clamp(lines, 0.0, 1.0));
 
-    // ---- Static film grain (per physical pixel, never animated: no shimmer).
-    col += (hash12(floor(p * dpr)) - 0.5) * grain;
+    // ---- Film grain: static, one value per physical pixel (never animated, so
+    // it can't shimmer and costs no frames), from two hashes so it clusters
+    // around zero like real grain instead of spreading evenly.
+    vec2 gp = floor(p * dpr);
+    col += (hash12(gp) + hash12(gp.yx * 1.618 + 71.3) - 1.0) * grain;
 
     fragColor = vec4(clamp(col, 0.0, 1.0) * cover, cover) * qt_Opacity;
 }

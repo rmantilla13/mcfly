@@ -75,7 +75,7 @@ SystemController ─ Wi-Fi, speakers, restart, reboot (through a root helper)
 ```
 
 - **Setup screen**: the first-run screen is a full-screen drifting colour
-  field (the `GradientTile` mesh gradient with its glass rings) and the
+  field (the `GradientTile` mesh gradient with its soft glass rings) and the
   `SpectrumGlow` along the bottom, with two steps on a glass card: Wi-Fi
   (networks and password, with the on-screen keyboard) and the 6-digit code
   plus a QR code (`https://mcfly.bot/pair?code=…`) to connect the screen to
@@ -100,7 +100,8 @@ SystemController ─ Wi-Fi, speakers, restart, reboot (through a root helper)
   token. Settings → Dark mode swaps in a warm near-black palette.
 - **Gradient tiles.** The highlight tiles (Home's brief, Markets' detail,
   the Calendar's day, the setup screen's field) are one shader pass: a
-  pastel mesh gradient with drifting frosted-glass rings.
+  pastel mesh gradient with drifting frosted-glass rings blurred into it
+  (`GradientTile.blur`), under a fine static film grain.
 - **Motion.** Pages cross-fade and settle, the nav pill springs, cards
   press, the code's digits light up in turn.
 

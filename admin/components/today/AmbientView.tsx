@@ -82,6 +82,7 @@ export function AmbientView({ data }: { data: TodayData }) {
       <div className="ambient-blob ambient-blob-1" aria-hidden="true" />
       <div className="ambient-blob ambient-blob-2" aria-hidden="true" />
       <div className="ambient-blob ambient-blob-3" aria-hidden="true" />
+      <div className="film-grain" aria-hidden="true" />
 
       <div
         className={cn("relative flex h-full flex-col justify-between px-[clamp(24px,5vw,72px)] py-[clamp(24px,5vh,64px)]", night ? "text-white/85" : "text-[#2A2218]")}

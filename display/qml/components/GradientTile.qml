@@ -7,9 +7,10 @@ import McFly.Core
 // stay on plain cards.
 //
 // A luminous pastel mesh gradient with one or two frosted-glass rings that
-// drift slowly across it, drawn in a single ShaderEffect pass (gradient,
-// glass, film grain and the antialiased rounded corners all happen in
-// shaders/gradienttile.frag: no layers, blurs or masks). Children go on top.
+// drift slowly across it, blurred into the gradient rather than outlined, under
+// a fine film grain. One ShaderEffect pass (gradient, glass, blur, grain and
+// the antialiased rounded corners all happen in shaders/gradienttile.frag: no
+// layers, blur passes or masks). Children go on top.
 //
 //   GradientTile {
 //       baseColor: member.color          // or colors: [Theme.glowBlue, ...]
@@ -42,7 +43,9 @@ Item {
     property int rings: 2              // 0, 1 or 2 frosted-glass rings
     property real ringScale: 1.0       // ring size multiplier
     property real ringBias: 0.72       // 0..1, where the rings live horizontally
-    property real grain: 0.014         // film grain against banding (0 = off)
+    property real blur: 1.0            // 0 = crisp glass rings, 1 = rings blurred into the gradient
+    property real grain: 0.035         // static film grain, for texture (0 = off); 70% at night,
+                                       // where the same noise reads stronger on dark tones
 
     // ---- Motion
     property bool animated: Device.animatedTiles   // off: frozen where it is
@@ -181,7 +184,8 @@ Item {
         readonly property real ringScale: tile.ringScale
         readonly property real ringBias: tile.ringBias
         readonly property real glass: 1.0 - 0.65 * tile._dk
-        readonly property real grain: tile.grain
+        readonly property real grain: tile.grain * (1.0 - 0.3 * tile._dk)
+        readonly property real soft: tile.blur
         readonly property color c0: tile._pal[0]
         readonly property color c1: tile._pal[1]
         readonly property color c2: tile._pal[2]

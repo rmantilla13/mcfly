@@ -95,7 +95,7 @@ export function LoginScene({ children }: { children: ReactNode }) {
       <div className="login-blob login-blob-2" aria-hidden="true" />
       <div className="login-blob login-blob-3" aria-hidden="true" />
       <div className="login-spotlight" aria-hidden="true" />
-      <div className="login-grain" aria-hidden="true" />
+      <div className="film-grain" aria-hidden="true" />
 
       <div className="relative mx-auto grid min-h-screen max-w-[1200px] grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-center gap-16 px-10 py-12 max-lg:grid-cols-1 max-lg:gap-8 max-md:px-4">
         {/* Wide screens: what McFly is, alive. */}
