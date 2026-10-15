@@ -110,6 +110,21 @@ public final class FeedStore {
 
     // MARK: Derived
 
+    /// Today in time order: today's Pulse reports, briefs, project updates and events (`Timeline`).
+    public func timeline(now: Date = .now, calendar: Calendar = .current) -> [TimelineItem] {
+        Timeline.build(briefs: briefs, reports: reports, projects: projects, events: events, agents: agents,
+                       now: now, calendar: calendar)
+    }
+
+    /// Blocked projects, in the console's order.
+    public var blockedProjects: [Project] { projects.filter { $0.status == .blocked } }
+
+    /// Today's newest report, if one has come in.
+    public func todaysReport(now: Date = .now, calendar: Calendar = .current) -> NewsReport? {
+        let today = Timeline.dayKey(now, calendar: calendar)
+        return reports.first { $0.reportDate == today }
+    }
+
     public var latestBrief: Brief? { briefs.first }
 
     /// Briefs grouped by the day they were published, newest day first.

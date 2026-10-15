@@ -154,3 +154,23 @@ struct StoryDetailView: View {
         .inlineTitle()
     }
 }
+
+/// The hero story: picture, section, headline.
+struct HeroStoryCard: View {
+    let item: NewsItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            StoryImage(url: item.image, height: 170)
+            Tag(text: item.sectionName, color: Theme.coral)
+            Text(item.headline)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Theme.text)
+                .multilineTextAlignment(.leading)
+            Text(item.source)
+                .font(.caption)
+                .foregroundStyle(Theme.muted)
+        }
+        .card(padding: 12)
+    }
+}

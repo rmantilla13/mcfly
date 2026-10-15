@@ -13,13 +13,14 @@ apple/
 ├── Config/                xcconfig layering: Defaults → Signing → optional Local (secrets, team)
 ├── McFly/                 the app
 │   ├── App/               McFlyApp (scenes, links), AppModel (session, phase, services), Config
-│   ├── Theme/             tokens, glow, cards and pills
+│   ├── Theme/             mood palettes and Appearance, GradientTile (+ its Metal shader), glow, cards and pills
 │   ├── Views/             one file per screen, Components.swift for shared pieces
 │   ├── Voice/             VoiceGlow (from Homestead), listener, speaker, session, VoiceModeView
 │   ├── Assets.xcassets    app icon (scripts/render_app_icon.py), launch color
 │   └── McFly-*.entitlements   associated domain; the Mac one adds the sandbox
-└── McFlyKit/              Swift package: models (Models.swift, Productivity.swift), FeedStore, assistant
-                           SSE client, pairing, admin, demo data, unit tests (`swift test`)
+└── McFlyKit/              Swift package: models (Models.swift, Productivity.swift), FeedStore, Home's
+                           Timeline and the Mood, assistant SSE client, pairing, admin, demo data,
+                           unit tests (`swift test`)
 ```
 
 ## Configure
@@ -65,14 +66,18 @@ Python) if it ever needs regenerating.
 `-McFlyDemo YES` (scheme → Run → Arguments, or `MCFLY_DEMO=1` in the
 environment): the seed's data from `McFlyKit/Sources/McFlyKit/Resources/demo.json`,
 an in-memory admin, and a canned assistant, so every screen works and the
-voice loop can be tried.
+voice loop can be tried. The demo's dates move so its newest push is 20
+minutes old and its newest Pulse report is today's, so Home always has a day.
+`-McFlyMood morning|day|evening|night|dark` (or `MCFLY_MOOD`, as on the
+display) pins the palette for screenshots.
 
 ## Screens
 
 | Where | What |
 |---|---|
 | **Sign in** | Email + password, or **Email me a link** (a magic link that comes back to `mcfly://auth-callback`). After signing in, `is_platform_admin` is checked; a non-admin sees "This account isn't a McFly admin. The first account to sign up becomes the admin." with Sign out. |
-| **Today** | The latest brief (title, body, agent, time), a strip of quotes (symbol, price, change colored), the newest Pulse report's hero story and the next headlines. Pull to refresh. |
+| **Home** | The display's Home in its portrait layout: the greeting and a big clock, **Up next** (the event on now, else the next one, on its colour), the first blocked project, **Ask McFly** on the voice glow (tap to type, the mic to talk), the markets in one strip, then **Today**: one stream in time order of today's Pulse reports, briefs, project updates and events (`Timeline` in the kit, the same rules as the display's FeedStore and the web's `lib/today.ts`). Past events fade, the one on now is outlined, the next is marked; each row opens its story, brief, project or event. Pull to refresh; coming back to the app after a minute refreshes too. |
+| **Ambient** | The moon on Home: the display's ambient screen saver full screen, for a stand or a nightstand. The moving gradient, the clock, the date, what's next and what follows, and a rail of cards (the latest brief, the markets, a blocked project, today's top story, later events). It drifts a few points a minute, keeps the screen awake, and a tap goes back. |
 | **Briefs** | Grouped by day; a reader lays out paragraphs and `- ` bullets. |
 | **Markets** | A tile per visible symbol in the console's order, with a sparkline from the history; detail with the note and the history. Below the quotes, a **Metrics** section: a tile per visible metric (`metrics` history + `metric_settings` for label, group, order and hidden), grouped by the console's group, with the same sparklines and a detail with the note and history. |
 | **News** | The newest report by section, story cards with thumbnail, headline and takeaway; story detail with the image, takeaway, source domain and Open Link; a calendar menu picks an older report. |
@@ -87,9 +92,29 @@ voice loop can be tried.
 | **Calendar** | `events` from yesterday to two months out: a day list (agenda), and a week view. All-day and multi-day events sit on every day they span. |
 | **Settings** | Account email and Sign out, display name and timezone, **Answers from** (Claude or Grok, `assistant_provider`), all through `admin_get_settings` / `admin_update_settings`; app version, which speech engine this system uses. |
 
-On the iPhone, Today, Briefs, Markets, News and Voice are tabs and the rest
-(Projects, Dashboards, Calendar, Displays, Agents, Settings) sit behind
-**More**; on the Mac they're a sidebar.
+On the iPhone, Home, Briefs, Markets and News are tabs, the display's first
+four, and the rest (Projects, Dashboards, Calendar, Voice, Displays, Agents,
+Settings) sit behind **More**: five in all, as many as an iPhone's tab bar
+shows. Voice is also Home's Ask bar. On the Mac they're a sidebar.
+
+## Look
+
+The display's design language (`display/qml/Theme.qml`), in `McFly/Theme`:
+
+- **Time-of-day palettes.** Morning (warm peach, coral accent), day (clear,
+  blue), evening (violet) and night (dim, dark) by the display's hours
+  (`Mood` in the kit: night 9:30 pm to 6:30 am, then morning until 11, day
+  until 5 pm). Every colour in the app comes from `Theme`, so all of it moves
+  together, easing over when the mood changes. With the system in dark mode
+  it's the display's warm near-black palette instead (its Settings → Dark
+  mode). A night palette is dark even when the system is light, so the app
+  sets its own colour scheme and reads the system's from the screen.
+- **GradientTile** is the display's shader (`display/shaders/gradienttile.frag`)
+  as a SwiftUI colour effect (`GradientTile.metal`): the pastel mesh
+  gradient, the frosted-glass rings blurred into it and the static film
+  grain, in one pass, with the palette worked out from a base colour or the
+  glow colours as the QML does. It only moves while on screen, with the app
+  in front and Reduce Motion off.
 
 The assistant request carries `provider: "claude" | "grok"` when the person
 has picked one (Settings → Answers from); the function otherwise uses
@@ -144,4 +169,7 @@ mirrors `seed.sql` (feeds, projects with their updates, metrics, dashboards
 and the widget enum, events, settings with and without the newer columns),
 quote and metric grouping and ordering, pairing-code validation and link
 parsing, brief text blocks, sentence splitting for speech, formatting, the
-feed store's refresh and derived values, and the demo admin service.
+feed store's refresh and derived values, the demo admin service, and Home's
+timeline: the web's cases from `admin/tests/today.test.mjs` (today's rows
+only, all-day first; an overnight report opening the day; past, now and
+next; up next; the labels), the mood's hours, and the demo's report dates.

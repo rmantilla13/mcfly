@@ -53,9 +53,15 @@ public struct DemoData: Decodable, Sendable {
             q.asOf = moved(q.asOf); q.createdAt = moved(q.createdAt)
             return q
         }
+        // A report's date is a day, not a moment: it moves by as many days as the
+        // newest push did, so the newest report stays today's.
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: newest),
+                                           to: calendar.startOfDay(for: moved(newest))).day ?? 0
         copy.reports = reports.map { r in
             var r = r
             r.publishedAt = moved(r.publishedAt); r.createdAt = r.createdAt.map(moved)
+            r.reportDate = Self.day(r.reportDate, plus: days, calendar: calendar)
             return r
         }
         copy.devices = devices.map { d in
@@ -84,6 +90,15 @@ public struct DemoData: Decodable, Sendable {
             return e
         }
         return copy
+    }
+
+    /// "2026-10-14" plus `days`, or the date unchanged if it doesn't parse.
+    static func day(_ key: String, plus days: Int, calendar: Calendar) -> String {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard days != 0, parts.count == 3,
+              let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
+              let shifted = calendar.date(byAdding: .day, value: days, to: date) else { return key }
+        return Timeline.dayKey(shifted, calendar: calendar)
     }
 }
 

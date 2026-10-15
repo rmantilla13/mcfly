@@ -9,7 +9,7 @@ struct McFlyApp: App {
         WindowGroup {
             RootView()
                 .environment(app)
-                .tint(Theme.accent)
+                .followsAppearance()
                 .task { await app.start() }
                 // mcfly://auth-callback, mcfly://pair?code=… and the https://mcfly.bot/pair universal link.
                 .onOpenURL { app.handleOpenURL($0) }
@@ -78,13 +78,13 @@ private struct UnreachableView: View {
 
 /// The screens, in sidebar order on the Mac and tab order on the iPhone.
 enum Screen: String, CaseIterable, Identifiable, Hashable {
-    case today, briefs, markets, news, voice, projects, dashboards, calendar, displays, agents, settings
+    case home, briefs, markets, news, voice, projects, dashboards, calendar, displays, agents, settings
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .today: return "Today"
+        case .home: return "Home"
         case .briefs: return "Briefs"
         case .markets: return "Markets"
         case .news: return "News"
@@ -100,7 +100,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
 
     var icon: String {
         switch self {
-        case .today: return "sun.max.fill"
+        case .home: return "house.fill"
         case .briefs: return "text.alignleft"
         case .markets: return "chart.line.uptrend.xyaxis"
         case .news: return "newspaper.fill"
@@ -114,17 +114,19 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// The iPhone's tabs; the rest sit behind More.
-    static let tabs: [Screen] = [.today, .briefs, .markets, .news, .voice]
-    static let more: [Screen] = [.projects, .dashboards, .calendar, .displays, .agents, .settings]
+    /// The iPhone's tabs, the display's first four; the rest sit behind More,
+    /// which makes five, as many as an iPhone's tab bar shows. Voice is also
+    /// Home's Ask bar.
+    static let tabs: [Screen] = [.home, .briefs, .markets, .news]
+    static let more: [Screen] = [.projects, .dashboards, .calendar, .voice, .displays, .agents, .settings]
     /// The Mac sidebar's groups.
-    static let feedScreens: [Screen] = [.today, .briefs, .markets, .news, .projects, .dashboards, .calendar, .voice]
+    static let feedScreens: [Screen] = [.home, .briefs, .markets, .news, .projects, .dashboards, .calendar, .voice]
     static let manageScreens: [Screen] = [.displays, .agents, .settings]
 
     @ViewBuilder
     var view: some View {
         switch self {
-        case .today: TodayView()
+        case .home: HomeView()
         case .briefs: BriefsView()
         case .markets: MarketsView()
         case .news: NewsView()
@@ -143,7 +145,8 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
 /// Displays screen on either.
 struct MainView: View {
     @Environment(AppModel.self) private var app
-    @State private var selection: Screen = .today
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var selection: Screen = .home
 
     var body: some View {
         Group {
@@ -155,6 +158,12 @@ struct MainView: View {
         }
         .onChange(of: app.pendingPairCode) { _, code in
             if code != nil { selection = .displays }
+        }
+        // Back in front after a while: what the agents pushed meanwhile. The
+        // display syncs every minute; the phone catches up when it's looked at.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let loaded = app.feeds.loadedAt, Date.now.timeIntervalSince(loaded) > 60 else { return }
+            Task { await app.feeds.refresh() }
         }
     }
 
@@ -179,7 +188,7 @@ struct MainView: View {
     #else
     private var desktop: some View {
         NavigationSplitView {
-            List(selection: Binding(get: { Optional(selection) }, set: { selection = $0 ?? .today })) {
+            List(selection: Binding(get: { Optional(selection) }, set: { selection = $0 ?? .home })) {
                 Section("Feeds") {
                     ForEach(Screen.feedScreens) { screen in
                         Label(screen.title, systemImage: screen.icon).tag(screen)

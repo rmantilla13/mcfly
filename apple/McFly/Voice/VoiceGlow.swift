@@ -82,12 +82,16 @@ struct VoiceGlow: View {
     var kind: Kind = .screen
     /// Corner radius of the host, so the edge line and corner light follow its shape.
     var cornerRadius: CGFloat = 44
+    /// A cap for a glow that idles on screen (Home's Ask bar); nil draws every frame.
+    var maxFPS: Double?
+    /// Holds the last frame: the host is covered, or the app is in the background.
+    var paused = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var smoother = VoiceGlowSmoother()
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: maxFPS.map { 1 / $0 }, paused: paused)) { timeline in
             Canvas { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 let state = smoother.update(meter.read(at: time), processing: processing, time: time)
