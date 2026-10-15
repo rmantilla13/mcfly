@@ -234,3 +234,145 @@
     animation: none;
   }
 }
+
+/* The sign-in page (components/login/LoginScene.tsx): the display's glow,
+   alive. Three drifting blobs, a light under the pointer, a column of sample
+   cards floating up, a glow border turning around the card, and a soft
+   spectrum under it like the voice bar. All of it stops for people who ask
+   for less motion. */
+@property --login-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.login-scene {
+  --login-x: 70%;
+  --login-y: 40%;
+  background: var(--background);
+}
+.login-blob {
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.45;
+  pointer-events: none;
+  will-change: transform;
+}
+.dark .login-blob {
+  opacity: 0.4;
+}
+.login-blob-1 {
+  left: -18vmax;
+  top: -22vmax;
+  background: radial-gradient(circle, var(--glow-1) 0%, transparent 62%);
+  animation: login-orbit-1 38s ease-in-out infinite alternate;
+}
+.login-blob-2 {
+  right: -20vmax;
+  top: 10vmax;
+  background: radial-gradient(circle, var(--glow-2) 0%, transparent 62%);
+  animation: login-orbit-2 46s ease-in-out infinite alternate;
+}
+.login-blob-3 {
+  left: 20vmax;
+  bottom: -32vmax;
+  background: radial-gradient(circle, var(--glow-3) 0%, transparent 62%);
+  animation: login-orbit-3 54s ease-in-out infinite alternate;
+}
+@keyframes login-orbit-1 {
+  50% { transform: translate(14vmax, 8vmax) scale(1.12); }
+  to { transform: translate(6vmax, 18vmax) scale(0.95); }
+}
+@keyframes login-orbit-2 {
+  50% { transform: translate(-12vmax, -10vmax) scale(0.9); }
+  to { transform: translate(-20vmax, 6vmax) scale(1.1); }
+}
+@keyframes login-orbit-3 {
+  50% { transform: translate(-10vmax, -14vmax) scale(1.15); }
+  to { transform: translate(12vmax, -6vmax) scale(1); }
+}
+.login-spotlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(420px circle at var(--login-x) var(--login-y), color-mix(in oklab, var(--glow-1) 18%, transparent), transparent 70%);
+  transition: background 0.2s;
+}
+/* A whisper of film grain so the gradients don't band. */
+.login-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.login-rise {
+  animation: login-rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(18px); filter: blur(6px); }
+}
+.login-shimmer {
+  background: linear-gradient(100deg, var(--glow-1), var(--glow-2) 35%, var(--glow-3) 55%, var(--glow-1) 80%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: login-shimmer 9s linear infinite;
+}
+@keyframes login-shimmer {
+  to { background-position: -220% 0; }
+}
+/* The sample cards: the column climbs forever (it holds two copies), and
+   each card bobs a little on its own. */
+.login-drift {
+  animation: login-drift 36s linear infinite;
+}
+@keyframes login-drift {
+  to { transform: translateY(-50%); }
+}
+.login-float {
+  animation: login-float 8s ease-in-out infinite;
+}
+@keyframes login-float {
+  50% { transform: translateX(10px); }
+}
+.login-ring {
+  background: conic-gradient(from var(--login-angle), var(--glow-1), var(--glow-2), var(--glow-3), transparent 60%, var(--glow-1));
+  animation: login-turn 7s linear infinite;
+  box-shadow: 0 30px 80px -30px color-mix(in oklab, var(--glow-1) 45%, transparent);
+}
+@keyframes login-turn {
+  to { --login-angle: 360deg; }
+}
+/* The voice bar's spectrum, breathing under the card. */
+.login-voice::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -26px;
+  height: 40px;
+  z-index: -1;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #db47b3, #8f57e6, #4280f5, #24c2c2, #4dc266, #f5a83d, #f56161);
+  filter: blur(26px);
+  opacity: 0.55;
+  animation: login-breathe 5s ease-in-out infinite;
+}
+@keyframes login-breathe {
+  50% { opacity: 0.85; transform: scaleX(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-blob,
+  .login-shimmer,
+  .login-drift,
+  .login-float,
+  .login-ring,
+  .login-voice::after,
+  .login-rise {
+    animation: none;
+  }
+}
