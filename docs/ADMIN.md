@@ -37,6 +37,8 @@ The same account signs in on the iPhone and the Mac app.
 
 | Page | What you do |
 |---|---|
+| Today | The display's Home on the web: the greeting and clock, what's up next, anything blocked, the markets, and today in time order (the Pulse, briefs, project updates and events), scrolled to now. Same rules as the display (`lib/today.ts`, tested in `tests/today.test.mjs`); refreshes every minute |
+| Ambient (`/ambient`) | The display's ambient screen saver full screen, for a spare monitor or a tablet: the moving gradient, the clock, what's next, and a rail of cards. Any click or key goes back to Today |
 | Overview | Agents, pushes in the last 24 hours (and errors), briefs, symbols, reports, projects (blocked ones), metrics, dashboards, upcoming events, displays online; the recent pushes with any refusal sentence; the displays and when they were last seen |
 | Agents | Make an agent (name, kind, colour): the key shows **once**, with a curl example for its kind. Rotate a key (the old one stops at once), revoke (stops pushes, keeps what it pushed), delete (removes its feed rows), edit |
 | Feed | Briefs, Markets (order and hide symbols), News (reports and their stories), Projects (and each one's updates), Metrics (group, order, relabel, hide), Dashboards (preview the widgets, order, hide), Calendar (events by day; remove an event or a whole calendar) |

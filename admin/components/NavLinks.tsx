@@ -1,11 +1,12 @@
 "use client";
 
 import { cn } from "cn";
-import { BotIcon, LayoutGridIcon, MonitorIcon, RssIcon, ScrollTextIcon, SlidersHorizontalIcon } from "lucide-react";
+import { BotIcon, LayoutGridIcon, MonitorIcon, RssIcon, ScrollTextIcon, SlidersHorizontalIcon, SunIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
+  { href: "/today", label: "Today", Icon: SunIcon },
   { href: "/", label: "Overview", Icon: LayoutGridIcon },
   { href: "/agents", label: "Agents", Icon: BotIcon },
   { href: "/feed", label: "Feed", Icon: RssIcon },

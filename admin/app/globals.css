@@ -180,3 +180,57 @@
 @utility bg-glow {
   background-image: var(--glow);
 }
+
+/* The ambient view (components/today/AmbientView.tsx): the display's moving
+   gradient as three soft blobs in the glow colours, slow enough to be calm,
+   deep and dim at night. Off for people who ask for less motion. */
+.ambient {
+  background: #f6e6d2;
+}
+.ambient-night {
+  background: #17131f;
+}
+.ambient-blob {
+  position: absolute;
+  width: 75vmax;
+  height: 75vmax;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.75;
+  will-change: transform;
+}
+.ambient-night .ambient-blob {
+  opacity: 0.35;
+}
+.ambient-blob-1 {
+  left: -20vmax;
+  top: -25vmax;
+  background: radial-gradient(circle, var(--glow-3) 0%, transparent 65%);
+  animation: ambient-drift-1 70s ease-in-out infinite alternate;
+}
+.ambient-blob-2 {
+  right: -25vmax;
+  top: -15vmax;
+  background: radial-gradient(circle, var(--glow-2) 0%, transparent 65%);
+  animation: ambient-drift-2 85s ease-in-out infinite alternate;
+}
+.ambient-blob-3 {
+  left: 10vmax;
+  bottom: -40vmax;
+  background: radial-gradient(circle, var(--glow-1) 0%, transparent 65%);
+  animation: ambient-drift-3 95s ease-in-out infinite alternate;
+}
+@keyframes ambient-drift-1 {
+  to { transform: translate(18vmax, 12vmax) scale(1.15); }
+}
+@keyframes ambient-drift-2 {
+  to { transform: translate(-16vmax, 18vmax) scale(0.9); }
+}
+@keyframes ambient-drift-3 {
+  to { transform: translate(14vmax, -14vmax) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob {
+    animation: none;
+  }
+}
