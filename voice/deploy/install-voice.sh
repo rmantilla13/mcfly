@@ -51,15 +51,18 @@ step "Installing mcfly-voice into $venv"
 sudo mkdir -p "$venv"
 sudo chown "$user": "$venv"
 [ -x "$venv/bin/python" ] || python3 -m venv "$venv"
-"$venv/bin/pip" install --upgrade pip
+# pip gives up on a stalled download after 15 s and 5 tries by default; a
+# Pi on weak Wi-Fi needs more patience than that.
+pip_opts=(--retries 10 --timeout 60)
+"$venv/bin/pip" install "${pip_opts[@]}" --upgrade pip
 # Every dependency has a prebuilt wheel for the Pi (about 180 MB in all), so
 # nothing is compiled; --only-binary keeps it that way, failing in seconds
 # rather than starting an hour-long build that couldn't work anyway.
-"$venv/bin/pip" install --upgrade --only-binary=:all: "$repo/voice[audio,stt,tts,kokoro,wake]"
+"$venv/bin/pip" install "${pip_opts[@]}" --upgrade --only-binary=:all: "$repo/voice[audio,stt,tts,kokoro,wake]"
 # openwakeword requires tflite-runtime, which has no wheels for Python 3.12+
 # (Raspberry Pi OS Trixie has 3.13). We run its ONNX models, so it goes in
 # without its dependencies; the `wake` extra above brought everything else.
-"$venv/bin/pip" install --only-binary=:all: --no-deps "openwakeword>=0.6,<0.7"
+"$venv/bin/pip" install "${pip_opts[@]}" --only-binary=:all: --no-deps "openwakeword>=0.6,<0.7"
 
 step "Configuring"
 sudo usermod -aG audio "$user"
@@ -73,7 +76,7 @@ else
 fi
 
 if [ "$skip_models" -eq 0 ]; then
-    step "Fetching models (once; about 220 MB)"
+    step "Fetching models (once; about 340 MB)"
     # Into ~/.local/share/mcfly-voice (data_dir); the service never downloads.
     if ! "$venv/bin/python" -m mcfly_voice --config "$config" --download-models; then
         echo "Some models couldn't be fetched. The service still runs without them" >&2
