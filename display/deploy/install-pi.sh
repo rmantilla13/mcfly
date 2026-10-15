@@ -301,10 +301,16 @@ wireplumber.settings = {
   device.routes.default-sink-volume = 0.5
 }
 WP
-# Close the HDMI audio device soon after playback, so the speakers go quiet
-# instead of holding a silent stream open.
+# Keep the speakers awake: the HDMI audio device opens as soon as PipeWire
+# starts and stays open, carrying silence between sounds. Screens differ here.
+# This one buzzes whenever HDMI audio stops (and until the first sound after a
+# boot) and is quiet while it carries silence; others hiss while a stream is
+# open (for those, set the timeout back to 1 and drop the other two lines).
+# Holding a silent stream costs the Pi almost nothing.
 sudo tee /etc/wireplumber/wireplumber.conf.d/51-mcfly-speakers.conf >/dev/null <<'WP'
-# Written by McFly install-pi.sh.
+# Written by McFly install-pi.sh. Open the speakers at startup and never close
+# (suspend) or pause them when nothing plays, so the screen gets silence
+# instead of buzzing.
 monitor.alsa.rules = [
   {
     matches = [
@@ -314,7 +320,9 @@ monitor.alsa.rules = [
     ]
     actions = {
       update-props = {
-        session.suspend-timeout-seconds = 1
+        session.suspend-timeout-seconds = 0
+        node.pause-on-idle = false
+        node.always-process = true
       }
     }
   }

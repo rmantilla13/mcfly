@@ -116,8 +116,9 @@ The script takes 20–30 minutes. It:
   video plays until the app takes the screen. SSH is unchanged
 - sends sound to the screen's speakers at half volume (full volume on this
   panel is mostly hiss; the gear menu turns the speakers off or up, and the
-  screen's own buttons still work), and turns off Wi-Fi power saving, which
-  makes Wi-Fi drop out
+  screen's own buttons still work) and keeps them awake between sounds (the
+  screen buzzes whenever HDMI audio stops), and turns off Wi-Fi power saving,
+  which makes Wi-Fi drop out
 - writes `/etc/ssh/sshd_config.d/mcfly.conf` (`IPQoS cs0 cs0` and `UseDNS no`)
   and reloads ssh, so typing in a terminal does not stutter over Wi-Fi. That
   applies in the current session; it does not need a reboot
@@ -436,7 +437,8 @@ journalctl -u mcfly-display -b --no-pager
 | The gear menu says it isn't allowed to change Wi-Fi | Re-run `./display/deploy/install-pi.sh`. It installs `/usr/local/libexec/mcfly-system` and lets your user run that, and only that, without a password. |
 | `Permission denied` for `/dev/dri` or `/dev/input` in the log | Run `groups`: it should list `video render input audio tty`. Re-run the install script, then `sudo reboot`. |
 | Touch doesn't respond | Check the touch USB cable. `lsusb` should list the screen; then `sudo systemctl restart mcfly-display`. |
-| Hiss or noise from the screen's speakers | In the gear menu, turn **Screen speakers** off, or lower **Volume**. The screen's own volume buttons add gain on top of that, so turn those down too. Nothing playing should go quiet after about a second. |
+| Hiss or noise from the screen's speakers | In the gear menu, turn **Screen speakers** off, or lower **Volume**. The screen's own volume buttons add gain on top of that, so turn those down too. |
+| A buzz from the screen's speakers between sounds | The screen buzzes whenever HDMI audio stops, so McFly keeps a silent stream open between sounds (`/etc/wireplumber/wireplumber.conf.d/51-mcfly-speakers.conf`). If it buzzes anyway, re-run `install-pi.sh`. A screen that's the other way round, quiet when sound stops but hissing while a stream is open, wants `session.suspend-timeout-seconds = 1` there instead of `0` (and without the `node.pause-on-idle` and `node.always-process` lines), then `systemctl --user restart wireplumber`. |
 | No sound, or too quiet | Turn **Screen speakers** on in the gear menu and raise **Volume**. Also check the screen's own mute and volume. `speaker-test -c 2 -t wav -l 1` should say "front left, front right" through the screen. If it doesn't, `wpctl status` lists the outputs: the HDMI one should have a `*`; choose it with `wpctl set-default <number>`. |
 | No sound after turning the screen on after the Pi | Sound looks for the screen's speakers when the Pi starts, and may miss them if the screen was off. Run `systemctl --user restart wireplumber`, or `sudo reboot`. |
 | Videos stutter (often 4K iPhone clips) | The iPhone app now uploads videos at 1080p or less, mostly HEVC, which the Pi decodes on its HEVC block. Clips uploaded before that are often 4K and can still stutter; add them again from the phone and delete the old copy. Check the setting and the log as in [Video decoding](#video-decoding). If videos go black or look worse with `drm`, set `QT_FFMPEG_DECODING_HW_DEVICE_TYPES=,` in `display.env` and run `sudo systemctl restart mcfly-display`. |
