@@ -472,6 +472,7 @@ Popup {
                                 icon: Voice.available ? "mic" : "mic-off"
                                 title: qsTr("Wake word")
                                 detail: !Voice.available ? qsTr("Needs the McFly voice service")
+                                      : !Voice.micName ? qsTr("No microphone found. Plug in a USB mic; it's picked up within 10 seconds.")
                                       : Voice.wakewordLabel ? qsTr("Say “%1” to ask a quick question").arg(Voice.wakewordLabel)
                                       : qsTr("Ask a quick question hands-free")
                                 Toggle {
@@ -609,6 +610,11 @@ Popup {
                                 name: qsTr("Voice service")
                                 value: Voice.available ? qsTr("Connected") : qsTr("Not running")
                                 dot: Voice.available ? Theme.success : Theme.textMuted
+                            }
+                            Fact {
+                                name: qsTr("Microphone")
+                                value: !Voice.available ? "—" : (Voice.micName || qsTr("Not found"))
+                                dot: Voice.available ? (Voice.micName ? Theme.success : Theme.danger) : Theme.textMuted
                             }
                             Fact {
                                 name: qsTr("Wake word")

@@ -41,6 +41,7 @@ class AudioBackend:
         self._transcriber: stt.Transcriber | None = None
         self._speaker: Speaker | None = None
         self._mic_ok = False
+        self.mic_name = ""  # the open microphone, for the screen
         self._capture: asyncio.Queue[bytes] | None = None
         self._mic_task: asyncio.Task[None] | None = None
         v = cfg.vad
@@ -145,6 +146,7 @@ class AudioBackend:
             finally:
                 rescan = True
             warned = False
+            self.mic_name = mic.name
             self._set_mic_ok(True)
             try:
                 await self._pump(mic)
@@ -154,6 +156,7 @@ class AudioBackend:
                 log.exception("audio loop failed; restarting it")
             finally:
                 mic.close()
+                self.mic_name = ""
                 self._set_mic_ok(False)
             await asyncio.sleep(2)
 

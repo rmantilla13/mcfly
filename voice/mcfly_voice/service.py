@@ -198,6 +198,7 @@ class VoiceService:
             wakeword_name=self.backend.wakeword_name,
             tts=self.backend.tts_available,
             stt=self.backend.stt_available,
+            mic=getattr(self.backend, "mic_name", ""),
         )
 
     def broadcast(self, msg: dict[str, Any]) -> None:

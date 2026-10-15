@@ -28,6 +28,7 @@ async def test_hello_then_state_on_connect():
             "wakeword_name": "Hey Jarvis",
             "tts": True,
             "stt": True,
+            "mic": "Simulated mic",
         }
         assert await c.recv() == IDLE
 

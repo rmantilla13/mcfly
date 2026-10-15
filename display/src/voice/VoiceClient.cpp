@@ -107,6 +107,7 @@ void VoiceClient::onMessage(const QString &text)
         m_wakewordName = msg.value("wakeword_name").toString();
         m_tts = msg.value("tts").toBool();
         m_stt = msg.value("stt").toBool();
+        m_micName = msg.value("mic").toString();
         emit infoChanged();
         const bool wake = msg.value("wakeword").toBool();
         if (wake != m_wakewordEnabled) {

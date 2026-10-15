@@ -24,7 +24,10 @@ class ProtocolError(ValueError):
 # Server → client
 
 
-def hello(*, wakeword: bool, wakeword_name: str, tts: bool, stt: bool) -> dict[str, Any]:
+def hello(*, wakeword: bool, wakeword_name: str, tts: bool, stt: bool,
+          mic: str = "") -> dict[str, Any]:
+    # `mic` is the open microphone's name, "" when none is open. Clients that
+    # predate it ignore the key.
     return {
         "type": "hello",
         "version": PROTOCOL_VERSION,
@@ -32,6 +35,7 @@ def hello(*, wakeword: bool, wakeword_name: str, tts: bool, stt: bool) -> dict[s
         "wakeword_name": wakeword_name,
         "tts": tts,
         "stt": stt,
+        "mic": mic,
     }
 
 

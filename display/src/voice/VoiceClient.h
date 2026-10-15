@@ -29,6 +29,7 @@ class VoiceClient : public QObject
     Q_PROPERTY(QString wakewordLabel READ wakewordLabel NOTIFY infoChanged) // "Hey Jarvis"
     Q_PROPERTY(bool canSpeak READ canSpeak NOTIFY infoChanged)              // service has TTS
     Q_PROPERTY(bool canTranscribe READ canTranscribe NOTIFY infoChanged)    // service has STT
+    Q_PROPERTY(QString micName READ micName NOTIFY infoChanged)             // the open mic, "" for none
     Q_PROPERTY(QString url READ urlString CONSTANT)
     // Read quick answers out loud (QSettings voice/speakReplies, default on).
     Q_PROPERTY(bool speakReplies READ speakReplies WRITE setSpeakReplies NOTIFY speakRepliesChanged)
@@ -49,6 +50,7 @@ public:
     QString transcript() const { return m_transcript; }
     bool canSpeak() const { return m_tts; }
     bool canTranscribe() const { return m_stt; }
+    QString micName() const { return m_micName; }
     QString urlString() const { return m_url.toString(); }
     bool speakReplies() const { return m_speakReplies; }
     void setSpeakReplies(bool on);
@@ -103,6 +105,7 @@ private:
     qreal m_level = 0;
     bool m_wakewordEnabled = false;
     QString m_wakewordName;
+    QString m_micName;
     bool m_tts = false;
     bool m_stt = false;
     QString m_transcript;

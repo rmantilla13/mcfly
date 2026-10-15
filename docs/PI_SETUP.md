@@ -153,7 +153,7 @@ systemctl is-active mcfly-display
 could not be found, the install script has not finished. Run it again:
 
 ```bash
-cd ~/McFly
+cd ~/mcfly
 git pull
 ./display/deploy/install-pi.sh
 sudo reboot
@@ -212,7 +212,7 @@ The screen has speakers but no microphone, so voice needs a USB microphone.
 Plug it into one of the Pi's USB ports, then:
 
 ```bash
-cd ~/McFly
+cd ~/mcfly
 ./voice/deploy/install-voice.sh
 ```
 
@@ -379,7 +379,7 @@ it powered with a black picture: add `MCFLY_PANEL_POWER=off` to
 | Restart the app | `sudo systemctl restart mcfly-display` |
 | Change Wi-Fi, volume, restart or reboot | On the screen, tap the gear. Wi-Fi and reboot need the helper from the install script |
 | Change app settings | `sudo nano /etc/mcfly/display.env`, then restart the app |
-| Update to the latest code | `cd ~/McFly && git pull && ./display/deploy/install-pi.sh` (updates the voice service too, if installed) |
+| Update to the latest code | `cd ~/mcfly && git pull && ./display/deploy/install-pi.sh` (updates the voice service too, if installed) |
 | Get a login prompt on the screen | `sudo systemctl stop mcfly-display && sudo systemctl unmask getty@tty1.service autovt@tty1.service && sudo systemctl start getty@tty1` (install masks those units so a boot cannot stick on the console; re-run `install-pi.sh` or `preview.sh off` to mask them again) |
 | Use your own boot video | `sudo cp my-video.mp4 /etc/mcfly/boot.mp4` and reboot. Delete it to go back to the built-in clip |
 | Check power and temperature | `vcgencmd get_throttled` (`0x0` is good) and `vcgencmd measure_temp` |

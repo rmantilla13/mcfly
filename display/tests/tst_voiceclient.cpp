@@ -41,7 +41,8 @@ private slots:
             connect(m_peer, &QWebSocket::textMessageReceived, this,
                     [this](const QString &t) { m_received << QJsonDocument::fromJson(t.toUtf8()).object(); });
             serverSend({{"type", "hello"}, {"version", "1"}, {"wakeword", true},
-                        {"wakeword_name", "hey_jarvis_v0.1"}, {"tts", true}, {"stt", true}});
+                        {"wakeword_name", "hey_jarvis_v0.1"}, {"tts", true}, {"stt", true},
+                        {"mic", "USB PnP Sound Device"}});
             serverSend({{"type", "state"}, {"state", "idle"}});
         });
     }
@@ -140,6 +141,7 @@ private slots:
         voice.start();
         QTRY_VERIFY(voice.available());
         QTRY_VERIFY(voice.canTranscribe());
+        QCOMPARE(voice.micName(), QStringLiteral("USB PnP Sound Device"));
         serverSend({{"type", "wake"}, {"source", "wakeword"}});
         serverSend({{"type", "state"}, {"state", "listening"}});
         QTRY_COMPARE(voice.state(), QStringLiteral("listening"));
@@ -148,6 +150,7 @@ private slots:
         serverSend({{"type", "hello"}, {"version", "1"}, {"wakeword", false},
                     {"wakeword_name", "hey_mcfly"}, {"tts", true}, {"stt", false}});
         serverSend({{"type", "state"}, {"state", "idle"}});
+        QTRY_VERIFY(voice.micName().isEmpty()); // unplugged: an older-style hello has no mic
         QTRY_COMPARE(voice.state(), QStringLiteral("idle"));
         QVERIFY(info.size() >= 1);
         QVERIFY(voice.available());

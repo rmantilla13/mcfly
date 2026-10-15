@@ -34,6 +34,7 @@ class SimBackend:
     wakeword_available = True
     stt_available = True
     tts_available = True
+    mic_name = "Simulated mic"
 
     def __init__(
         self,

@@ -39,6 +39,9 @@ converts.
   and from fans, dishwashers and range hoods.
 - Plug it in before or after starting; the service looks for a mic every 10
   seconds. With no setting it picks the first USB microphone.
+- To see which mic it found, tap the gear: **About → Microphone** shows the
+  mic's name, or **Not found** in red when the service is running without
+  one.
 - Replies play through the panel's speakers. With the display user's
   PipeWire session up (the display installer starts it at boot), that is the
   same output the gear menu calls **Screen speakers**: off stays silent, and

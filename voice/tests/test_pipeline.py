@@ -258,6 +258,7 @@ async def test_microphone_comes_and_goes(monkeypatch):
     class FlakyMicrophone(FakeMic):
         def __init__(self, device: Any, channel: int) -> None:
             super().__init__()
+            self.name = "USB PnP Sound Device: Audio (hw:2,0)"
 
         def start(self, loop: Any, *, rescan: bool = False) -> None:
             attempts.append("start")
@@ -276,8 +277,9 @@ async def test_microphone_comes_and_goes(monkeypatch):
     assert rig.service.hello()["stt"] is False
     await rig.backend.start(rig.service)
     await rig.wait_for({"type": "hello", "stt": True, "wakeword": True})
+    assert rig.service.hello()["mic"] == mics[0].name
     mics[0].feed(AudioError("the microphone stopped sending audio"))  # unplugged
-    await rig.wait_for({"type": "hello", "stt": False})
+    await rig.wait_for({"type": "hello", "stt": False, "mic": ""})
     assert attempts[:3] == ["start", "start", "close"]
     # Every retry asks PortAudio for a fresh device list (a mic plugged in later).
     assert rescans[:2] == [False, True]
