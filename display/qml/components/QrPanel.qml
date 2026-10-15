@@ -13,7 +13,8 @@ Rectangle {
     property string domain: ""
     property int codeSize: Theme.small ? 112 : 148
 
-    implicitHeight: codeSize + 32
+    // As tall as the code, or as its text where that runs longer.
+    implicitHeight: Math.max(codeSize, words.implicitHeight) + 32
     radius: Theme.radiusSm
     color: Theme.surface
 
@@ -35,10 +36,11 @@ Rectangle {
             }
         }
         ColumnLayout {
+            id: words
             Layout.fillWidth: true
             spacing: 6
             Label { text: panel.title; color: Theme.text; font.pixelSize: Theme.fontSm + 1; font.weight: Font.DemiBold }
-            Label { Layout.fillWidth: true; text: panel.caption; color: Theme.textMuted; font.pixelSize: Theme.fontXs + 1; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight }
+            Label { Layout.fillWidth: true; visible: text.length > 0; text: panel.caption; color: Theme.textMuted; font.pixelSize: Theme.fontXs + 1; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight }
             Label { Layout.fillWidth: true; visible: text.length > 0; text: panel.domain; color: Theme.accent; font.pixelSize: Theme.fontSm; font.weight: Font.Medium; elide: Text.ElideRight }
         }
     }

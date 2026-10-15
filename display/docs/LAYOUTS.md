@@ -95,7 +95,7 @@ offline pill moves to the top centre so it never covers a header's controls.
 
 | screen | Wide | Compact | Mini | Tall |
 |---|---|---|---|---|
-| Home | [greeting, clock 112, date; up next; blocked; quick questions, 2 rows; ask 88] ≤ 520 · [markets strip 5; TODAY; the day list, kept at now, resting on a whole row] | same, clock 88, 4 tickers | same, clock 64, 3 tickers, no questions or ask bar | feed: clock, up next, blocked, ask, markets 4, every row of the day |
+| Home | [greeting, clock 112, date; up next; blocked; quick questions, 2 rows; ask 88] ≤ 520 · [markets strip 5; TODAY; the day list, kept at now, resting on a whole row]. Nothing up next or blocked: the clock grows to 176 and sits mid-column | same, clock 88 (144), 4 tickers | same, clock 64 (104), 3 tickers, no questions or ask bar | feed: clock, up next, blocked, ask, markets 4, every row of the day |
 | Briefs | list 520 \| reader | list 440 \| reader | one-line rows → push reader | rows → push reader |
 | Markets | grid 3 \| pane 440 | grid 2 \| pane 380 | grid 3 × 112 → push | grid 2 × 150 → push |
 | Metrics | grid 4 | grid 3 | grid 2 | grid 2 |

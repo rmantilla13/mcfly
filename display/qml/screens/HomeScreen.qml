@@ -39,6 +39,9 @@ Item {
                 return e
         return null
     }
+    // Nothing up next and nothing blocked (a new account, or a free night):
+    // the clock has the left column to itself.
+    readonly property bool quiet: !nextEvent && blocked.length === 0
     readonly property var timeline: Store.timeline
     // The row to keep in view: the first one not yet over.
     readonly property int focusIndex: {
@@ -90,8 +93,11 @@ Item {
 
     // ---- The regions.
 
-    // Greeting, the big clock, the date.
+    // Greeting, the big clock, the date. `big`: larger still, for a column
+    // with nothing else in it (as the Ambient saver's clock is).
     component Clock: ColumnLayout {
+        id: clock
+        property bool big: false
         spacing: 0
         RowLayout {
             Layout.fillWidth: true
@@ -126,23 +132,24 @@ Item {
             Label {
                 text: Qt.formatTime(home.now, "h:mm AP").split(" ")[0]
                 color: Theme.text
-                font.pixelSize: Theme.mini ? 64 : Theme.compact ? 88 : 112
+                font.pixelSize: clock.big ? (Theme.mini ? 104 : Theme.compact ? 144 : 176)
+                                    : (Theme.mini ? 64 : Theme.compact ? 88 : 112)
                 font.weight: Font.Light
-                font.letterSpacing: Theme.mini ? -2 : -4
+                font.letterSpacing: clock.big ? (Theme.mini ? -3 : -6) : (Theme.mini ? -2 : -4)
             }
             Label {
                 Layout.alignment: Qt.AlignBottom
-                Layout.bottomMargin: Theme.mini ? 12 : 20
+                Layout.bottomMargin: clock.big ? (Theme.mini ? 18 : 30) : (Theme.mini ? 12 : 20)
                 text: Qt.formatTime(home.now, "AP")
                 color: Theme.textMuted
-                font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd
+                font.pixelSize: clock.big ? (Theme.mini ? Theme.fontMd : Theme.fontLg) : (Theme.mini ? Theme.fontSm : Theme.fontMd)
             }
         }
         Label {
             Layout.fillWidth: true
             text: Qt.formatDate(home.now, Theme.mini ? "ddd, MMM d" : "dddd, MMMM d") + " · " + Store.lastSyncLabel
             color: Theme.textMuted
-            font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
+            font.pixelSize: clock.big ? (Theme.mini ? Theme.fontSm : Theme.fontMd) : (Theme.mini ? Theme.fontXs : Theme.fontSm)
             elide: Text.ElideRight
         }
     }
@@ -524,7 +531,8 @@ Item {
                     Layout.fillWidth: true
                     url: modelData.url
                     title: modelData.title
-                    caption: modelData.caption
+                    // The 7" panel has room for the name and the address only.
+                    caption: Theme.mini ? "" : modelData.caption
                     domain: modelData.url.replace("https://", "")
                     codeSize: Theme.mini ? 64 : Theme.wide ? 112 : 96
                 }
@@ -545,7 +553,10 @@ Item {
             Layout.preferredWidth: Theme.mini ? 5 : 4
             Layout.maximumWidth: Theme.wide ? 520 : 99999
             spacing: Theme.spacing
-            Clock { Layout.fillWidth: true }
+            // Quiet, the clock grows and sits in the middle of the room above
+            // the questions, as the Ambient saver's does with no cards.
+            Item { Layout.fillHeight: true; visible: home.quiet }
+            Clock { Layout.fillWidth: true; big: home.quiet }
             NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
             BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
             Item { Layout.fillHeight: true }
