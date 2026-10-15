@@ -547,7 +547,7 @@ export function buildDemoState(now = Date.now()): DemoState {
     { id: uuid(), name: "Work", host: "calendar.google.com", color: "#5B7CF5", enabled: true, last_synced_at: minutes(9),
       last_error: null, event_count: 14, created_at: days(10) },
     { id: uuid(), name: "Family", host: "p52-caldav.icloud.com", color: "#F07F5A", enabled: true, last_synced_at: hours(3),
-      last_error: "the link answered 404; it may have been reset", event_count: 6, created_at: days(4) },
+      last_error: "the link answered 404; it may have been reset, or the calendar isn't shared", event_count: 6, created_at: days(4) },
   ];
 
   const bots: import("@/lib/types").Bot[] = [

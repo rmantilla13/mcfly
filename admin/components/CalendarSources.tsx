@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarIcon, PauseIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { ColorField } from "@/components/NewAgentForm";
@@ -12,6 +13,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import type { FormAction } from "@/lib/action-result";
+import { isGooglePublicAddress } from "@/lib/calendar-links";
 import type { CalendarSource } from "@/lib/types";
 
 type Actions = { add: FormAction; update: FormAction; remove: FormAction; sync: FormAction };
@@ -38,9 +40,11 @@ export function CalendarSources({ sources, actions }: { sources: CalendarSource[
 }
 
 function AddCalendar({ action }: { action: FormAction }) {
+  const [link, setLink] = useState("");
   const { result, pending, submit } = useFormAction(action, (res, form) => {
     if (res?.ok && res.message) toast.success(res.message);
     form.reset();
+    setLink("");
   });
   return (
     <form onSubmit={submit} className="rounded-2xl border bg-card p-4">
@@ -52,7 +56,17 @@ function AddCalendar({ action }: { action: FormAction }) {
           </Field>
           <Field>
             <FieldLabel htmlFor="cal-url">iCal link</FieldLabel>
-            <Input id="cal-url" name="url" required maxLength={2000} placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" autoComplete="off" spellCheck={false} />
+            <Input
+              id="cal-url"
+              name="url"
+              required
+              maxLength={2000}
+              placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+              autoComplete="off"
+              spellCheck={false}
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+            />
           </Field>
           <Field>
             <FieldLabel htmlFor="cal-color">Color</FieldLabel>
@@ -64,6 +78,12 @@ function AddCalendar({ action }: { action: FormAction }) {
           calendar as Public and copy the link. Outlook: Settings → Calendar → Shared calendars → Publish, then the ICS link.
           The link stays on the server; this page only ever shows its host. Read-only: McFly doesn&apos;t change your calendar.
         </FieldDescription>
+        {isGooglePublicAddress(link) ? (
+          <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+            That&apos;s Google&apos;s public address, which only works if the calendar is public. For your own calendar, use its
+            Secret address in iCal format (same page, a little lower).
+          </p>
+        ) : null}
         {result && !result.ok ? <FieldError>{result.error}</FieldError> : null}
         <div>
           <Button type="submit" disabled={pending}>

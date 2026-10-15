@@ -16,6 +16,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isCronCall } from "../_shared/cron.ts";
 import { bearerToken, isUuid, json, preflight, readJson } from "../_shared/http.ts";
 import { MAX_EVENTS, parseIcs } from "./ics.ts";
+import { refusedMessage } from "./links.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -42,7 +43,7 @@ async function download(url: string): Promise<{ text: string } | { error: string
   } catch {
     return { error: "couldn't reach the link" };
   }
-  if (res.status === 401 || res.status === 403 || res.status === 404) return { error: `the link answered ${res.status}; it may have been reset` };
+  if (res.status === 401 || res.status === 403 || res.status === 404) return { error: refusedMessage(url, res.status) };
   if (!res.ok) return { error: `the link answered ${res.status}` };
   if (Number(res.headers.get("Content-Length")) > MAX_ICS_BYTES) return { error: "the calendar is over 5 MB" };
   const reader = res.body?.getReader();
