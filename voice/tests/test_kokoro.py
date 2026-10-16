@@ -23,13 +23,31 @@ np = pytest.importorskip("numpy")
 
 def test_speech_pieces():
     assert speech_pieces("Hi. Here is the news.") == ["Hi. Here is the news."]
-    assert speech_pieces("Markets are up today, led by NVDA, after the data-center numbers. Standup is at 9:30.") == [
-        "Markets are up today, led by NVDA, after the data-center numbers.", "Standup is at 9:30."]
     long = ("word " * 120 + "end.").strip()
     pieces = speech_pieces(long)
     assert len(pieces) >= 3 and all(len(p) <= 220 for p in pieces)
     assert " ".join(pieces).split() == long.split()
     assert speech_pieces("No full stop") == ["No full stop"]
+
+
+def test_the_first_piece_is_short_so_speech_starts_soon():
+    # Nothing is heard until the first piece has rendered, and on the Pi that
+    # takes longer than saying it: it's a clause, not the whole sentence...
+    assert speech_pieces("Markets are up today, led by NVDA, after the data-center numbers. Standup is at 9:30.") == [
+        "Markets are up today,", "led by NVDA, after the data-center numbers.", "Standup is at 9:30."]
+    # ...and a short opening sentence goes alone, not merged into the next.
+    assert speech_pieces("Onyx is blocked. What it needs next is App Review's answer on the FSKit entitlement.") == [
+        "Onyx is blocked.", "What it needs next is App Review's answer on the FSKit entitlement."]
+    # No clause break early on: whole, rather than broken mid-phrase. Numbers
+    # and times ("1,000", "9:30") aren't clause breaks.
+    whole = "Revenue reached 1,000 units by 9:30 this morning across every single region we track."
+    assert speech_pieces(whole) == [whole]
+    # Later pieces are as before: short ones still ride with the next.
+    text = ("Tomorrow starts with standup at nine, then lunch with Sam. It's short. "
+            "The review is at three and runs an hour.")
+    assert speech_pieces(text) == [
+        "Tomorrow starts with standup at nine,",
+        "then lunch with Sam. It's short. The review is at three and runs an hour."]
 
 
 class FakeKokoro:

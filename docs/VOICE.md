@@ -478,6 +478,7 @@ can open the devices, and start it again afterwards.
 | Waits long after you stop talking | Background noise reads as speech: try `vad.aggressiveness = 3`, or move the mic |
 | Wrong words | Add names to `stt.initial_prompt`; try `stt.model = "small.en"`; speak closer to the mic |
 | Not Homestead's voice | Kokoro isn't loading, so it fell back to Piper (or espeak-ng). The log says why; usually the models need `--download-models` |
+| Answers start late, or pause between sentences | Kokoro renders a reply piece by piece (`speech_pieces`), the next while the last plays. The first piece is a short sentence or clause, so speaking starts soon; the rest flows only while Kokoro renders faster than it speaks. A hot Pi slows to 1–1.5 GHz and falls behind: at 1 GHz the first words came 2–6.5 s after the reply (9–17 s when the first piece was the whole answer), then the rest paused 6–12 s while it rendered. `vcgencmd measure_temp` and `vcgencmd get_throttled` show it; fit the Active Cooler ([PI_SETUP.md](PI_SETUP.md)) |
 | Robotic voice | Neither Kokoro nor Piper loaded, so it fell back to espeak-ng. The log says why |
 | `GPU device discovery failed ... /sys/class/drm/...vendor` in the log | Harmless: onnxruntime looks for a GPU it could use, and the Pi's doesn't describe itself that way. Ignore it |
 | Display says "Voice needs the McFly voice service" | `systemctl status mcfly-voice`; the service listens on `127.0.0.1:8765` |

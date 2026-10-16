@@ -59,15 +59,35 @@ KOKORO_FILES = {
 }
 KOKORO_RATE = 24000
 _PIECE_MAX = 220
+# The first piece is what the listener waits through in silence, and on the
+# Pi Kokoro renders slower than real time (more so when it runs hot), so it's
+# kept short: render time grows with its length.
+_LEAD_MAX = 50
 
 
 def kokoro_dir(data_dir: Path) -> Path:
     return data_dir / "kokoro"
 
 
+def _lead(piece: str) -> list[str]:
+    """A long first piece, cut after its first clause: a comma, semicolon,
+    colon or dash followed by a space, past the 20th character and within
+    the first 80. Without one it stays whole rather than break mid-phrase."""
+    if len(piece) <= _LEAD_MAX:
+        return [piece]
+    found = re.search(r"[,;:—–]\s+", piece[20:80])
+    if not found:
+        return [piece]
+    cut = 20 + found.end()
+    head, tail = piece[:cut].strip(), piece[cut:].strip()
+    return [head, tail] if tail else [head]
+
+
 def speech_pieces(text: str) -> list[str]:
     """Sentences, long ones split at commas then words, very short ones merged
-    with the next: each renders fast, so the first starts playing quickly."""
+    with the next: each renders fast, so the first starts playing quickly.
+    The first is kept to a short sentence or clause (_lead): nothing is said
+    until it has rendered."""
     sentences = [s.strip() for s in re.findall(r"[^.!?…]+(?:[.!?…]+[\"”’)]*|$)", text) if s.strip()]
     pieces: list[str] = []
     for s in sentences or [text.strip()]:
@@ -83,9 +103,13 @@ def speech_pieces(text: str) -> list[str]:
                 current += " " + word
         if current.strip():
             pieces.append(current.strip())
+    if pieces:
+        pieces[:1] = _lead(pieces[0])
     merged: list[str] = []
     for p in pieces:
-        if merged and len(merged[-1]) < 40 and len(merged[-1]) + 1 + len(p) <= _PIECE_MAX:
+        # What joins the first piece keeps it short too.
+        limit = _LEAD_MAX if len(merged) == 1 else _PIECE_MAX
+        if merged and len(merged[-1]) < 40 and len(merged[-1]) + 1 + len(p) <= limit:
             merged[-1] = f"{merged[-1]} {p}"
         else:
             merged.append(p)

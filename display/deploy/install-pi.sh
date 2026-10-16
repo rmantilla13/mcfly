@@ -473,6 +473,21 @@ if [[ "$throttled" =~ ^0x[0-9a-fA-F]+$ ]] && (( throttled & 0x10001 )); then
     echo "Warning: the Pi has been short of power since it started (throttled=$throttled)." >&2
     echo "Use the official 27 W USB-C supply, and power the panel from its own adapter." >&2
 fi
+# Bit 3 (now) or 19 (since boot): it reached its soft temperature limit and
+# slowed down (to 1-1.5 GHz), which makes spoken replies late and halting.
+# A Pi 5's device tree ships cooling_fan disabled; the firmware turns it on
+# when it finds a fan on the FAN header at boot.
+fan=""
+if [ -r /proc/device-tree/cooling_fan/status ]; then
+    fan="$(tr -d '\0' < /proc/device-tree/cooling_fan/status)"
+fi
+if [ "$fan" = "disabled" ]; then
+    echo "Warning: the Pi didn't detect a fan at boot, so it will slow down when it gets hot." >&2
+    echo "Fit the Active Cooler and plug its cable into the FAN connector, then reboot (docs/PI_SETUP.md)." >&2
+elif [[ "$throttled" =~ ^0x[0-9a-fA-F]+$ ]] && (( throttled & 0x80008 )); then
+    echo "Warning: the Pi has run too hot since it started (throttled=$throttled, $(vcgencmd measure_temp 2>/dev/null))." >&2
+    echo "Check the Active Cooler and give the Pi some air (docs/PI_SETUP.md)." >&2
+fi
 if systemctl is-enabled --quiet mcfly-preview 2>/dev/null; then
     echo "Preview mode is on; the panel kiosk stays off."
 else
