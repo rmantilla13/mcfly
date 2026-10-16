@@ -163,7 +163,7 @@ Popup {
             id: words
             Layout.fillWidth: true
             spacing: 2
-            Label { text: row.title; color: Theme.text; font.pixelSize: Theme.fontSm + 1; font.weight: Font.DemiBold }
+            Label { Layout.fillWidth: true; text: row.title; color: Theme.text; font.pixelSize: Theme.fontSm + 1; font.weight: Font.DemiBold; elide: Text.ElideRight }
             Label {
                 Layout.fillWidth: true
                 visible: text.length > 0
@@ -812,29 +812,15 @@ Popup {
                                     title: qsTr("Answers from")
                                     detail: AI.provider === "" ? qsTr("Your account's choice (%1). Pick one to pin it for this screen.").arg(AI.effectiveProvider === "grok" ? "Grok" : "Claude")
                                                                : qsTr("Pinned for this screen; your account's choice is %1.").arg(Store.assistantProvider === "grok" ? "Grok" : "Claude")
-                                    Row {
-                                        spacing: 6
-                                        Repeater {
-                                            model: [{ id: "claude", label: "Claude" }, { id: "grok", label: "Grok" }]
-                                            // A 44 px chip in a touch target's height and at least its width.
-                                            delegate: Item {
-                                                id: providerChip
-                                                required property var modelData
-                                                readonly property bool chosen: AI.effectiveProvider === modelData.id
-                                                width: Math.max(Theme.touchTarget, pl.implicitWidth + 28)
-                                                height: Theme.touchTarget
-                                                Lens {
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    width: parent.width
-                                                    height: 44
-                                                    kind: providerChip.chosen ? "active" : "rest"
-                                                    shadow: 0
-                                                    Label { id: pl; anchors.centerIn: parent; text: providerChip.modelData.label; color: providerChip.chosen ? Glass.ink : Theme.text; font.pixelSize: Theme.fontXs + 1; font.weight: Font.DemiBold }
-                                                }
-                                                TapHandler { onTapped: AI.provider = providerChip.modelData.id }
-                                            }
-                                        }
-                                    }
+                                }
+                                // Under the words, in the narrower column, as Backdrop's are.
+                                ChipFlow {
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 68
+                                    Layout.bottomMargin: 8
+                                    model: [{ id: "claude", label: "Claude" }, { id: "grok", label: "Grok" }]
+                                    current: AI.effectiveProvider
+                                    onPicked: id => AI.provider = id
                                 }
                             }
                         }
