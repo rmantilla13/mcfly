@@ -398,10 +398,10 @@ MCFLY_PI=pi@mcfly.local display/scripts/pi-perf.sh
 MCFLY_PI=pi@mcfly.local display/scripts/pi-perf.sh --count 30 --csv before.csv
 ```
 
-With a key of its own, add `MCFLY_PI_KEY=~/.ssh/<key file>` (or `-i`). On the
-10.1" panel the screen saver idles near 30 GPU jobs a second and Home near the
-panel's 60 (its ticker moves every frame). From 80 °C the Pi slows itself
-down: the NOW column says HOT.
+With a key of its own, add `MCFLY_PI_KEY=~/.ssh/<key file>` (or `-i`). The
+GPU's jobs a second follow what moves on the screen (see the frame rate
+below), plus one for each cached layer it redraws. From 80 °C the Pi slows
+itself down: the NOW column says HOT.
 
 ### Performance on the screen itself
 
@@ -424,10 +424,12 @@ the switch was left at. It works in a window on a computer too:
 ### Frame rate: 30 at least, 60 to aim for
 
 The panel refreshes 60 times a second. Whatever moves (a swipe between
-screens, a sheet opening, the aura, the ticker) should keep up with it, and
-never fall under 30. A screen standing still draws little on purpose (its
-clocks tick once a second): that keeps the Pi cool, so a low fps on the
-overlay while nothing moves is fine.
+screens, a sheet opening, the ticker) runs at that rate. The slow ambient
+motion (the gradients, the auroras, the savers' drift and weather, the voice
+glow while it idles) updates 30 times a second, every other frame:
+`Theme.motionFps`, and nothing is slower. A screen standing still draws
+next to nothing (its clock ticks once a second), which keeps the Pi cool, so
+a low fps on the overlay while nothing moves is fine.
 
 To see what a screen could keep up, turn on **Draw every frame** under the
 overlay's switch. Each frame then asks for the next, and the overlay's fps
@@ -435,21 +437,22 @@ reads "sustained". The GPU line gives its work a frame: under 16.7 ms holds
 60, under 33 ms holds 30. It stays on only while you watch; it turns off with
 the overlay and is never remembered.
 
-The bench does that for every screen, the assistant panel and the screen
-saver, 5 seconds each, and writes a line each to the log. Add
-`MCFLY_BENCH=1` to `/etc/mcfly/display.env`, then
-`sudo systemctl restart mcfly-display`, and leave the panel alone for a
-minute and a half. It starts a few seconds after the app does, then puts
-everything back as it was:
+The bench does both for every screen, the assistant panel and the screen
+saver, and writes a line each to the log. Add `MCFLY_BENCH=1` to
+`/etc/mcfly/display.env`, then `sudo systemctl restart mcfly-display`, and
+leave the panel alone for two minutes. It starts a few seconds after the app
+does, then puts everything back as it was:
 
 ```bash
 journalctl -u mcfly-display -b | grep 'bench:'
 ```
 
-Each line has the screen, the fps it kept up, the GPU's work a frame, the
-render thread's (and its longest), the temperature and any throttling, then
-the verdict: `60`, `30+`, or `SLOW` under 30. The last line sums them up and
-names the screen with the most GPU work a frame.
+Each line has the screen, then what it delivers as it is (and the GPU's busy
+share, the heat it costs), then what it sustains drawn every frame: the
+fps, the GPU's work a frame, the render thread's (and its longest), the
+temperature and any throttling. The verdict is `60`, `30+`, or `SLOW` under
+30, with "moves under 30" when it delivers more than a still screen but
+fewer than 30 frames. The last line sums them up.
 
 Take the line out again afterwards: it runs at every start. A hot Pi does
 worse than a cool one, so compare runs at a similar temperature; the last
