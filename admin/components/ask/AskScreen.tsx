@@ -1,26 +1,15 @@
 "use client";
 
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ArrowUpRightIcon,
-  AudioLinesIcon,
-  CheckIcon,
-  CopyIcon,
-  MicIcon,
-  RotateCcwIcon,
-  SquareIcon,
-  SquarePenIcon,
-  Volume2Icon,
-  VolumeXIcon,
-  XIcon,
-} from "lucide-react";
+import { ArrowDownIcon, ArrowUpRightIcon, AudioLinesIcon, CheckIcon, CopyIcon, RotateCcwIcon, SquarePenIcon, Volume2Icon, VolumeXIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "cn";
 import { BrandMark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
+import PromptBar from "@/components/reactbits/PromptBar";
+import ThoughtLine from "@/components/reactbits/ThoughtLine";
+import VoicePill from "@/components/reactbits/VoicePill";
 import { recognitionClass, type Recognition } from "@/components/voice/recognition";
 import { speakReply, stopSpeaking, storedVoice, useVoice } from "@/components/voice/speech";
 import { useAsk, type Turn } from "@/components/voice/useAsk";
@@ -89,6 +78,10 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
   const [atEnd, setAtEnd] = useState(true);
   const [copied, setCopied] = useState<number | null>(null);
   const [lastAsked, setLastAsked] = useState("");
+  // A question was asked here, so the latest exchange shows how long McFly
+  // thought (React Bits' ThoughtLine); a thread read back from the tab has
+  // no timing to show.
+  const [thinking, setThinking] = useState(false);
   const rec = useRef<Recognition | null>(null);
   const heard = useRef("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -99,6 +92,7 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
     const q = text.trim();
     if (!q || busy) return;
     setLastAsked(q);
+    setThinking(true);
     stopSpeaking();
     setInput("");
     void ask(q, "read");
@@ -145,16 +139,6 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
   };
   const toEnd = () => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
 
-  // The composer grows with what's typed, up to a point. Empty, it's one
-  // line by its own CSS (measured on the first paint, styles may not be in).
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "";
-    if (!input) return;
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
-  }, [input]);
-
   // Tap the mic and speak; it stops when you pause and asks what it heard.
   const listen = () => {
     if (listening) {
@@ -197,6 +181,7 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
   const newChat = () => {
     stopSpeaking();
     reset();
+    setThinking(false);
     setInput("");
     field.current?.focus();
   };
@@ -312,17 +297,20 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
                   >
                     {x.q ? <h2 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-balance max-md:text-[22px]">{x.q}</h2> : null}
                     <div className="mt-5">
-                      {answer ? (
-                        <Markdown text={answer} className="text-[17px] leading-[1.7] text-foreground/90 max-md:text-base" />
-                      ) : streaming ? (
-                        <p className="flex items-center gap-3 text-[17px] text-muted-foreground">
-                          <span className="relative flex size-2.5">
-                            <span className="absolute inline-flex size-full animate-ping rounded-full bg-glow opacity-60" />
-                            <span className="relative inline-flex size-2.5 rounded-full bg-glow" />
-                          </span>
-                          {waiting ? "Reading your feeds…" : ""}
-                        </p>
+                      {/* While McFly thinks, the line shimmers with a clock
+                          beside it; as the answer starts it settles to how
+                          long that took, and stays above the answer. */}
+                      {last && thinking && !failed ? (
+                        <ThoughtLine
+                          working={streaming && !answer}
+                          label={waiting ? "Reading your feeds…" : "Thinking…"}
+                          color="var(--muted-foreground)"
+                          glyphColor="var(--primary)"
+                          fontSize={15}
+                          className={answer ? "mb-4" : undefined}
+                        />
                       ) : null}
+                      {answer ? <Markdown text={answer} className="text-[17px] leading-[1.7] text-foreground/90 max-md:text-base" /> : null}
                       {streaming && answer ? <span className="mt-3 inline-block h-1.5 w-10 animate-pulse rounded-full bg-glow opacity-70" aria-hidden="true" /> : null}
                     </div>
                     {answer && !streaming ? (
@@ -376,68 +364,51 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
             )}
             aria-hidden="true"
           />
-          <form
-            className={cn(
-              "relative flex items-end gap-2 rounded-[26px] border bg-card p-2 pl-5 shadow-lg shadow-black/5 transition-colors focus-within:border-foreground/25",
-              listening && "border-primary/60",
-            )}
-            onSubmit={(e) => {
-              e.preventDefault();
-              send(input);
-            }}
-          >
-            <textarea
-              ref={field}
-              autoFocus
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  send(input);
-                }
-              }}
-              placeholder={listening ? "Listening…" : thread.length ? "Ask a follow-up" : "Ask McFly anything"}
-              aria-label="Ask McFly"
-              maxLength={2000}
-              className="max-h-60 min-h-11 flex-1 resize-none bg-transparent py-2.5 text-[17px] leading-6 outline-none placeholder:text-muted-foreground max-md:text-base"
-            />
-            {canListen ? (
-              <button
-                type="button"
-                onClick={listen}
-                disabled={busy}
-                aria-label={listening ? "Stop listening" : "Speak your question"}
-                aria-pressed={listening}
-                className={cn(
-                  "grid size-11 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-40",
-                  listening ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <MicIcon className="size-5" />
-              </button>
-            ) : null}
-            {busy ? (
-              <button
-                type="button"
-                onClick={stop}
-                aria-label="Stop the answer"
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-foreground text-background transition-transform active:scale-95"
-              >
-                <SquareIcon className="size-4" fill="currentColor" />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                aria-label="Ask"
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-[transform,opacity] active:scale-95 disabled:opacity-30"
-              >
-                <ArrowUpIcon className="size-5" strokeWidth={2.5} />
-              </button>
-            )}
-          </form>
+          {/* The composer is React Bits' PromptBar: its send button morphs
+              into Stop while an answer streams, and the mic is a VoicePill
+              that opens into a capsule of the voice's own bars and a clock
+              while it listens. The draft is the page's `input`, so dictation
+              writes into it as it is heard. */}
+          <PromptBar
+            value={input}
+            onChange={setInput}
+            inputRef={field}
+            autoFocus
+            placeholder={listening ? "Listening…" : thread.length ? "Ask a follow-up" : "Ask McFly anything"}
+            busy={busy}
+            onSend={(text) => send(text)}
+            onStop={stop}
+            sources={[]}
+            commands={[]}
+            models={[]}
+            efforts={[]}
+            background="var(--card)"
+            color="var(--foreground)"
+            menuBackground="var(--popover)"
+            width={736}
+            radius={26}
+            className={cn("rounded-[26px] shadow-lg shadow-black/5 ring-1 ring-border transition-shadow", listening && "ring-primary/60")}
+            dictateControl={
+              canListen ? (
+                <VoicePill
+                  size={28}
+                  reactive="mic"
+                  listening={listening}
+                  disabled={busy}
+                  background="var(--muted)"
+                  iconColor="var(--muted-foreground)"
+                  accentColor="var(--primary)"
+                  ariaLabel={listening ? "Stop listening" : "Speak your question"}
+                  onStart={() => {
+                    if (!listening) listen();
+                  }}
+                  onStop={({ reason }) => {
+                    if (reason !== "sync") rec.current?.stop();
+                  }}
+                />
+              ) : null
+            }
+          />
           <p className="mt-2 text-center text-xs text-muted-foreground max-sm:hidden">
             Enter to ask · Shift+Enter for a new line · Esc to {busy ? "stop" : "close"}
           </p>

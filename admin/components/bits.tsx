@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import StatusMark from "@/components/reactbits/StatusMark";
 import { changeDirection, cssColor, formatChange, formatDateTime, formatRelative } from "@/lib/format";
 import type { AgentKind, BriefKind, ProjectKind, ProjectStatus, ProjectUpdateKind } from "@/lib/types";
 
@@ -113,8 +114,21 @@ export function Delta({ delta, pct, className }: { delta: number | null | undefi
   );
 }
 
+// A push's outcome: the word, with React Bits' StatusMark drawn in the
+// badge's own ink beside it.
 export function StatusBadge({ status }: { status: "ok" | "error" }) {
-  return status === "ok" ? <Badge variant="success">ok</Badge> : <Badge variant="destructive">error</Badge>;
+  const mark = <StatusMark status={status === "ok" ? "done" : "failed"} size={12} doneColor="currentColor" errorColor="currentColor" aria-hidden="true" />;
+  return status === "ok" ? (
+    <Badge variant="success">
+      {mark}
+      ok
+    </Badge>
+  ) : (
+    <Badge variant="destructive">
+      {mark}
+      error
+    </Badge>
+  );
 }
 
 export function EmptyState({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {

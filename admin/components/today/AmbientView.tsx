@@ -10,6 +10,7 @@ import { formatClock, railWindow, stampLabel, untilLabel } from "@/lib/today";
 import { GlowAurora } from "@/components/GlowAurora";
 import { MeshGradient } from "@/components/MeshGradient";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import DecryptedText from "@/components/reactbits/DecryptedText";
 import { clockParts, useLiveRefresh, useNow } from "./TodayView";
 
 // The display's ambient screen saver, in a browser: readable from across
@@ -283,22 +284,16 @@ export function AmbientView({ data }: { data: TodayData }) {
           <p className="mt-2 text-[clamp(20px,2.4vw,32px)]" suppressHydrationWarning>
             {clock.date}
           </p>
-          {/* What McFly noticed, one line at a time: every line is there,
-              stacked in one cell, and only the one whose turn it is shows. */}
-          {noticed.length ? (
-            <p className="mt-3 grid grid-cols-[minmax(0,1fr)] text-[clamp(16px,1.6vw,22px)]">
+          {/* What McFly noticed, one line at a time: each line, as its turn
+              comes, resolves out of its own letters (React Bits'
+              DecryptedText), and reads whole to a screen reader. */}
+          {noticed.length && noticing >= 0 ? (
+            <p className="mt-3 flex min-w-0 items-center gap-2.5 text-[clamp(16px,1.6vw,22px)] opacity-80">
               <span className="sr-only">McFly noticed: </span>
-              {noticed.map((insight, k) => (
-                <span
-                  key={insight.id}
-                  className="col-start-1 row-start-1 flex min-w-0 items-center gap-2.5 transition-opacity duration-[1400ms] ease-in-out"
-                  style={{ opacity: k === noticing ? 0.8 : 0 }}
-                  aria-hidden={k !== noticing}
-                >
-                  <SparklesIcon className="size-[0.85em] shrink-0" aria-hidden="true" />
-                  <span className="truncate">{insight.title}</span>
-                </span>
-              ))}
+              <SparklesIcon className="size-[0.85em] shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">
+                <DecryptedText key={noticed[noticing].id} text={noticed[noticing].title} animateOn="view" sequential speed={28} useOriginalCharsOnly encryptedClassName="opacity-60" />
+              </span>
             </p>
           ) : null}
           {nextLine ? (

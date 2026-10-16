@@ -1,13 +1,15 @@
 "use client";
 
-import { CheckCircle2Icon, PauseIcon, PencilIcon, PlayIcon, SparklesIcon, Trash2Icon, XCircleIcon, ZapIcon } from "lucide-react";
+import { PauseIcon, PencilIcon, PlayIcon, SparklesIcon, Trash2Icon, ZapIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmAction } from "@/components/ConfirmAction";
+import { RunMark } from "@/components/RunMark";
 import { ScopeSwitches } from "@/components/agents/ScopeSwitches";
 import { ColorField } from "@/components/NewAgentForm";
 import { useFormAction } from "@/components/useFormAction";
 import { EmptyState, Swatch, Time } from "@/components/bits";
+import StatusMark from "@/components/reactbits/StatusMark";
 import { ThinkingText } from "@/components/today/ThinkingText";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -193,7 +195,7 @@ function RunStatus({ bot }: { bot: Bot }) {
   }, []);
   return (
     <p className="flex items-center gap-2 text-sm" role="status">
-      <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <StatusMark status="running" size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <ThinkingText text={runStage(bot, stage)} />
     </p>
   );
@@ -216,7 +218,7 @@ function BotCard({ bot, actions, onEdit }: { bot: Bot; actions: Actions; onEdit:
         <form onSubmit={run.submit}>
           <input type="hidden" name="bot_id" value={bot.id} />
           <Button type="submit" size="sm" variant="outline" disabled={run.pending}>
-            {run.pending ? <Spinner data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
+            <RunMark pending={run.pending} result={run.result} idle={<PlayIcon data-icon="inline-start" />} />
             {run.pending ? "Running…" : "Run now"}
           </Button>
         </form>
@@ -255,13 +257,7 @@ function BotCard({ bot, actions, onEdit }: { bot: Bot; actions: Actions; onEdit:
         <ul className="flex flex-col gap-1 border-t pt-2">
           {bot.runs.map((r) => (
             <li key={r.id} className="flex items-center gap-2 text-[13px]">
-              {r.status === "ok" ? (
-                <CheckCircle2Icon className="size-3.5 text-success" />
-              ) : r.status === "error" ? (
-                <XCircleIcon className="size-3.5 text-destructive" />
-              ) : (
-                <Spinner className="size-3.5" />
-              )}
+              <StatusMark status={r.status === "ok" ? "done" : r.status === "error" ? "failed" : "running"} size={14} className="shrink-0" />
               <span className="truncate">{r.status === "error" ? r.error : r.title ?? "Running…"}</span>
               <span className="ml-auto shrink-0 text-muted-foreground">
                 {r.sources ? `${r.sources} sources · ` : ""}

@@ -13,7 +13,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AgentsRoster } from "@/components/AgentsRoster";
-import { AnimatedNumber } from "@/components/AnimatedNumber";
+import Counter from "@/components/reactbits/Counter";
 import { IngestTable } from "@/components/IngestTable";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, Time } from "@/components/bits";
@@ -156,7 +156,7 @@ function DisplaysCard({ devices, online, now }: { devices: Awaited<ReturnType<ty
           <div className="flex items-center gap-5">
             <RingGauge value={online / devices.length} size={112} stroke={10} tone="up" label={`${online} of ${devices.length} displays online`}>
               <span className="font-heading text-[26px] font-semibold tracking-tight tabular-nums">
-                <AnimatedNumber value={online} format="int" />
+                <Counter value={online} format={{ maximumFractionDigits: 0 }} />
                 <span className="text-muted-foreground">/{devices.length}</span>
               </span>
               <span className="mt-1 text-[11px] font-medium text-muted-foreground">online</span>
@@ -214,7 +214,7 @@ function CountChip({
         </span>
       </span>
       <span className="font-heading text-2xl leading-none font-semibold tracking-tight">
-        <AnimatedNumber value={value} format="int" />
+        <Counter value={value} format={{ maximumFractionDigits: 0 }} />
       </span>
       <span className={cn("truncate text-xs", warn ? "font-medium text-warning" : "text-muted-foreground")}>{context}</span>
     </li>

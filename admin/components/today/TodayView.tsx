@@ -5,6 +5,7 @@ import { MonitorIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import BlurText from "@/components/reactbits/BlurText";
 import { dayKey } from "@/lib/events";
 import { buildSuggestions, SUMMARIZE_DAY } from "@/lib/suggestions";
 import type { TodayData } from "@/lib/today-data";
@@ -153,16 +154,23 @@ export function TodayView({ data }: { data: TodayData }) {
   );
 }
 
-// Greeting, the clock (its digits flip as the minute turns) and the date,
-// and the way to the ambient view.
+// Greeting (arriving a word at a time, out of a blur: React Bits' BlurText),
+// the clock (its digits flip as the minute turns) and the date, and the way
+// to the ambient view.
 function Moment({ now, data, index, className }: { now: number; data: TodayData; index: number; className?: string }) {
   const clock = clockParts(now, data.timeZone);
   return (
     <Tile index={index} label="Now" className={cn("justify-between gap-4 p-6 max-sm:p-5", className)}>
       <div className="flex items-start gap-3">
-        <p className="min-w-0 flex-1 text-lg text-muted-foreground" suppressHydrationWarning>
-          {greeting(now, data.timeZone, data.displayName)}
-        </p>
+        <BlurText
+          text={greeting(now, data.timeZone, data.displayName)}
+          className="min-w-0 flex-1 text-lg text-muted-foreground"
+          trigger="load"
+          delay={70}
+          stepDuration={0.3}
+          blur={8}
+          distance={14}
+        />
         <Link
           href="/ambient"
           className="-mt-1 -mr-1 flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground"

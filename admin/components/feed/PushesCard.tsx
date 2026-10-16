@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import { ZapIcon } from "lucide-react";
-import { AnimatedNumber } from "@/components/AnimatedNumber";
+import Counter from "@/components/reactbits/Counter";
 import { Time } from "@/components/bits";
 import { BarStrip } from "@/components/charts";
 import { CARD } from "@/components/feed/styles";
@@ -8,7 +8,8 @@ import { hourSpanLabel, pushBars } from "@/lib/feed-layout";
 import { formatNumber, plural } from "@/lib/format";
 import type { IngestEntry } from "@/lib/types";
 
-// The Overview's hero: how many pushes landed in the last day, counting up,
+// The Overview's hero: how many pushes landed in the last day, its digits
+// rolling into place (React Bits' Counter) and rolling on as the count moves,
 // over a bar for each hour stacked by feed, with a red tick over any hour
 // that had a push refused. The number is admin_overview's; the bars are the
 // log's rows (the newest 1000), so on a very busy day they can fall short
@@ -48,7 +49,7 @@ export function PushesCard({
             Pushes, last 24h
           </h2>
           <div className="mt-3 font-heading text-[52px] leading-none font-semibold tracking-tight max-sm:text-[44px]">
-            <AnimatedNumber value={total} format="int" />
+            <Counter value={total} format={{ maximumFractionDigits: 0 }} />
           </div>
           <p className="mt-2.5 text-[13px] text-muted-foreground">
             {lastPushAt ? (

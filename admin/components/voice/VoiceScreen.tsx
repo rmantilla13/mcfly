@@ -1,12 +1,13 @@
 "use client";
 
-import { KeyboardIcon, MicIcon, RepeatIcon, SquareIcon, Volume2Icon, VolumeXIcon, XIcon } from "lucide-react";
+import { KeyboardIcon, RepeatIcon, Volume2Icon, VolumeXIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "cn";
 import { SpectrumGlow, type GlowInput } from "./SpectrumGlow";
 import ShinyText from "@/components/reactbits/ShinyText";
+import VoicePill from "@/components/reactbits/VoicePill";
 import { chooseVoice, kokoro, speakReply, stopSpeaking, useVoice, VOICES, type KokoroState, type VoiceId } from "./speech";
 import { useAsk } from "./useAsk";
 
@@ -308,24 +309,31 @@ export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
           </form>
         ) : (
           <div className="flex items-center gap-4">
+            <span className="size-12" aria-hidden="true" />
+            {/* React Bits' VoicePill: the mic swells leftwards into a capsule
+                of the voice's own bars and a clock while it listens, and
+                closes when the recognition stops on its own (`listening`).
+                A tap while McFly is speaking starts listening, which cuts
+                the speech off. */}
+            {canListen ? (
+              <VoicePill
+                size={80}
+                reactive="mic"
+                listening={listening}
+                disabled={busy && !speaking}
+                background="rgba(255, 255, 255, 0.95)"
+                iconColor="#0D0C10"
+                accentColor="#0D0C10"
+                ariaLabel={listening ? "Stop listening" : "Talk"}
+                onStart={() => void startListening()}
+                onStop={({ reason }) => {
+                  if (reason !== "sync") stopAll();
+                }}
+              />
+            ) : null}
             <button type="button" onClick={() => setTyping(true)} aria-label="Type instead" className="grid size-12 place-items-center rounded-full bg-white/10 text-white/80 hover:bg-white/15">
               <KeyboardIcon className="size-5" />
             </button>
-            {canListen ? (
-              <button
-                type="button"
-                onClick={() => (listening || speaking ? stopAll() : void startListening())}
-                disabled={busy && !speaking}
-                aria-label={listening ? "Stop listening" : speaking ? "Stop speaking" : "Talk"}
-                className={cn(
-                  "grid size-20 place-items-center rounded-full transition-transform active:scale-95",
-                  listening || speaking ? "bg-white text-[#0D0C10]" : "bg-white/95 text-[#0D0C10] hover:scale-105",
-                )}
-              >
-                {listening || speaking ? <SquareIcon className="size-6" fill="currentColor" /> : <MicIcon className="size-8" />}
-              </button>
-            ) : null}
-            <span className="size-12" aria-hidden="true" />
           </div>
         )}
       </footer>

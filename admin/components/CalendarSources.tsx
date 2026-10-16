@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { ColorField } from "@/components/NewAgentForm";
+import { RunMark } from "@/components/RunMark";
 import { useFormAction } from "@/components/useFormAction";
 import { EmptyState, Swatch, Time } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +118,7 @@ function SourceRow({ source, actions }: { source: CalendarSource; actions: Actio
         <form onSubmit={sync.submit}>
           <input type="hidden" name="source_id" value={source.id} />
           <Button type="submit" variant="outline" size="sm" disabled={sync.pending || !source.enabled}>
-            {sync.pending ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+            <RunMark pending={sync.pending} result={sync.result} idle={<RefreshCwIcon data-icon="inline-start" />} />
             Sync now
           </Button>
         </form>

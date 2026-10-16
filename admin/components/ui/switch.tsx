@@ -1,32 +1,82 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { cn } from "cn"
-import { Switch as SwitchPrimitive } from "radix-ui"
+import { cn } from "cn";
+import { useState } from "react";
+import SquishSwitch from "@/components/reactbits/SquishSwitch";
 
-function Switch({
+// The console's switch: React Bits' SquishSwitch (components/reactbits), the
+// thumb stretching as it goes and squashing as it lands, behind the props of
+// the shadcn/Radix Switch it replaces — checked, defaultChecked,
+// onCheckedChange, disabled, name and value, id, aria-label, the two sizes —
+// so the forms and labels around it stay as they were. A named switch
+// inside a form submits as a checkbox does (Radix kept a hidden input of its
+// own for that); the control carries data-state, which the agent scope cards
+// style against. The thumb is the page's background in the light scheme and
+// its foreground in the dark, as shadcn's was.
+
+const SIZES = {
+  default: { width: 32, height: 18, inset: 2 },
+  sm: { width: 24, height: 14, inset: 2 },
+};
+
+export function Switch({
   className,
   size = "default",
-  ...props
-}: React.ComponentProps<typeof SwitchPrimitive.Root> & {
-  size?: "sm" | "default"
+  checked,
+  defaultChecked,
+  onCheckedChange,
+  disabled,
+  name,
+  value = "on",
+  id,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
+}: {
+  className?: string;
+  size?: "sm" | "default";
+  checked?: boolean;
+  defaultChecked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  name?: string;
+  value?: string;
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }) {
+  const [inner, setInner] = useState(defaultChecked ?? false);
+  const on = checked ?? inner;
+  const change = (next: boolean) => {
+    if (checked === undefined) setInner(next);
+    onCheckedChange?.(next);
+  };
   return (
-    <SwitchPrimitive.Root
+    <span
       data-slot="switch"
       data-size={size}
       className={cn(
-        "peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-all outline-none group-has-[:focus-visible]/field-label:border-transparent group-has-[:focus-visible]/field-label:ring-0 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=default]:h-[18.4px] data-[size=default]:w-[32px] data-[size=sm]:h-[14px] data-[size=sm]:w-[24px] dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:bg-primary data-unchecked:bg-input dark:data-unchecked:bg-input/80 data-disabled:cursor-not-allowed data-disabled:opacity-50",
-        className
+        "relative inline-flex shrink-0 [--switch-thumb:var(--background)] [--switch-thumb-on:var(--background)] dark:[--switch-thumb:var(--foreground)] dark:[--switch-thumb-on:var(--primary-foreground)]",
+        className,
       )}
-      {...props}
     >
-      <SwitchPrimitive.Thumb
-        data-slot="switch-thumb"
-        className="pointer-events-none block rounded-full bg-background ring-0 transition-transform group-data-[size=default]/switch:size-4 group-data-[size=sm]/switch:size-3 group-data-[size=default]/switch:data-checked:translate-x-[calc(100%-2px)] group-data-[size=sm]/switch:data-checked:translate-x-[calc(100%-2px)] dark:data-checked:bg-primary-foreground group-data-[size=default]/switch:data-unchecked:translate-x-0 group-data-[size=sm]/switch:data-unchecked:translate-x-0 dark:data-unchecked:bg-foreground"
+      <SquishSwitch
+        id={id}
+        checked={on}
+        onChange={change}
+        disabled={disabled}
+        ariaLabel={ariaLabel}
+        ariaLabelledBy={ariaLabelledBy}
+        ariaDescribedBy={ariaDescribedBy}
+        trackColor="var(--input)"
+        trackOnColor="var(--primary)"
+        thumbColor="var(--switch-thumb)"
+        thumbOnColor="var(--switch-thumb-on)"
+        radius={99}
+        {...SIZES[size]}
       />
-    </SwitchPrimitive.Root>
-  )
+      {name ? <input type="checkbox" name={name} value={value} checked={on} disabled={disabled} readOnly hidden tabIndex={-1} aria-hidden="true" /> : null}
+    </span>
+  );
 }
-
-export { Switch }
