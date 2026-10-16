@@ -43,6 +43,13 @@ class TestFeedStore : public QObject
 
     static QByteArray rows(const QJsonArray &a) { return QJsonDocument(a).toJson(QJsonDocument::Compact); }
     static QString iso(const QDateTime &dt) { return dt.toUTC().toString(Qt::ISODateWithMs); }
+    // "Today" moves at midnight, and the fixtures sit an hour ahead or minutes
+    // back from now, so near it they can land on another day.
+    static bool nearMidnight()
+    {
+        const QTime t = QTime::currentTime();
+        return t >= QTime(23, 0) || t < QTime(0, 30);
+    }
 
     void serveFeeds()
     {
@@ -204,7 +211,8 @@ private slots:
         QCOMPARE(newest.value("agentColor").toString(), QStringLiteral("#7A64E8"));
         QCOMPARE(newest.value("kindLabel").toString(), QStringLiteral("Hourly"));
         QCOMPARE(newest.value("summary").toString(), QStringLiteral("First paragraph."));
-        QCOMPARE(newest.value("dayLabel").toString(), QStringLiteral("Today"));
+        if (!nearMidnight())
+            QCOMPARE(newest.value("dayLabel").toString(), QStringLiteral("Today"));
         QCOMPARE(rig->store.latestBrief().value("id").toString(), QStringLiteral("b-new"));
 
         // Quotes: in symbol order, hidden and missing symbols left out.
@@ -301,7 +309,8 @@ private slots:
         QVERIFY(rig->store.events().at(0).toMap().value("past").toBool());
         QCOMPARE(rig->store.upcoming().size(), 2);
         QCOMPARE(rig->store.upcoming().at(0).toMap().value("title").toString(), QStringLiteral("Standup"));
-        QCOMPARE(rig->store.upcoming().at(0).toMap().value("dayLabel").toString(), QStringLiteral("Today"));
+        if (!nearMidnight())
+            QCOMPARE(rig->store.upcoming().at(0).toMap().value("dayLabel").toString(), QStringLiteral("Today"));
         QCOMPARE(rig->store.upcoming().at(1).toMap().value("startLabel").toString(), QStringLiteral("All day"));
         QVERIFY(rig->store.eventDays().size() >= 2);
         QCOMPARE(rig->store.eventDays().first().toMap().value("day").toString(), QDate::currentDate().toString(Qt::ISODate));
@@ -315,7 +324,18 @@ private slots:
     void todayTimeline()
     {
         startLive();
-        QTRY_VERIFY(!rig->store.timeline().isEmpty());
+        // The feeds land one reply at a time, so the timeline fills in steps:
+        // wait for the news and the standup, not just for the first thing.
+        auto shows = [this](const QString &kind, const QString &title) {
+            for (const QVariant &v : rig->store.timeline()) {
+                const QVariantMap item = v.toMap();
+                if (item.value("kind").toString() == kind && (title.isEmpty() || item.value("title").toString() == title))
+                    return true;
+            }
+            return false;
+        };
+        QTRY_VERIFY(shows(QStringLiteral("news"), QString()));
+        QTRY_VERIFY(shows(QStringLiteral("event"), QStringLiteral("Standup")) || QTime::currentTime() > QTime(22, 59));
         const QVariantList timeline = rig->store.timeline();
         const QString today = QDate::currentDate().toString(Qt::ISODate);
         qint64 last = 0;
@@ -473,7 +493,8 @@ private slots:
         QCOMPARE(rig->store.mode(), QStringLiteral("demo"));
         QCOMPARE(rig->store.displayName(), QStringLiteral("McFly"));
         QVERIFY(rig->store.briefs().size() >= 3);
-        QCOMPARE(rig->store.latestBrief().value("dayLabel").toString(), QStringLiteral("Today"));
+        if (!nearMidnight())
+            QCOMPARE(rig->store.latestBrief().value("dayLabel").toString(), QStringLiteral("Today"));
         QVERIFY(rig->store.quotes().size() >= 4);
         const QVariantMap first = rig->store.quotes().first().toMap();
         QCOMPARE(first.value("symbol").toString(), QStringLiteral("SPY"));
