@@ -10,6 +10,10 @@ Item {
     property color fill: Theme.surface
     property color ink: Theme.text
     property real iconSize: 24
+    // How far the tap reaches past the disc on each side: a small disc can
+    // still take a touch-target-sized tap (the rail's buttons). Keep it
+    // within half the gap to the next button, or one tap presses both.
+    property real hitMargin: 0
     property alias kind: body.kind
     signal clicked()
 
@@ -32,5 +36,5 @@ Item {
     }
     // Claim the tap so handlers on items underneath (e.g. a photo that toggles
     // the viewer controls) don't also react.
-    TapHandler { id: tap; gesturePolicy: TapHandler.WithinBounds; onTapped: btn.clicked() }
+    TapHandler { id: tap; margin: btn.hitMargin; gesturePolicy: TapHandler.WithinBounds; onTapped: btn.clicked() }
 }

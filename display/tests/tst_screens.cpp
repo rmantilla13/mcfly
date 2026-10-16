@@ -28,6 +28,9 @@ public:
     bool idle() const { return false; }
     bool screenOff() const { return false; }
     bool animatedTiles() const { return m_animatedTiles; }
+    // The rail's moon: counted, so a tap on it can be told from one on Settings.
+    Q_INVOKABLE void sleepNow() { ++sleeps; }
+    int sleeps = 0;
     void setAnimatedTiles(bool on)
     {
         if (on == m_animatedTiles)
@@ -498,6 +501,59 @@ private slots:
         m_screen->setProperty("thinking", false);
         QTRY_VERIFY(!ring->isVisible());
         QVERIFY(!spin->property("running").toBool());
+    }
+
+    // The rail's Ask, Settings and Sleep are discs smaller than a touch
+    // target, each in a slot a target tall that it takes taps across: a tap
+    // just off a disc still presses it, the gap between two discs is split
+    // between them and never presses both, and the slots stay clear of the
+    // nav items above and inside the rail below, at both rail tiers.
+    void navRailButtonsTakeTapsAcrossTheirSlots()
+    {
+        struct Rail { int w; int h; const char *tier; qreal disc; };
+        const QList<Rail> rails = {{100, 800, "compact", 44}, {124, 1080, "wide", 52}};
+        for (const Rail &r : rails) {
+            const QString where = QString::fromLatin1(r.tier);
+            QVERIFY(show("NavRail { }", r.w, r.h, where));
+            QQuickItem *ask = find("railAsk");
+            QQuickItem *settings = find("railSettings");
+            QQuickItem *sleep = find("railSleep");
+            QVERIFY(ask && settings && sleep);
+            const qreal slot = theme()->property("touchTarget").toReal();
+            const auto box = [](QQuickItem *b) { return b->mapRectToScene(QRectF(0, 0, b->width(), b->height())); };
+            QTRY_VERIFY(box(sleep).bottom() > box(ask).bottom());
+
+            QCOMPARE(ask->width(), r.disc);
+            QCOMPARE(sleep->height(), r.disc);
+            QCOMPARE(box(settings).center().y() - box(ask).center().y(), slot);
+            QCOMPARE(box(sleep).center().y() - box(settings).center().y(), slot);
+            QVERIFY2(box(sleep).center().y() + slot / 2 <= r.h, qPrintable(where));
+            QList<QQuickItem *> items;
+            collect(qobject_cast<QQuickItem *>(m_screen), QStringLiteral("navItem"), items);
+            QCOMPARE(items.size(), 8);
+            QVERIFY2(box(items.last()).bottom() <= box(ask).center().y() - slot / 2, qPrintable(where));
+
+            QSignalSpy asks(m_screen, SIGNAL(askRequested()));
+            QSignalSpy opened(m_screen, SIGNAL(settingsRequested()));
+            m_device.sleeps = 0;
+            const auto tap = [this](qreal x, qreal y) {
+                QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, QPoint(qRound(x), qRound(y)));
+            };
+            const QPointF a = box(ask).center(), s = box(settings).center(), z = box(sleep).center();
+            tap(a.x(), a.y() - slot / 2 + 2);          // above Ask's disc, in its slot
+            QCOMPARE(asks.count(), 1);
+            tap(a.x(), (a.y() + s.y()) / 2 - 2);       // the gap, Ask's half
+            QCOMPARE(asks.count(), 2);
+            QCOMPARE(opened.count(), 0);
+            tap(a.x(), (a.y() + s.y()) / 2 + 2);       // the gap, Settings' half
+            QCOMPARE(asks.count(), 2);
+            QCOMPARE(opened.count(), 1);
+            tap(z.x() + slot / 2 - 2, z.y());          // beside Sleep's disc, in its slot
+            QCOMPARE(m_device.sleeps, 1);
+            QCOMPARE(opened.count(), 1);
+            shoot(QStringLiteral("navrail-buttons-%1").arg(where));
+            cleanup();
+        }
     }
 
     // The picked brief's outline sits on its row, and still does after a

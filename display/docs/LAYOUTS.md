@@ -78,6 +78,9 @@ Calendar, then Ask (sparkle), Settings (gear) and Sleep (moon).
 animates `x` and `width`), a divider, then the three round buttons in 64 px
 slots. The slots abut; the pill is inset 4 px. At 720 wide the item slots
 narrow to 50 px and the bar is about 700 px, centred; at 800 they are 60.
+In the rail the three buttons are discs smaller than a target (44 at
+Compact, 52 at Wide), each centred in a 64 px slot it takes taps across
+(`IconButton.hitMargin`), so they sit apart and the rail fits 800 px.
 
 The controls are glass (`Lens.qml`, drawn by `shaders/lens.frag`; what they
 share is `Glass.qml`). The rail shows the aura (the glow's colour fields,

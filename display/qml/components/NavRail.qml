@@ -34,6 +34,10 @@ Rectangle {
     // The bar's slots: 64 px where they fit, narrower where they don't (the
     // 720 px Touch Display 2), so every item, the divider and the three
     // buttons share the width with room for the active item's label.
+    // The rail's round buttons: a disc smaller than a touch target, each in a
+    // slot a touch target tall that it takes taps across (IconButton.hitMargin),
+    // so the three sit apart and the rail fits 800 px with room to spare.
+    readonly property real buttonSize: Theme.compact ? 44 : 52
     readonly property real barSlot: Math.max(44, Math.min(64, Math.floor((width - 16 - 17 - 3 * 64 - (items.length + 3) * 2 - 72) / items.length)))
 
     color: Theme.surface
@@ -69,6 +73,7 @@ Rectangle {
 
     // One item: the icon and, in the rail or while active in the bar, the label.
     component NavItem: Rectangle {
+        objectName: "navItem"
         required property var modelData
         required property int index
         readonly property bool active: index === rail.currentIndex
@@ -108,8 +113,10 @@ Rectangle {
     }
 
     component NavButton: IconButton {
-        implicitWidth: rail.horizontal ? 56 : (Theme.compact ? 52 : 64)
+        implicitWidth: rail.horizontal ? 56 : rail.buttonSize
         implicitHeight: implicitWidth
+        iconSize: rail.horizontal ? 24 : (Theme.compact ? 20 : 22)
+        hitMargin: rail.horizontal ? 0 : (Theme.touchTarget - rail.buttonSize) / 2
     }
 
     // A ring that fades from nothing into the voice spectrum, turning once
@@ -198,31 +205,40 @@ Rectangle {
 
         Item { Layout.fillHeight: true }
 
-        // Ask McFly (typed or spoken).
-        NavButton {
-            id: railAsk
+        // Ask, Settings and Sleep: a disc to each touch-target slot.
+        ColumnLayout {
             Layout.alignment: Qt.AlignHCenter
-            icon: "sparkle"
-            kind: "active"
-            fill: Theme.accentSoft
-            ink: Glass.ink
-            onClicked: rail.askRequested()
-            ThinkingRing { anchors.centerIn: parent; width: railAsk.width + 10; height: width }
-        }
-        NavButton {
-            Layout.alignment: Qt.AlignHCenter
-            icon: "settings"
-            fill: Theme.surfaceAlt
-            ink: Theme.textMuted
-            onClicked: rail.settingsRequested()
-        }
-        // Show the screen saver right away.
-        NavButton {
-            Layout.alignment: Qt.AlignHCenter
-            icon: "moon"
-            fill: Theme.surfaceAlt
-            ink: Theme.textMuted
-            onClicked: Device.sleepNow()
+            spacing: Theme.touchTarget - rail.buttonSize
+
+            // Ask McFly (typed or spoken).
+            NavButton {
+                id: railAsk
+                objectName: "railAsk"
+                Layout.alignment: Qt.AlignHCenter
+                icon: "sparkle"
+                kind: "active"
+                fill: Theme.accentSoft
+                ink: Glass.ink
+                onClicked: rail.askRequested()
+                ThinkingRing { anchors.centerIn: parent; width: railAsk.width + 10; height: width }
+            }
+            NavButton {
+                objectName: "railSettings"
+                Layout.alignment: Qt.AlignHCenter
+                icon: "settings"
+                fill: Theme.surfaceAlt
+                ink: Theme.textMuted
+                onClicked: rail.settingsRequested()
+            }
+            // Show the screen saver right away.
+            NavButton {
+                objectName: "railSleep"
+                Layout.alignment: Qt.AlignHCenter
+                icon: "moon"
+                fill: Theme.surfaceAlt
+                ink: Theme.textMuted
+                onClicked: Device.sleepNow()
+            }
         }
     }
 

@@ -152,6 +152,13 @@
       "settings",
       "sleep"
     ],
+    "rail": {
+      "buttonSize": {
+        "compact": 44,
+        "wide": 52
+      },
+      "buttonSlot": 64
+    },
     "bar": {
       "slot": 64,
       "slotAt720": 50,

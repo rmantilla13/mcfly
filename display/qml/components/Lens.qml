@@ -93,6 +93,11 @@ Item {
         // here. A texel a pixel.
         // Not a wash: the rail caches that one whole, at a quarter size.
         layer.enabled: !lens._wash
+        // Sampled smoothly. At QT_SCALE_FACTOR=1.5 (the 10.1" panel) a control
+        // often lands on half a pixel, and nearest sampling there doubled some
+        // of the glass's columns on the Pi's GPU: Ask and the nav pill looked
+        // pixelated. On whole pixels smooth sampling is exact.
+        layer.smooth: true
         layer.textureSize: Qt.size(Math.max(1, Math.ceil(width * dpr)), Math.max(1, Math.ceil(height * dpr)))
         // Uniforms (names match shaders/lens.frag).
         readonly property size size: Qt.size(width, height)
