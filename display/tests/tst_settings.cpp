@@ -165,6 +165,7 @@ private slots:
         QTest::newRow("1920x1080") << 1920 << 1080;
         QTest::newRow("800x480") << 800 << 480;
         QTest::newRow("720x1280") << 720 << 1280;
+        QTest::newRow("853x533 (the Pi's panel at 1.5×)") << 853 << 533;
     }
 
     // Each tab a touch target, edge to edge with the next, and a tap in it
@@ -229,8 +230,49 @@ private slots:
         }
     }
 
-    // While the keyboard is up the tabs give the field their room; a page
-    // change clears a half-typed Wi-Fi join and any confirmation.
+    // Joining a network on the small panels: with the keyboard up (its
+    // shape is 1280 by 310) the tabs, and on the smallest the title, step
+    // aside, and the password field is in sight. Once the join is cleared
+    // and the keyboard goes, they come back.
+    void keyboardLeavesTheFieldRoom_data()
+    {
+        QTest::addColumn<int>("w");
+        QTest::addColumn<int>("h");
+        QTest::newRow("853x533") << 853 << 533;
+        QTest::newRow("800x480") << 800 << 480;
+        QTest::newRow("720x1280") << 720 << 1280;
+    }
+    void keyboardLeavesTheFieldRoom()
+    {
+        QFETCH(int, w);
+        QFETCH(int, h);
+        QVERIFY(show(w, h));
+        call("openWifi");
+        settle();
+        const qreal keyboard = w * 310.0 / 1280.0;
+        sheet()->setProperty("keyboardHeight", keyboard);
+        sheet()->setProperty("joinSsid", QStringLiteral("Upstairs"));
+        QQuickItem *field = named(QStringLiteral("wifiPassword"));
+        QVERIFY(field);
+        field->forceActiveFocus();
+        settle();
+        QVERIFY(sheet()->property("typing").toBool());
+        QVERIFY(!named(QStringLiteral("settingsTabs"))->isVisible());
+        const qreal bottom = sheet()->property("y").toReal() + sheet()->property("height").toReal();
+        QVERIFY2(bottom <= h - keyboard + 0.5, qPrintable(QStringLiteral("%1 over the keyboard at %2").arg(bottom).arg(h - keyboard)));
+        QQuickItem *body = named(QStringLiteral("settingsBody"));
+        const QRectF r = field->mapRectToItem(body, QRectF(0, 0, field->width(), field->height()));
+        QVERIFY2(r.top() >= 0 && r.bottom() <= body->height(),
+                 qPrintable(QStringLiteral("field at %1..%2 of %3").arg(r.top()).arg(r.bottom()).arg(body->height())));
+        shoot(QStringLiteral("settings-%1x%2-wifi-keyboard").arg(w).arg(h));
+
+        sheet()->setProperty("joinSsid", QString()); // Cancel
+        sheet()->setProperty("keyboardHeight", 0);   // and the keyboard goes
+        QVERIFY(!sheet()->property("typing").toBool());
+        QVERIFY(named(QStringLiteral("settingsTabs"))->isVisible());
+    }
+
+    // A page change clears a half-typed Wi-Fi join and any confirmation.
     void changingTabResets()
     {
         QVERIFY(show(1280, 800));

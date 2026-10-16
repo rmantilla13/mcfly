@@ -19,7 +19,8 @@ Popup {
     modal: true
     // While the Wi-Fi password keyboard is up, the sheet fits in the room
     // above it and scrolls the field into view.
-    readonly property real keyboardHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+    // (Settable so a test can stand in for the keyboard.)
+    property real keyboardHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int edge: Theme.mini ? 8 : Theme.tall ? 16 : 32
     readonly property real room: (parent ? parent.height : 800) - keyboardHeight - 2 * edge
     x: parent ? Math.round((parent.width - width) / 2) : 0
@@ -46,6 +47,17 @@ Popup {
     property bool confirmingRepair: false
     property string confirmingPower: ""   // "" | restart | reboot
     property string joinSsid: ""
+    // No join under way (Cancel, joined, another tab): the keyboard goes,
+    // and with it the title and tabs come back. On the smallest panel they
+    // step aside while it is up, so it must never stay up on its own.
+    onJoinSsidChanged: if (joinSsid === "") Qt.inputMethod.hide()
+    Connections {
+        target: System
+        function onWifiChanged() {
+            if (sheet.joinSsid !== "" && System.wifiSsid === sheet.joinSsid)
+                sheet.joinSsid = ""
+        }
+    }
     onOpened: System.refresh()
     onClosed: {
         confirmingRepair = false
@@ -957,6 +969,7 @@ Popup {
                                     border.width: wifiPassword.activeFocus ? 2 : 1
                                     TextField {
                                         id: wifiPassword
+                                        objectName: "wifiPassword"
                                         anchors.fill: parent
                                         anchors.leftMargin: 22
                                         anchors.rightMargin: 22
