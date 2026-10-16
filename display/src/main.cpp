@@ -20,6 +20,7 @@
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
 #include "models/SettingsBridge.h"
+#include "models/HomeGlance.h"
 #include "models/QrImageProvider.h"
 #include "voice/VoiceClient.h"
 
@@ -152,12 +153,14 @@ int main(int argc, char *argv[])
     system.start();
     // The web console and this screen edit the same settings.
     SettingsBridge settingsBridge(&store, &display, &assistant, &voice);
+    HomeGlance glance(&store); // the assistant-first Home's opening lines
 
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Store", &store);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &display);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "System", &system);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "AI", &assistant);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", &voice);
+    qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", &glance);
     qmlRegisterUncreatableType<ChatModel>("McFly.Core", 1, 0, "ChatModel", "Owned by AI");
 
     QQmlApplicationEngine engine;

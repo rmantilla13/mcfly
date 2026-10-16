@@ -266,6 +266,55 @@ Popup {
                     Layout.alignment: Qt.AlignTop
                     spacing: 12
 
+                    // Home's layout (Device.homeLayout, HomeLayouts.qml).
+                    SectionLabel { text: qsTr("HOME") }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: false
+                        Layout.bottomMargin: 12
+                        spacing: 12
+                        Repeater {
+                            model: [{ id: "today", icon: "home", title: qsTr("Today"), detail: qsTr("What's next, then the day") },
+                                    { id: "bento", icon: "grid", title: qsTr("Bento"), detail: qsTr("Tiles for briefs, markets, news") },
+                                    { id: "assistant", icon: "sparkle", title: qsTr("Assistant"), detail: qsTr("McFly sums up the day first") }]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool chosen: Device.homeLayout === modelData.id
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Theme.small ? 92 : 104
+                                radius: 24
+                                color: chosen ? Theme.accentSoft : Theme.surfaceAlt
+                                border.width: chosen ? 2 : 0
+                                border.color: Theme.accent
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 16
+                                    spacing: 12
+                                    Rectangle {
+                                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; radius: 22
+                                        color: chosen ? Theme.accent : Theme.surface
+                                        Icon { anchors.centerIn: parent; name: modelData.icon; size: 22; color: chosen ? Theme.accentInk : Theme.text }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Label { Layout.fillWidth: true; text: modelData.title; color: Theme.text; font.pixelSize: Theme.fontSm + 1; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: modelData.detail
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontXs
+                                            wrapMode: Text.WordWrap
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                                TapHandler { onTapped: Device.homeLayout = modelData.id }
+                            }
+                        }
+                    }
+
                     SectionLabel { text: qsTr("SCREEN SAVER") }
                     RowLayout {
                         Layout.fillWidth: true

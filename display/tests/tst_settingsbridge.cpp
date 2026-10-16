@@ -40,6 +40,7 @@ private slots:
         QCOMPARE(sent.value("screensaver").toString(), display.screensaver());
         QVERIFY(sent.contains("idleSeconds") && sent.contains("bedtime") && sent.contains("darkMode"));
         QCOMPARE(sent.value("backdrop").toString(), display.backdrop());
+        QCOMPARE(sent.value("homeLayout").toString(), display.homeLayout());
         // An empty copy later (say, the admin cleared it) is not refilled.
         bridge.receive({});
         QCOMPARE(pushed.size(), 1);
@@ -55,13 +56,29 @@ private slots:
         server.insert("darkMode", true);
         server.insert("idleSeconds", 300.0);
         server.insert("backdrop", "silk");
+        server.insert("homeLayout", "bento");
         bridge.receive(server);
         QCOMPARE(display.screensaver(), QStringLiteral("clock"));
         QCOMPARE(display.backdrop(), QStringLiteral("silk"));
+        QCOMPARE(display.homeLayout(), QStringLiteral("bento"));
         QVERIFY(display.darkMode());
         QCOMPARE(display.idleTimeoutSec(), 300);
         QTest::qWait(1800);
         QCOMPARE(pushed.size(), 0); // applying isn't a local change
+    }
+
+    void unknownHomeLayoutIsIgnored()
+    {
+        DisplayController display;
+        SettingsBridge bridge(nullptr, &display, nullptr, nullptr);
+        const QString before = display.homeLayout();
+        QVariantMap server = bridge.collect();
+        server.insert("homeLayout", "masonry"); // a newer console's layout this build doesn't have
+        bridge.receive(server);
+        QCOMPARE(display.homeLayout(), before);
+        display.setHomeLayout("assistant");
+        QCOMPARE(display.homeLayout(), QStringLiteral("assistant"));
+        display.setHomeLayout("today");
     }
 
     void localChangesGoUpAsOnePatch()

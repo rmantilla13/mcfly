@@ -170,6 +170,16 @@ qt_add_shaders(tst_backdrop "backdrop_shaders"
 add_test(NAME tst_backdrop COMMAND tst_backdrop)
 set_tests_properties(tst_backdrop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# The assistant-first Home's opening lines, from empty, partial and full feeds.
+qt_add_executable(tst_homeglance tst_homeglance.cpp
+    ../src/models/HomeGlance.h ../src/models/HomeGlance.cpp
+    ../src/models/FeedStore.h ../src/models/FeedStore.cpp)
+target_include_directories(tst_homeglance PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(tst_homeglance PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_homeglance PRIVATE mcfly-core Qt6::Gui Qt6::Test)
+add_test(NAME tst_homeglance COMMAND tst_homeglance)
+set_tests_properties(tst_homeglance PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # The settings bridge with a real DisplayController (no store, assistant or voice).
 qt_add_executable(tst_settingsbridge tst_settingsbridge.cpp
     ../src/models/SettingsBridge.h ../src/models/SettingsBridge.cpp

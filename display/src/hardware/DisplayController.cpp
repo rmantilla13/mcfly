@@ -64,6 +64,12 @@ DisplayController::DisplayController(QObject *parent) : QObject(parent)
         m_backdrop = QSettings().value("display/backdrop", "mesh").toString();
     if (!backdrops().contains(m_backdrop))
         m_backdrop = QStringLiteral("mesh");
+    // MCFLY_HOME_LAYOUT picks Home's layout the same way (screenshots).
+    m_homeLayout = qEnvironmentVariable("MCFLY_HOME_LAYOUT");
+    if (m_homeLayout.isEmpty())
+        m_homeLayout = QSettings().value("display/homeLayout", "today").toString();
+    if (!homeLayouts().contains(m_homeLayout))
+        m_homeLayout = QStringLiteral("today");
     m_collageLayout = QSettings().value("display/collageLayout", "auto").toString();
     m_animatedTiles = QSettings().value("display/animatedTiles", true).toBool();
     m_darkMode = QSettings().value("display/darkMode", false).toBool();
@@ -273,6 +279,21 @@ void DisplayController::setBackdrop(const QString &style)
     m_backdrop = style;
     QSettings().setValue("display/backdrop", style);
     emit backdropChanged();
+}
+
+const QStringList &DisplayController::homeLayouts()
+{
+    static const QStringList layouts{"today", "bento", "assistant"};
+    return layouts;
+}
+
+void DisplayController::setHomeLayout(const QString &layout)
+{
+    if (!homeLayouts().contains(layout) || layout == m_homeLayout)
+        return;
+    m_homeLayout = layout;
+    QSettings().setValue("display/homeLayout", layout);
+    emit homeLayoutChanged();
 }
 
 void DisplayController::setCollageLayout(const QString &layout)

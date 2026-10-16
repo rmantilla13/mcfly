@@ -27,6 +27,10 @@ class DisplayController : public QObject
     // an aurora over it at night) | arc | ribbons | dawn | silk | pillars
     // (skies of their own, qml/components/Backdrop.qml). Remembered.
     Q_PROPERTY(QString backdrop READ backdrop WRITE setBackdrop NOTIFY backdropChanged)
+    // Home's layout: today (the timeline) | bento (a grid of tiles, each a
+    // door into its screen) | assistant (McFly's summary of the day first,
+    // the cards it came from beside it). Remembered.
+    Q_PROPERTY(QString homeLayout READ homeLayout WRITE setHomeLayout NOTIFY homeLayoutChanged)
     // The collage's layout: auto (the next one each time the screen saver
     // starts) | classic | grid | mosaic | trio | columns. Remembered.
     Q_PROPERTY(QString collageLayout READ collageLayout WRITE setCollageLayout NOTIFY collageLayoutChanged)
@@ -62,6 +66,8 @@ public:
     void setScreensaver(const QString &style);
     QString backdrop() const { return m_backdrop; }
     void setBackdrop(const QString &style);
+    QString homeLayout() const { return m_homeLayout; }
+    void setHomeLayout(const QString &layout);
     QString collageLayout() const { return m_collageLayout; }
     void setCollageLayout(const QString &layout);
     bool animatedTiles() const { return m_animatedTiles; }
@@ -99,6 +105,8 @@ public:
     static bool inWindow(int minuteOfDay, int start, int end);
     // The backdrops a display can show, mesh first.
     static const QStringList &backdrops();
+    // Home's layouts, today first.
+    static const QStringList &homeLayouts();
 
 signals:
     void idleChanged();
@@ -108,6 +116,7 @@ signals:
     void brightnessChanged();
     void screensaverChanged();
     void backdropChanged();
+    void homeLayoutChanged();
     void collageLayoutChanged();
     void animatedTilesChanged();
     void darkModeChanged();
@@ -137,6 +146,7 @@ private:
     int m_maxBacklight = 0;
     QString m_screensaver;
     QString m_backdrop;
+    QString m_homeLayout;
     QString m_collageLayout;
     bool m_animatedTiles = true;
     bool m_darkMode = false;

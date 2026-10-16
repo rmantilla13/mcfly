@@ -191,7 +191,7 @@ ApplicationWindow {
 
         Page {
             anchors.fill: parent; index: 0; current: window.currentScreen
-            HomeScreen {
+            HomeLayouts {
                 anchors.fill: parent
                 shown: window.currentScreen === 0 && !assistant.open
                 isCurrent: window.currentScreen === 0

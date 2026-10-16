@@ -44,6 +44,7 @@ qt_add_executable(mcfly-display
     src/models/FeedStore.h         src/models/FeedStore.cpp
     src/models/Assistant.h         src/models/Assistant.cpp
     src/models/SettingsBridge.h    src/models/SettingsBridge.cpp
+    src/models/HomeGlance.h        src/models/HomeGlance.cpp
     src/hardware/DisplayController.h src/hardware/DisplayController.cpp
     src/hardware/SystemController.h src/hardware/SystemController.cpp
     src/hardware/PanelPower.h      src/hardware/PanelPower.cpp
@@ -122,6 +123,9 @@ qt_add_qml_module(mcfly-display
         qml/components/StatusDot.qml
         qml/components/InsightLine.qml
         qml/components/HealthStrip.qml
+        qml/screens/HomeLayouts.qml
+        qml/screens/HomeBento.qml
+        qml/screens/HomeAssistant.qml
         qml/screens/BriefsScreen.qml
         qml/screens/MarketsScreen.qml
         qml/screens/NewsScreen.qml

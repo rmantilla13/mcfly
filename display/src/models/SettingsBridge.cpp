@@ -24,7 +24,8 @@ SettingsBridge::SettingsBridge(FeedStore *store, DisplayController *display, Ass
         connect(this, &SettingsBridge::push, m_store, &FeedStore::pushDeviceSettings);
     }
     if (m_display) {
-        for (auto signal : {&DisplayController::screensaverChanged, &DisplayController::backdropChanged, &DisplayController::darkModeChanged,
+        for (auto signal : {&DisplayController::screensaverChanged, &DisplayController::backdropChanged,
+                            &DisplayController::homeLayoutChanged, &DisplayController::darkModeChanged,
                             &DisplayController::animatedTilesChanged, &DisplayController::idleTimeoutChanged,
                             &DisplayController::sleepSettingsChanged})
             connect(m_display, signal, this, &SettingsBridge::onLocalChange);
@@ -45,6 +46,7 @@ QVariantMap SettingsBridge::collect() const
     if (m_display) {
         s.insert("screensaver", m_display->screensaver());
         s.insert("backdrop", m_display->backdrop());
+        s.insert("homeLayout", m_display->homeLayout());
         s.insert("darkMode", m_display->darkMode());
         s.insert("animatedTiles", m_display->animatedTiles());
         s.insert("idleSeconds", qBound(30, m_display->idleTimeoutSec(), 3600));
@@ -80,6 +82,8 @@ void SettingsBridge::apply(const QVariantMap &settings)
             m_display->setScreensaver(settings.value("screensaver").toString());
         if (settings.contains("backdrop"))
             m_display->setBackdrop(settings.value("backdrop").toString());
+        if (settings.contains("homeLayout"))
+            m_display->setHomeLayout(settings.value("homeLayout").toString());
         if (settings.contains("darkMode"))
             m_display->setDarkMode(settings.value("darkMode").toBool());
         if (settings.contains("animatedTiles"))

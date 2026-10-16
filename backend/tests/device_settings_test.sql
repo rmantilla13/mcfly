@@ -34,6 +34,11 @@ select tests.eq(device_update_settings('{"wakewordModel": "hey_mcfly"}') ->> 'wa
 -- The savers' backdrop (20261016000001).
 select tests.eq(device_update_settings('{"backdrop": "dawn"}') ->> 'backdrop', 'dawn', 'a sky for the savers');
 select tests.throws($$select device_update_settings('{"backdrop": "disco"}')$$, 'backdrop must be%', 'unknown backdrop');
+-- Home's layout (20261016000003).
+select tests.eq(device_update_settings('{"homeLayout": "bento"}') ->> 'homeLayout', 'bento', 'a display shows the bento');
+select tests.eq(device_update_settings('{"homeLayout": "assistant"}') ->> 'homeLayout', 'assistant', 'or the assistant first');
+select tests.throws($$select device_update_settings('{"homeLayout": "masonry"}')$$, 'homeLayout must be%', 'unknown home layout');
+select tests.eq(device_update_settings('{"wakewordModel": "hey_mcfly"}') ->> 'backdrop', 'dawn', 'the backdrop survives the restated function');
 select tests.eq((select settings from devices where id = :'office'), null::jsonb, 'cannot see another display');
 
 select tests.login(:'stranger');

@@ -19,6 +19,7 @@ import type { Device, DisplaySettings } from "@/lib/types";
 const DEFAULTS: Required<Omit<DisplaySettings, "volume">> = {
   screensaver: "ambient",
   backdrop: "mesh",
+  homeLayout: "today",
   darkMode: false,
   animatedTiles: true,
   idleSeconds: 120,
@@ -108,6 +109,16 @@ export function DisplaySettingsDialog({ device, action }: { device: Device; acti
           <FieldGroup>
             <Section title="Screen">
               <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+                <Choice
+                  name="homeLayout"
+                  label="Home layout"
+                  value={s.homeLayout}
+                  options={[
+                    ["today", "Today (what's next, then the day)"],
+                    ["bento", "Bento (tiles for briefs, markets, news)"],
+                    ["assistant", "Assistant first (McFly sums up the day)"],
+                  ]}
+                />
                 <Choice
                   name="screensaver"
                   label="Screen saver"
