@@ -40,9 +40,9 @@ Item {
     property real intensity: 1.0
     property bool active: true       // false while the host isn't showing
     property bool motion: Device.animatedTiles   // off: the glow holds still (Settings → Animated tiles)
-    property int maxFps: 20          // updates per second while it only idles (0 = every frame);
-                                     // every third frame at 60 Hz: an even cadence, and the least
-                                     // cost where it runs alone (Home's ask bar, the idle orb)
+    property int maxFps: Theme.motionFps  // updates per second while it only idles (0 = every
+                                          // frame): every other frame at 60 Hz, an even cadence,
+                                          // and on the same frames as the tiles beside it
 
     // ---- Smoothed state: fast attack, slower release, eased beam.
     property real _level: 0

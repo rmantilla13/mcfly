@@ -339,7 +339,7 @@ private slots:
     void glowIdlesAtItsCap()
     {
         QObject *glow = child("glow");
-        QCOMPARE(glow->property("maxFps").toInt(), 20);
+        QCOMPARE(glow->property("maxFps").toInt(), 30);  // Theme.motionFps: never under 30
         QVERIFY(!glow->property("_lively").toBool());
         glow->setProperty("processing", true);
         QVERIFY(glow->property("_lively").toBool());

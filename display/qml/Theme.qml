@@ -111,10 +111,13 @@ Item {
     // land with a little life (fast out, long settle).
     readonly property var standard: [0.2, 0, 0, 1, 1, 1]
     readonly property var emphasized: [0.05, 0.7, 0.1, 1, 1, 1]
+    // The least any motion updates a second: every other frame of the
+    // panel's 60, an even cadence. Under 30 a slow drift steps visibly.
+    readonly property int motionFps: 30
     // The screen savers' moving backdrop: updates per second while the
-    // screen is idle (docs/ARCHITECTURE.md: 10), and how long one orbit
-    // of its drift takes. Slow enough that an update moves things about a pixel.
-    readonly property int saverFps: 10
+    // screen is idle (docs/ARCHITECTURE.md), and how long one orbit of its
+    // drift takes. Slow enough that an update moves things under a pixel.
+    readonly property int saverFps: motionFps
     readonly property int saverDrift: 110000
 
     // The voice glow's spectrum (SpectrumGlow): the same in every mood.

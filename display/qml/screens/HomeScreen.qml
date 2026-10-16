@@ -377,8 +377,8 @@ Item {
             intensity: 0.8
             active: home.shown && askBar.live
             processing: AI.busy
-            // Beside the up-next tile (30 fps), on the same frames as it.
-            maxFps: home.nextEvent ? 30 : 20
+            // Beside the up-next tile, on the same frames as it.
+            maxFps: Theme.motionFps
         }
         RowLayout {
             anchors.fill: parent

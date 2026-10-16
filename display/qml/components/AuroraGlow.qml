@@ -45,7 +45,7 @@ Item {
     property bool active: true             // false while its page isn't showing
     property bool whileIdle: false         // a screen saver's backdrop keeps going while idle
     property real speed: 1.0
-    property int maxFps: 15                // motion updates per second (0 = every frame)
+    property int maxFps: Theme.motionFps   // motion updates per second (0 = every frame)
     property bool intro: false             // lower the curtain into place when it first runs (otherwise it fades in)
     property real resolution: 0.5          // fraction of the item's size the shader runs at
 

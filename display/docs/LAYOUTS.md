@@ -172,7 +172,7 @@ offline pill moves to the top centre so it never covers a header's controls.
 
 ```
 +--------------------------------------------------+
-|  9:41 AM          (moving gradient, 10 fps)      |
+|  9:41 AM          (moving gradient, 30 fps)      |
 |  Thursday, October 15                            |
 |  Pulse review with the team at 3:30 pm           |
 |  Then Dinner with Lina at 7:00 pm                |

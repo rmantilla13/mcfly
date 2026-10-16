@@ -68,9 +68,9 @@ Item {
     // corners square. Its grain is then a texel, smoothed as it is scaled
     // up: softer, but still dithering the gradient.
     property real resolution: 1.0
-    property int maxFps: 30            // motion updates per second (0 = every frame); slow
-                                       // drift needs no more, and it halves GPU work while
-                                       // nothing else on screen moves
+    property int maxFps: Theme.motionFps  // motion updates per second (0 = every frame); slow
+                                          // drift needs no more, and it halves GPU work while
+                                          // nothing else on screen moves
 
     // ---- Read-only helpers for content on top
     readonly property color ink: _mixc(_inkL, _inkD, _inkDk)            // titles, numbers
@@ -219,7 +219,7 @@ Item {
     // slots for every tile, sky, aurora and glow, so they all change on the
     // same frames, and in between the render loop sleeps. (A FrameAnimation
     // that skipped frames kept it drawing at the display's rate all the
-    // same: the saver's 10 updates a second cost 60 full-screen frames.) A
+    // same: 10 updates a second cost 60 full-screen frames.) A
     // step is never negative and at most 0.25 s, so a jump of the wall clock
     // can't throw the drift backwards or far ahead. Uncapped: every frame.
     readonly property real _period: period * (0.85 + 0.30 * _wrap(seed * 0.618034 + 0.3))

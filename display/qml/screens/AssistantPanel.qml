@@ -53,7 +53,7 @@ Rectangle {
             radius: 0
             colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
             active: panel.open
-            maxFps: 15
+            maxFps: Theme.motionFps
             rings: 2
             ringScale: 1.3
         }

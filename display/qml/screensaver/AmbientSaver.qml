@@ -142,7 +142,7 @@ Item {
                 opacity: 0.5 * ambient.dusk
                 lightMode: false
                 whileIdle: true
-                maxFps: 10
+                maxFps: Theme.saverFps
                 speed: 0.35
                 layers: 2
                 hem: 0.36
