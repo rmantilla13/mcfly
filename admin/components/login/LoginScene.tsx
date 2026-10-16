@@ -3,20 +3,23 @@
 import { CalendarIcon, FileTextIcon, GitCommitHorizontalIcon, NewspaperIcon, TrendingUpIcon, ZapIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GlowAurora } from "@/components/GlowAurora";
+import { MeshGradient } from "@/components/MeshGradient";
 import SplitFlapText from "@/components/reactbits/SplitFlapText";
 
-// The sign-in page's living backdrop: the display's glow drifting in three
-// blobs, an aurora in the same colours hanging from the top (it leans toward
-// the pointer), a light that follows the pointer, and on wide screens a column
-// of the kinds of cards agents push, floating past a live clock and a
-// split-flap board that flips through what agents report. Everything is
-// sample text: nothing here comes from the database before sign-in.
+// The sign-in page's living backdrop: the display's moving gradient in the
+// glow of the hour (MeshGradient), an aurora in the same colours hanging from
+// the top (it leans toward the pointer), a light trailing the pointer, and on
+// wide screens a column of the kinds of cards agents push, floating past a
+// live clock and a split-flap board that flips through what agents report.
+// Everything is sample text: nothing here comes from the database before
+// sign-in.
 //
-// The blobs, cards and ring are CSS (globals.css, "login-" classes), so they
-// run off the main thread; the aurora is one WebGL pass (GlowAurora) and the
-// board flips with CSS keyframes (components/reactbits). All of it stops under
-// prefers-reduced-motion. The pointer light writes two CSS variables at most
-// once a frame.
+// The gradient and the aurora are WebGL passes, capped at 30 frames a second.
+// The card column, the cards' sway, the turning ring and the pointer light
+// move by transform, which the compositor does without repainting; the
+// tagline's shimmer moves a background, so that one line repaints. The board
+// flips with CSS keyframes (components/reactbits). All of it stops under
+// prefers-reduced-motion.
 
 const SAMPLES: { icon: typeof ZapIcon; kicker: string; title: string; color: string }[] = [
   { icon: FileTextIcon, kicker: "Grok · Daily", title: "Morning briefing", color: "#7A64E8" },
@@ -56,10 +59,16 @@ function Clock() {
 
 function SampleCard({ sample, index }: { sample: (typeof SAMPLES)[number]; index: number }) {
   const Icon = sample.icon;
+  // Each card sways on its own period (7 to 10 s), so they never move in step.
+  const sway = 7 + ((index * 1.37) % 3);
   return (
     <div
       className="login-float flex items-center gap-3.5 rounded-[22px] bg-card/80 px-4 py-3.5 shadow-lg shadow-foreground/5 ring-1 ring-foreground/5 backdrop-blur-md"
-      style={{ animationDelay: `${index * -2.7}s`, marginLeft: `${(index % 3) * 28}px` }}
+      style={{
+        animationDuration: `${sway}s`,
+        animationDelay: `${-((index * 0.3375) % 1) * sway}s`,
+        marginLeft: `${(index % 3) * 28}px`,
+      }}
     >
       <span className="relative grid size-10 shrink-0 place-items-center rounded-full" style={{ color: sample.color }}>
         <span className="absolute inset-0 rounded-full opacity-15" style={{ background: sample.color }} />
@@ -77,19 +86,34 @@ function SampleCard({ sample, index }: { sample: (typeof SAMPLES)[number]; index
 
 export function LoginScene({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const spot = useRef<HTMLDivElement>(null);
 
-  // The pointer light: two CSS variables, written at most once a frame.
+  // The pointer light trails the pointer: each frame it closes the same share
+  // of the gap whatever the frame rate (a 120 ms time constant), and the loop
+  // stops once it has caught up. It starts where globals.css puts it.
   useEffect(() => {
-    const el = ref.current;
-    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const scene = ref.current;
+    const light = spot.current;
+    if (!scene || !light || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const at = { x: window.innerWidth * 0.7, y: window.innerHeight * 0.4 };
+    const to = { ...at };
     let frame = 0;
+    let last = 0;
+    const step = (now: number) => {
+      const dt = last ? Math.min((now - last) / 1000, 0.1) : 1 / 60;
+      last = now;
+      const k = 1 - Math.exp(-dt / 0.12);
+      at.x += (to.x - at.x) * k;
+      at.y += (to.y - at.y) * k;
+      light.style.transform = `translate3d(${at.x}px, ${at.y}px, 0)`;
+      if (Math.abs(to.x - at.x) + Math.abs(to.y - at.y) > 0.5) frame = requestAnimationFrame(step);
+      else frame = last = 0;
+    };
     const move = (e: PointerEvent) => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        el.style.setProperty("--login-x", `${e.clientX}px`);
-        el.style.setProperty("--login-y", `${e.clientY}px`);
-      });
+      const box = scene.getBoundingClientRect();
+      to.x = e.clientX - box.left;
+      to.y = e.clientY - box.top;
+      if (!frame) frame = requestAnimationFrame(step);
     };
     window.addEventListener("pointermove", move, { passive: true });
     return () => {
@@ -100,13 +124,14 @@ export function LoginScene({ children }: { children: ReactNode }) {
 
   return (
     <div ref={ref} className="login-scene relative min-h-screen overflow-hidden">
-      <div className="login-blob login-blob-1" aria-hidden="true" />
-      <div className="login-blob login-blob-2" aria-hidden="true" />
-      <div className="login-blob login-blob-3" aria-hidden="true" />
+      <MeshGradient className="absolute inset-0" resolution={0.6} maxFps={30} intensity={0.7} />
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <GlowAurora height={0.3} amplitude={1.2} blend={0.6} layers={2} opacity={0.75} speed={0.55} dpr={1} />
+        {/* Half the device's pixel ratio: 0.5, 1 and 1.5 canvas pixels per
+            CSS pixel on 1x, 2x and 3x screens. The old dpr={1} drew 1
+            everywhere; no share of the ratio matches that on every screen. */}
+        <GlowAurora height={0.3} amplitude={1.2} blend={0.6} layers={2} opacity={0.75} speed={0.55} resolution={0.5} maxFps={30} />
       </div>
-      <div className="login-spotlight" aria-hidden="true" />
+      <div ref={spot} className="login-spotlight" aria-hidden="true" />
       <div className="film-grain" aria-hidden="true" />
 
       <div className="relative mx-auto grid min-h-screen max-w-[1200px] grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-center gap-16 px-10 py-12 max-lg:grid-cols-1 max-lg:gap-8 max-md:px-4">
@@ -137,7 +162,7 @@ export function LoginScene({ children }: { children: ReactNode }) {
             />
           </div>
           <div className="relative flex h-[300px] flex-col gap-3 overflow-hidden [mask-image:linear-gradient(transparent,black_18%,black_82%,transparent)]">
-            <div className="login-drift flex flex-col gap-3">
+            <div className="login-drift flex flex-col gap-3 pb-3">
               {[...SAMPLES, ...SAMPLES].map((s, i) => (
                 <SampleCard key={i} sample={s} index={i % SAMPLES.length} />
               ))}
@@ -148,6 +173,7 @@ export function LoginScene({ children }: { children: ReactNode }) {
         {/* The sign-in card, on a slowly turning glow border. */}
         <div className="login-rise flex flex-col items-center gap-5" style={{ animationDelay: "60ms" }}>
           <div className="login-ring w-full max-w-[420px] rounded-[calc(var(--radius)*1.8+2px)] p-[2px]">
+            <div className="login-ring-clip" aria-hidden="true" />
             <div className="login-voice relative rounded-[calc(var(--radius)*1.8)] bg-card">{children}</div>
           </div>
           <p className="mt-6 text-center text-[13px] text-muted-foreground">Access is limited to accounts listed in platform_admins.</p>

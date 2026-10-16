@@ -94,12 +94,15 @@
   --glow-1: #5b7cf5;
   --glow-2: #f07f5a;
   --glow-3: #f6b94a;
-  --glow: linear-gradient(100deg, var(--glow-1), var(--glow-2) 55%, var(--glow-3));
+  /* Mixed in OKLab: blue to coral passes through violet and rose, not grey. */
+  --glow: linear-gradient(100deg in oklab, var(--glow-1), var(--glow-2) 55%, var(--glow-3));
 
   --chart-1: #4f7cf7;
   --chart-2: #e2683f;
-  --chart-3: #f6b94a;
-  --chart-4: #3db37a;
+  /* Amber and green deepened for the light page: 3:1 against a white card,
+     where the display's #f6b94a and #3db37a are 1.8:1 and 2.7:1. */
+  --chart-3: #c8850a;
+  --chart-4: #38a671;
   --chart-5: #7a64e8;
 
   --radius: 0.75rem;
@@ -117,6 +120,29 @@
     var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* The display's time of day (lib/mood.ts): MoodProvider sets data-mood on
+   <html>, and the glow takes the mood's colours from Theme.qml. Only the
+   glow: the rest of the palette is light or dark with the theme. No
+   attribute is the day above. Mood changes aren't transitioned here (a
+   colour mid-transition is what a canvas would read); the WebGL backdrops
+   ease their own palettes. tests/mood.test.mjs checks these against
+   MOOD_GLOW. */
+:root[data-mood="morning"] {
+  --glow-1: #f6b94a;
+  --glow-2: #f07f5a;
+  --glow-3: #f2a7c3;
+}
+:root[data-mood="evening"] {
+  --glow-1: #7a64e8;
+  --glow-2: #e86a92;
+  --glow-3: #f07f5a;
+}
+:root[data-mood="night"] {
+  --glow-1: #3b4fb8;
+  --glow-2: #7a64e8;
+  --glow-3: #a04e78;
 }
 
 .dark {
@@ -181,129 +207,131 @@
   background-image: var(--glow);
 }
 
-/* The ambient view (components/today/AmbientView.tsx): the display's moving
-   gradient as three soft blobs in the glow colours, slow enough to be calm,
-   deep and dim at night, under the film grain (.film-grain, with the sign-in
-   page's styles below). Off for people who ask for less motion. */
+/* The ambient view (components/today/AmbientView.tsx): the display's
+   ambient screen saver in a browser. The moving gradient behind it is a
+   canvas (MeshGradient); these are the colours around it, by day and at
+   night, under the film grain (.film-grain, with the sign-in page's styles
+   below).
+
+   Night comes in slowly. The canvas takes 90 s (MeshGradient eases its own
+   palette over the same time, and this background is what shows without
+   WebGL). The text, the cards and the aurora change at the halfway point,
+   when the background is as light as it is dark, so nothing on it is ever
+   hard to read on the way. */
 .ambient {
-  background: #f6e6d2;
+  /* Both canvases are named: a sky (SkyBackdrop) mixes them itself over the same 90 s. */
+  --ambient-canvas-day: #f6e6d2;
+  --ambient-canvas-night: #17131f;
+  --ambient-canvas: var(--ambient-canvas-day);
+  --ambient-ink: #2a2218;
+  --ambient-card: rgb(255 255 255 / 0.85);
+  --ambient-card-ink: #1d1b24;
+  --ambient-up: #1c7a4e;
+  --ambient-down: #b5432a;
+  --ambient-later: var(--primary);
+  --ambient-alert: rgb(255 231 223 / 0.9);
+  --ambient-alert-ink: #3b1d12;
+  --ambient-alert-kicker: #b23224;
+  background-color: var(--ambient-canvas);
+  color: var(--ambient-ink);
+  transition:
+    background-color 90s ease-in-out,
+    color 4s ease-in-out 43s;
 }
+/* At night the cards dim and the accents go quiet (currentColor: the card's
+   own ink), except for what needs you. */
 .ambient-night {
-  background: #17131f;
+  --ambient-canvas: var(--ambient-canvas-night);
+  --ambient-ink: rgb(255 255 255 / 0.85);
+  --ambient-card: rgb(0 0 0 / 0.4);
+  --ambient-card-ink: rgb(255 255 255 / 0.8);
+  --ambient-up: currentColor;
+  --ambient-down: currentColor;
+  --ambient-later: currentColor;
+  --ambient-alert: var(--ambient-card);
+  --ambient-alert-ink: var(--ambient-card-ink);
+  --ambient-alert-kicker: #ff9b8a;
 }
-.ambient-blob {
-  position: absolute;
-  width: 75vmax;
-  height: 75vmax;
-  border-radius: 9999px;
-  filter: blur(80px);
-  opacity: 0.75;
-  will-change: transform;
+.ambient-card,
+.ambient-alert,
+.ambient-tint {
+  transition:
+    background-color 3s ease-in-out 43.5s,
+    color 3s ease-in-out 43.5s,
+    opacity 3s ease-in-out 43.5s;
 }
-.ambient-night .ambient-blob {
-  opacity: 0.35;
+.ambient-card {
+  background-color: var(--ambient-card);
+  color: var(--ambient-card-ink);
 }
-.ambient-blob-1 {
-  left: -20vmax;
-  top: -25vmax;
-  background: radial-gradient(circle, var(--glow-3) 0%, transparent 65%);
-  animation: ambient-drift-1 70s ease-in-out infinite alternate;
+.ambient-alert {
+  background-color: var(--ambient-alert);
+  color: var(--ambient-alert-ink);
 }
-.ambient-blob-2 {
-  right: -25vmax;
-  top: -15vmax;
-  background: radial-gradient(circle, var(--glow-2) 0%, transparent 65%);
-  animation: ambient-drift-2 85s ease-in-out infinite alternate;
+.ambient-up {
+  color: var(--ambient-up);
 }
-.ambient-blob-3 {
-  left: 10vmax;
-  bottom: -40vmax;
-  background: radial-gradient(circle, var(--glow-1) 0%, transparent 65%);
-  animation: ambient-drift-3 95s ease-in-out infinite alternate;
+.ambient-down {
+  color: var(--ambient-down);
 }
-@keyframes ambient-drift-1 {
-  to { transform: translate(18vmax, 12vmax) scale(1.15); }
+.ambient-later {
+  color: var(--ambient-later);
 }
-@keyframes ambient-drift-2 {
-  to { transform: translate(-16vmax, 18vmax) scale(0.9); }
+.ambient-alert-kicker {
+  color: var(--ambient-alert-kicker);
 }
-@keyframes ambient-drift-3 {
-  to { transform: translate(14vmax, -14vmax) scale(1.1); }
+/* The night aurora fades in once the background is half dark, and out as
+   soon as the morning starts (the destination's delay is the one used). */
+.ambient-aurora {
+  opacity: 0;
+  transition: opacity 8s ease-in-out;
+}
+.ambient-night .ambient-aurora {
+  opacity: 1;
+  transition-delay: 40s;
+}
+/* The rail of cards rises in, one after another (AmbientView staggers the
+   delay). Transform and opacity only, so the compositor does it. */
+.ambient-rise {
+  animation: ambient-rise 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes ambient-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.98);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ambient-blob {
+  .ambient-rise {
     animation: none;
   }
 }
 
 /* The sign-in page (components/login/LoginScene.tsx): the display's glow,
-   alive. Three drifting blobs, a light under the pointer, a column of sample
-   cards floating up, a glow border turning around the card, and a soft
-   spectrum under it like the voice bar. All of it stops for people who ask
-   for less motion. */
-@property --login-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
+   alive. A moving gradient (MeshGradient) and an aurora under everything, a
+   light trailing the pointer, a column of sample cards floating up, a glow
+   border turning around the card, and a soft spectrum under it like the
+   voice bar. All of it stops for people who ask for less motion. */
 .login-scene {
-  --login-x: 70%;
-  --login-y: 40%;
   background: var(--background);
 }
-.login-blob {
-  position: absolute;
-  width: 60vmax;
-  height: 60vmax;
-  border-radius: 9999px;
-  filter: blur(90px);
-  opacity: 0.45;
-  pointer-events: none;
-  will-change: transform;
-}
-.dark .login-blob {
-  opacity: 0.4;
-}
-.login-blob-1 {
-  left: -18vmax;
-  top: -22vmax;
-  background: radial-gradient(circle, var(--glow-1) 0%, transparent 62%);
-  animation: login-orbit-1 38s ease-in-out infinite alternate;
-}
-.login-blob-2 {
-  right: -20vmax;
-  top: 10vmax;
-  background: radial-gradient(circle, var(--glow-2) 0%, transparent 62%);
-  animation: login-orbit-2 46s ease-in-out infinite alternate;
-}
-.login-blob-3 {
-  left: 20vmax;
-  bottom: -32vmax;
-  background: radial-gradient(circle, var(--glow-3) 0%, transparent 62%);
-  animation: login-orbit-3 54s ease-in-out infinite alternate;
-}
-@keyframes login-orbit-1 {
-  50% { transform: translate(14vmax, 8vmax) scale(1.12); }
-  to { transform: translate(6vmax, 18vmax) scale(0.95); }
-}
-@keyframes login-orbit-2 {
-  50% { transform: translate(-12vmax, -10vmax) scale(0.9); }
-  to { transform: translate(-20vmax, 6vmax) scale(1.1); }
-}
-@keyframes login-orbit-3 {
-  50% { transform: translate(-10vmax, -14vmax) scale(1.15); }
-  to { transform: translate(12vmax, -6vmax) scale(1); }
-}
+/* The light under the pointer: one soft disc, moved by transform so it never
+   repaints. LoginScene eases it toward the pointer each frame. */
 .login-spotlight {
   position: absolute;
-  inset: 0;
+  left: -420px;
+  top: -420px;
+  width: 840px;
+  height: 840px;
+  border-radius: 9999px;
   pointer-events: none;
-  background: radial-gradient(420px circle at var(--login-x) var(--login-y), color-mix(in oklab, var(--glow-1) 18%, transparent), transparent 70%);
-  transition: background 0.2s;
+  background: radial-gradient(circle closest-side in oklab, color-mix(in oklab, var(--glow-1) 18%, transparent), transparent 70%);
+  transform: translate3d(70vw, 40vh, 0);
+  will-change: transform;
 }
 /* Film grain over the moving gradients (this page and the ambient view), as
    on the display's GradientTile: static monochrome noise for texture, in
-   plain alpha so the drifting blobs under it never have to be re-blended.
+   plain alpha so the gradients under it never have to be re-blended.
    A little lighter on dark backgrounds, where the same noise reads stronger. */
 .film-grain {
   position: absolute;
@@ -311,6 +339,9 @@
   pointer-events: none;
   opacity: 0.12;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.ambient .film-grain {
+  transition: opacity 3s ease-in-out 43.5s;
 }
 /* Dark: the sign-in page follows the theme, the ambient view its own clock. */
 .dark .login-scene .film-grain,
@@ -323,19 +354,38 @@
 @keyframes login-rise {
   from { opacity: 0; transform: translateY(18px); filter: blur(6px); }
 }
+/* The tagline in the glow, sweeping. The image is twice the text's width and
+   moves by exactly one copy of itself per loop, so the loop has no seam. */
 .login-shimmer {
-  background: linear-gradient(100deg, var(--glow-1), var(--glow-2) 35%, var(--glow-3) 55%, var(--glow-1) 80%);
-  background-size: 220% 100%;
+  --lean: var(--shimmer-lean, 0%);
+  background: linear-gradient(
+    100deg in oklab,
+    color-mix(in oklab, var(--glow-1), var(--foreground) var(--lean)),
+    color-mix(in oklab, var(--glow-2), var(--foreground) var(--lean)) 35%,
+    color-mix(in oklab, var(--glow-3), var(--foreground) var(--lean)) 55%,
+    color-mix(in oklab, var(--glow-1), var(--foreground) var(--lean)) 80%
+  );
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   animation: login-shimmer 9s linear infinite;
 }
 @keyframes login-shimmer {
-  to { background-position: -220% 0; }
+  to { background-position: -200% 0; }
 }
-/* The sample cards: the column climbs forever (it holds two copies), and
-   each card bobs a little on its own. */
+/* Where a mood's glow is too pale for the light page (morning) or too deep
+   for the dark one (night), the tagline leans toward the ink to stay
+   readable at large-text contrast. */
+:root[data-mood="morning"]:not(.dark) .login-shimmer {
+  --shimmer-lean: 32%;
+}
+:root.dark[data-mood="night"] .login-shimmer {
+  --shimmer-lean: 22%;
+}
+/* The sample cards: the column climbs forever (it holds two copies, and the
+   padding at its end makes half of it exactly one copy), and each card sways
+   on its own period. */
 .login-drift {
   animation: login-drift 36s linear infinite;
 }
@@ -348,15 +398,38 @@
 @keyframes login-float {
   50% { transform: translateX(10px); }
 }
+/* The sign-in card's border: a conic glow drawn once and turned by the
+   compositor, so no frame repaints it. Its square is far wider than the
+   card, so it covers the corners at every angle however tall the card gets,
+   and the clip keeps it to the 2 px border. The easing speeds up and slows
+   down but starts and ends at the same speed: never a stop, never a seam. */
 .login-ring {
-  background: conic-gradient(from var(--login-angle), var(--glow-1), var(--glow-2), var(--glow-3), transparent 60%, var(--glow-1));
-  animation: login-turn 7s linear infinite;
+  position: relative;
   box-shadow: 0 30px 80px -30px color-mix(in oklab, var(--glow-1) 45%, transparent);
 }
-@keyframes login-turn {
-  to { --login-angle: 360deg; }
+.login-ring-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
 }
-/* The voice bar's spectrum, breathing under the card. */
+.login-ring-clip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 260%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background: conic-gradient(in oklab, var(--glow-1), var(--glow-2), var(--glow-3), transparent 60%, var(--glow-1));
+  animation: login-turn 21s cubic-bezier(0.4, 0.15, 0.6, 0.85) infinite;
+}
+@keyframes login-turn {
+  to { rotate: 360deg; }
+}
+/* The voice bar's spectrum, breathing under the card: its brightness and its
+   width on two unrelated periods, so the breath never quite repeats. */
 .login-voice::after {
   content: "";
   position: absolute;
@@ -366,22 +439,128 @@
   height: 40px;
   z-index: -1;
   border-radius: 9999px;
-  background: linear-gradient(90deg, #db47b3, #8f57e6, #4280f5, #24c2c2, #4dc266, #f5a83d, #f56161);
+  background: linear-gradient(90deg in oklab, #db47b3, #8f57e6, #4280f5, #24c2c2, #4dc266, #f5a83d, #f56161);
   filter: blur(26px);
   opacity: 0.55;
-  animation: login-breathe 5s ease-in-out infinite;
+  animation:
+    login-breathe 5s ease-in-out infinite alternate,
+    login-stretch 7s ease-in-out infinite alternate;
 }
 @keyframes login-breathe {
-  50% { opacity: 0.85; transform: scaleX(1.08); }
+  to { opacity: 0.85; }
+}
+@keyframes login-stretch {
+  to { scale: 1.08 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .login-blob,
   .login-shimmer,
   .login-drift,
   .login-float,
-  .login-ring,
+  .login-ring-clip::before,
   .login-voice::after,
   .login-rise {
     animation: none;
   }
+}
+
+/* The feed layouts (components/MarketsGrid.tsx, ProjectsBoard.tsx and the
+   rest under feed/): cards rise in one after another when a tab or a page
+   arrives (--i is the card's place, capped so the last starts within a
+   third of a second), the strips of days grow up from their baseline and
+   the bars of the day's moves out from the middle, the blocked lane's
+   border breathes, and the story and brief tiles take their
+   colour from --tint and --agent. Opacity and transforms only; none of it
+   runs for people who ask for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .feed-rise {
+    animation: feed-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(min(var(--i, 0), 8) * 40ms);
+  }
+  .feed-grow {
+    transform-origin: bottom;
+    animation: feed-grow 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: calc(min(var(--i, 0), 30) * 8ms);
+  }
+  .feed-grow-x {
+    animation: feed-grow-x 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation-delay: calc(0.15s + var(--i, 0) * 40ms);
+  }
+  .feed-alert::after {
+    animation: feed-breathe 2.4s ease-in-out infinite alternate;
+  }
+  /* A progress bar grows to its value on first paint. The value is an
+     inline transform, so the start is the separate translate property. */
+  @starting-style {
+    [data-slot="progress-indicator"] {
+      translate: -100% 0;
+    }
+  }
+}
+@keyframes feed-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+@keyframes feed-grow {
+  from {
+    scale: 1 0;
+  }
+}
+@keyframes feed-grow-x {
+  from {
+    scale: 0 1;
+  }
+}
+@keyframes feed-breathe {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+.feed-alert {
+  position: relative;
+}
+.feed-alert::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--destructive) 55%, transparent);
+  opacity: 0.6;
+}
+/* A story without a picture, as the display tints one: its section's colour
+   on a soft diagonal, lighter by day and deeper at night. */
+.feed-tint {
+  background: linear-gradient(
+    135deg in oklab,
+    color-mix(in oklab, var(--tint, var(--primary)) 62%, white),
+    var(--tint, var(--primary)) 60%,
+    color-mix(in oklab, var(--tint, var(--primary)) 86%, black)
+  );
+}
+.dark .feed-tint {
+  background: linear-gradient(
+    135deg in oklab,
+    color-mix(in oklab, var(--tint, var(--primary)) 72%, black),
+    color-mix(in oklab, var(--tint, var(--primary)) 42%, black)
+  );
+}
+/* A daily brief's header: its agent's colour, fading across. */
+.feed-agent-tint {
+  background: linear-gradient(
+    90deg in oklab,
+    color-mix(in oklab, var(--agent, var(--primary)) 20%, var(--card)),
+    color-mix(in oklab, var(--agent, var(--primary)) 5%, var(--card))
+  );
+}
+.dark .feed-agent-tint {
+  background: linear-gradient(
+    90deg in oklab,
+    color-mix(in oklab, var(--agent, var(--primary)) 26%, var(--card)),
+    color-mix(in oklab, var(--agent, var(--primary)) 6%, var(--card))
+  );
 }

@@ -1,9 +1,10 @@
-import { askAssistant, requireAdmin, type AskTurn } from "@/lib/data";
+import { askAssistant, requireAdmin, type AskMode, type AskTurn } from "@/lib/data";
 import { DataError } from "@/lib/errors";
 
-// The Today page's Ask McFly: the browser posts here; this passes the
-// question to the assistant edge function with the admin's own JWT (which
-// never reaches the page) and streams the answer back unchanged.
+// Ask McFly from the console (Today's Ask bar, /voice, /ask): the browser
+// posts here; this passes the question to the assistant edge function with
+// the admin's own JWT (which never reaches the page) and streams the answer
+// back unchanged.
 export async function POST(req: Request) {
   await requireAdmin();
   const body = (await req.json().catch(() => null)) as { message?: unknown; history?: unknown; mode?: unknown } | null;
@@ -16,7 +17,14 @@ export async function POST(req: Request) {
         .map((t) => ({ role: t.role, text: t.text.slice(0, 4000) }))
     : [];
   try {
-    const upstream = await askAssistant(message, history, body?.mode === "quick" ? "quick" : "chat");
+    const mode: AskMode = body?.mode === "quick" || body?.mode === "read" ? body.mode : "chat";
+    let upstream = await askAssistant(message, history, mode);
+    // A function deployed before "read" existed refuses the mode with a 400:
+    // answer in chat mode rather than not at all until it's redeployed.
+    if (upstream.status === 400 && mode === "read") {
+      await upstream.body?.cancel();
+      upstream = await askAssistant(message, history, "chat");
+    }
     if (!upstream.ok || !upstream.body) {
       const err = (await upstream.json().catch(() => null)) as { error?: string } | null;
       return Response.json({ error: err?.error ?? "McFly couldn't answer just now." }, { status: 502 });

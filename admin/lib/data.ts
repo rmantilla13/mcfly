@@ -3,10 +3,12 @@ import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
+import { accountVoice, type KokoroVoice } from "@/lib/account-voice";
 import * as demo from "@/lib/demo/store";
 import { demoMode, supabaseConfig, supabaseProjectUrl } from "@/lib/env";
 import { DataError } from "@/lib/errors";
 import type { QuoteLatestRow } from "@/lib/holdings";
+import type { SeriesPoint } from "@/lib/series";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   Admin,
@@ -321,6 +323,21 @@ export async function updateDeviceSettings(id: string, patch: DisplaySettings): 
   await rpc(src.db, "admin_update_device_settings", { device: id, patch });
 }
 
+// The account's voice (lib/account-voice.ts): the displays' voice, or null
+// with no display to hold it.
+export async function getAccountVoice(): Promise<KokoroVoice | null> {
+  return accountVoice(await listDevices());
+}
+
+// A Kokoro voice picked on the web: every display gets it, so the Pi, this
+// console and the app all speak with it. Returns how many displays hold it
+// (0: no display yet, the browser keeps the choice to itself).
+export async function setAccountVoice(voice: KokoroVoice): Promise<number> {
+  const devices = await listDevices();
+  for (const d of devices) await updateDeviceSettings(d.id, { voice });
+  return devices.length;
+}
+
 export async function getSettings(): Promise<Settings> {
   const src = await source();
   const s = src.demo ? demo.demoSettings() : record<Settings>(await rpc(src.db, "admin_get_settings"), "admin_get_settings");
@@ -349,6 +366,151 @@ export async function listAudit(page: number, pageSize = PAGE_SIZE): Promise<Pag
     page,
     pageSize,
   );
+}
+
+// ───────────────────── History: series and the push log ─────────────────────
+// Direct selects, not admin_* RPCs. RLS already lets the admin read these
+// rows (quotes_read and metrics_read through can_read(), ingest_log_read
+// through is_platform_admin()), the same rows the display reads for its
+// sparklines (display/src/models/FeedStore.cpp), so the database still decides
+// who sees what and no migration is needed. Reads only: nothing to audit.
+
+// Supabase answers at most this many rows per request (its default Max Rows),
+// so asking for more would be cut without a word. A key pushed every 15
+// minutes fills it in about ten days; a series' first point says how far back
+// it really reaches.
+const HISTORY_ROW_LIMIT = 1000;
+const SERIES_MAX_KEYS = 24;
+const SERIES_TABLES = {
+  quotes: { table: "quotes", key: "symbol", value: "price" },
+  metrics: { table: "metrics", key: "key", value: "value" },
+} as const;
+
+// A month of history barely moves in an hour, but the Today page asks again
+// every minute in every open tab, and a full read is up to 1000 rows a key
+// (about 60 KB). So each server instance keeps what it read for an hour,
+// per admin and per key. The page adds the latest row to the end itself
+// (lib/today.ts toTicker / toMetric), so a sparkline still ends on the
+// current value. Only an admin's reads are kept, under their own id, and
+// served back only to them after this request's own admin check: rows never
+// cross from one session to another. A view or RPC that thinned the rows in
+// the database would cut the full read too, but that is a migration.
+const HISTORY_TTL_MS = 60 * 60_000;
+const HISTORY_MAX_ENTRIES = 256;
+type HistoryEntry = { at: number; kind: "quotes" | "metrics"; key: string; points: Promise<SeriesPoint[]> };
+const historyCache = new Map<string, HistoryEntry>();
+
+// The cached promise is shared, so two tabs refreshing together make one
+// read; a failed read isn't kept. listSeries hands out copies.
+function rememberSeries(cacheKey: string, kind: HistoryEntry["kind"], key: string, now: number, read: () => Promise<SeriesPoint[]>) {
+  const hit = historyCache.get(cacheKey);
+  if (hit && now - hit.at < HISTORY_TTL_MS) return hit.points;
+  for (const [k, e] of historyCache) if (k === cacheKey || now - e.at >= HISTORY_TTL_MS) historyCache.delete(k);
+  while (historyCache.size >= HISTORY_MAX_ENTRIES) historyCache.delete(historyCache.keys().next().value!);
+  const points = read();
+  historyCache.set(cacheKey, { at: now, kind, key, points });
+  points.catch(() => {
+    if (historyCache.get(cacheKey)?.points === points) historyCache.delete(cacheKey);
+  });
+  return points;
+}
+
+// After the console deletes rows (a symbol, a metric, an agent and every row
+// it pushed), so this instance doesn't draw them for another hour.
+function forgetSeries(match: (e: HistoryEntry) => boolean) {
+  for (const [k, e] of historyCache) if (match(e)) historyCache.delete(k);
+}
+
+const clampTo = (n: number, lo: number, hi: number, fallback: number) => (Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : fallback);
+
+// Rows newest first in, points oldest → newest out; unreadable rows dropped.
+function toSeries(rows: unknown, valueColumn: string): SeriesPoint[] {
+  if (!Array.isArray(rows)) return [];
+  const out: SeriesPoint[] = [];
+  for (const row of rows as Record<string, unknown>[]) {
+    const t = Date.parse(String(row.as_of));
+    const v = numOrNull(row[valueColumn]);
+    if (Number.isFinite(t) && v != null) out.push({ t, v });
+  }
+  return out.reverse();
+}
+
+// Each key's history over the last `days`, oldest → newest. Every key asked
+// for is in the result, with [] when it has no rows in the window. Up to an
+// hour old (see HISTORY_TTL_MS): the latest row is the caller's to add.
+export async function listSeries(kind: "quotes" | "metrics", keys: string[], days: number): Promise<Record<string, SeriesPoint[]>> {
+  const wanted = [...new Set(keys.filter((k) => typeof k === "string" && k.length > 0 && k.length <= 64))].slice(0, SERIES_MAX_KEYS);
+  const span = clampTo(days, 1, 365, 30);
+  const src = await source();
+  if (src.demo) return demo.demoListSeries(kind, wanted, span, HISTORY_ROW_LIMIT);
+  const { db } = src;
+  const state = await adminState();
+  const owner = state.status === "admin" ? state.admin.id : null;
+  const { table, key, value } = SERIES_TABLES[kind];
+  const now = Date.now();
+  // One request per key, newest first: the row limit then trims the old end
+  // of a busy key, and a busy key can't crowd a quiet one out.
+  const read = async (k: string) => {
+    const { data, error } = await db
+      .from(table)
+      .select(`${value},as_of`)
+      .eq(key, k)
+      .gte("as_of", new Date(Date.now() - span * 86_400_000).toISOString())
+      .order("as_of", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(HISTORY_ROW_LIMIT);
+    if (error) {
+      console.error(`${table} history failed:`, error.message);
+      throw new DataError(error.message);
+    }
+    return toSeries(data, value);
+  };
+  // A copy of each kept series: whatever the caller does to it, the next
+  // refresh still gets the history as read.
+  const entries = await Promise.all(
+    wanted.map(async (k) => [k, owner ? (await rememberSeries(`${owner}\n${kind}\n${span}\n${k}`, kind, k, now, () => read(k))).slice() : await read(k)] as const),
+  );
+  return Object.fromEntries(entries);
+}
+
+// Every push in the last `hours`, newest first, with its agent's name and
+// colour (the same rows listIngest pages through). `status` narrows it: the
+// Today page wants only the refused ones, a handful where a day of ok rows
+// can be 1000 (about 200 KB with the agents) every minute.
+export async function listIngestSince(hours: number, opts: { status?: "ok" | "error" } = {}): Promise<IngestEntry[]> {
+  // Up to two weeks: judging a quiet agent takes a week and a bit of it.
+  const span = clampTo(hours, 1, 24 * 14, 24);
+  const src = await source();
+  if (src.demo) return demo.demoListIngestSince(span, HISTORY_ROW_LIMIT, opts.status);
+  const since = new Date(Date.now() - span * 3_600_000).toISOString();
+  let query = src.db
+    .from("ingest_log")
+    .select("id,created_at,agent_id,feed,count,status,message,agents(name,color)")
+    .gte("created_at", since);
+  if (opts.status) query = query.eq("status", opts.status);
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(HISTORY_ROW_LIMIT);
+  if (error) {
+    console.error("ingest_log read failed:", error.message);
+    throw new DataError(error.message);
+  }
+  return (Array.isArray(data) ? (data as Record<string, unknown>[]) : []).map((e) => {
+    const embedded = Array.isArray(e.agents) ? e.agents[0] : e.agents;
+    const agent = embedded && typeof embedded === "object" ? (embedded as { name?: unknown; color?: unknown }) : null;
+    return {
+      id: num(e.id),
+      created_at: String(e.created_at),
+      agent_id: typeof e.agent_id === "string" ? e.agent_id : null,
+      agent_name: typeof agent?.name === "string" ? agent.name : null,
+      agent_color: typeof agent?.color === "string" ? agent.color : null,
+      feed: String(e.feed ?? ""),
+      count: num(e.count),
+      status: e.status === "error" ? "error" : "ok",
+      message: typeof e.message === "string" ? e.message : null,
+    };
+  });
 }
 
 // ─────────────────────────── Mutations ───────────────────────────
@@ -394,6 +556,7 @@ export async function deleteAgent(id: string): Promise<void> {
   const src = await source();
   if (src.demo) return demo.demoDeleteAgent(id);
   await rpc(src.db, "admin_delete_agent", { agent: id });
+  forgetSeries(() => true); // its quotes and metrics went with it
 }
 
 export async function deleteBrief(id: string): Promise<void> {
@@ -417,6 +580,7 @@ export async function deleteSymbol(symbol: string): Promise<void> {
   const src = await source();
   if (src.demo) return demo.demoDeleteSymbol(symbol);
   await rpc(src.db, "admin_delete_symbol", { symbol });
+  forgetSeries((e) => e.kind === "quotes" && e.key === symbol);
 }
 
 export async function deleteNewsReport(id: string): Promise<void> {
@@ -554,6 +718,7 @@ export async function deleteMetric(key: string): Promise<void> {
   const src = await source();
   if (src.demo) return demo.demoDeleteMetric(key);
   await rpc(src.db, "admin_delete_metric", { metric: key });
+  forgetSeries((e) => e.kind === "metrics" && e.key === key);
 }
 
 export async function listDashboards(): Promise<DashboardRow[]> {
@@ -679,11 +844,15 @@ export async function syncCalendarSource(id: string): Promise<{ count?: number; 
 
 // ───────────────────────────── Grok bots ─────────────────────────────
 
-export async function listBots(): Promise<Bot[]> {
+// The runs are a read per bot; `runs: false` skips them (the ⌘K index only
+// needs the names) and leaves each bot's list empty.
+export async function listBots({ runs: withRuns = true }: { runs?: boolean } = {}): Promise<Bot[]> {
   const src = await source();
   if (src.demo) return demo.demoListBots();
   const rows = list<Omit<Bot, "runs">>(await rpc(src.db, "admin_list_bots"), "admin_list_bots");
-  const runs = await Promise.all(rows.map((b) => rpc<BotRun[]>(src.db, "admin_list_bot_runs", { bot: b.id, lim: 5 }).catch(() => [])));
+  const runs = withRuns
+    ? await Promise.all(rows.map((b) => rpc<BotRun[]>(src.db, "admin_list_bot_runs", { bot: b.id, lim: 5 }).catch(() => [])))
+    : rows.map(() => []);
   return rows.map((b, i) => ({
     ...b,
     scopes: Array.isArray(b.scopes) ? b.scopes.filter((x): x is AgentScope => SCOPES.includes(x as AgentScope)) : [],
@@ -735,9 +904,13 @@ export type AskTurn = { role: "user" | "assistant"; text: string };
 // The assistant's answer as a text/event-stream (delta…, then done or error),
 // asked with the admin's own JWT, so it sees what they see. The token stays on
 // the server: the browser talks to /api/ask, never to Supabase.
-export async function askAssistant(message: string, history: AskTurn[], mode: "chat" | "quick"): Promise<Response> {
+// chat: a few sentences (Today's Ask bar). quick: spoken (/voice). read: the
+// full-screen Ask (/ask), longer and in Markdown.
+export type AskMode = "chat" | "quick" | "read";
+
+export async function askAssistant(message: string, history: AskTurn[], mode: AskMode): Promise<Response> {
   const src = await source();
-  if (src.demo) return demo.demoAsk(message);
+  if (src.demo) return demo.demoAsk(message, mode);
   const { data } = await src.db.auth.getSession();
   const token = data.session?.access_token;
   const config = supabaseConfig();

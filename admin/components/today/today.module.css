@@ -1,0 +1,65 @@
+/* Motion for the Today page (TodayView and its tiles). Short entrances,
+   staggered, and nothing that loops for attention: the only steady motion
+   is the timeline's now line, which glides a few pixels when the minute
+   turns. Transform, opacity and (for streamed words) a little blur, so the
+   compositor does the work. All of it stops for people who ask for less
+   motion. Colours come from the tokens in app/globals.css. */
+
+/* A tile rising into place on first paint, after the ones before it (--i,
+   set inline, about 50 ms apart). A tile that appears later (a project gets
+   blocked, a refresh brings an insight) rises the same way, because it is
+   new to the page; the ones already there don't move. */
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(min(var(--i, 0), 8) * 50ms);
+  }
+  /* An insight arriving on a refresh slides in from the side it reads from. */
+  .slide {
+    animation: slide 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(min(var(--i, 0), 6) * 60ms);
+  }
+  /* A streamed word: it comes into focus as it arrives. */
+  .word {
+    animation: word 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  .fadeIn {
+    animation: fade 0.5s ease-out backwards;
+  }
+  /* The now line moving with the clock (DayTimeline's DayRail sets its y). */
+  .glide {
+    transition: translate 1.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease-out;
+  }
+  /* The rail's filled part, keeping pace with the line. */
+  .fill {
+    transition: height 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+
+@keyframes slide {
+  from {
+    opacity: 0;
+    translate: -12px 0;
+  }
+}
+
+@keyframes word {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+    translate: 0 0.12em;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}

@@ -8,6 +8,9 @@
 // it sounds as it does on the Pi and the iPhone; the browser's voice speaks
 // only when chosen, or when Kokoro can't run here (lib/speech-engine.ts).
 
+import { useEffect, useSyncExternalStore } from "react";
+import { accountVoiceAction, setAccountVoiceAction } from "@/app/(console)/actions";
+import { followVoice } from "@/lib/account-voice";
 import { speechPieces } from "@/lib/sentences";
 import { replySpeaker } from "@/lib/speech-engine";
 
@@ -21,9 +24,12 @@ export const VOICES: { id: VoiceId; name: string }[] = [
 ];
 export type KokoroState = { status: "idle" | "loading" | "ready" | "failed"; percent: number };
 
+// The voice is the account's (lib/account-voice.ts): picked here, on the Pi
+// or in the app, the others follow. This browser keeps a copy so the first
+// reply needn't wait for the server; "This device's voice" is kept here only.
 const VOICE_KEY = "mcfly.voice";
 
-export function storedVoice(): VoiceId {
+function readVoice(): VoiceId {
   try {
     const v = localStorage.getItem(VOICE_KEY) as VoiceId | null;
     return v && VOICES.some((x) => x.id === v) ? v : "af_heart";
@@ -31,12 +37,71 @@ export function storedVoice(): VoiceId {
     return "af_heart";
   }
 }
-export function storeVoice(v: VoiceId) {
+
+let voice: VoiceId | null = null;
+const voiceListeners = new Set<() => void>();
+let picks = 0; // a pick made while a sync was reading wins over what it read
+let saving: Promise<unknown> = Promise.resolve();
+
+export function storedVoice(): VoiceId {
+  return (voice ??= readVoice());
+}
+export function subscribeVoice(fn: () => void) {
+  voiceListeners.add(fn);
+  return () => {
+    voiceListeners.delete(fn);
+  };
+}
+function setVoice(v: VoiceId) {
+  if (v === storedVoice()) return;
+  voice = v;
   try {
     localStorage.setItem(VOICE_KEY, v);
   } catch {
     // Remembered for this page only.
   }
+  for (const fn of voiceListeners) fn();
+}
+
+// Catches up with the account's voice. "This device's voice" stays.
+export async function syncVoice(): Promise<void> {
+  const pick = picks;
+  await saving;
+  const account = await accountVoiceAction().catch(() => null);
+  if (pick === picks) setVoice(followVoice(storedVoice(), account));
+}
+
+// A voice picked here. A Kokoro voice goes to every display, so the Pi and
+// the app speak with it too; "This device's voice" is this browser's alone.
+export function chooseVoice(v: VoiceId) {
+  picks++;
+  setVoice(v);
+  if (v === "system") return;
+  saving = setAccountVoiceAction(v)
+    .then((r) => {
+      if (r && !r.ok) console.warn("The voice wasn't saved for the displays:", r.error);
+    })
+    .catch(() => console.warn("The voice wasn't saved for the displays."));
+}
+
+// The voice to speak with, kept up with the account while `live`: now, when
+// the page is looked at again, and every minute.
+export function useVoice(live = true): VoiceId {
+  const v = useSyncExternalStore(subscribeVoice, storedVoice, () => "af_heart" as VoiceId);
+  useEffect(() => {
+    if (!live) return;
+    const sync = () => {
+      if (document.visibilityState === "visible") void syncVoice();
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    const timer = setInterval(sync, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      clearInterval(timer);
+    };
+  }, [live]);
+  return v;
 }
 
 class KokoroPlayer {

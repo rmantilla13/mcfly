@@ -2,6 +2,7 @@ import { LogOutIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { signOutAction } from "@/app/(console)/actions";
 import { Brand } from "@/components/Brand";
+import { CommandBar } from "@/components/CommandBar";
 import { NavLinks } from "@/components/NavLinks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,10 +28,14 @@ export function Shell({ email, demo, children }: { email: string; demo: boolean;
       <aside className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground max-md:border-r-0 max-md:border-b">
         <div className="sticky top-0 flex h-screen flex-col gap-6 px-4 py-5 max-md:static max-md:h-auto max-md:flex-row max-md:flex-wrap max-md:items-center max-md:gap-x-4 max-md:gap-y-3 max-md:py-3">
           <Brand />
+          {/* Search or ask (⌘K); on a phone, a button beside sign out. */}
+          <div className="-mt-2 max-md:mt-0 max-md:ml-auto">
+            <CommandBar />
+          </div>
           <div className="max-md:order-3 max-md:w-full">
             <NavLinks />
           </div>
-          <div className="mt-auto grid gap-2 rounded-2xl bg-sidebar-accent/60 p-3.5 max-md:ml-auto max-md:mt-0 max-md:bg-transparent max-md:p-0">
+          <div className="mt-auto grid gap-2 rounded-2xl bg-sidebar-accent/60 p-3.5 max-md:mt-0 max-md:bg-transparent max-md:p-0">
             <span className="text-xs text-muted-foreground max-md:hidden">Signed in as</span>
             <span className="truncate text-sm font-semibold max-md:hidden" title={email}>
               {email}

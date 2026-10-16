@@ -34,6 +34,15 @@
  * redraws; with reduced motion it draws one still frame and stops instead of
  * redrawing a frozen picture every frame; `glowStops` reads McFly's --glow-*
  * tokens, since a CSS variable isn't a canvas colour.
+ *
+ * Then a second pass, the same in both ports: the hem folds through a 2D
+ * domain warp instead of sliding along X; faint rays run down the curtain
+ * (`rays`); the hue sways on smooth noise; triangular dither, sized to the
+ * final opacity; light mode is ink on the canvas, eased in and out; a new
+ * palette glides in over 1.5 s in OKLCh; the clock starts from the wall
+ * clock, so no two mounts open on the same curtain; the lowering intro only
+ * runs when `intro` asks for it (otherwise it fades in); and `resolution`
+ * renders at a fraction of the device's pixel ratio.
  */
 "use client";
 
@@ -52,11 +61,13 @@ export interface AuroraProps {
   layers?: number;
   direction?: "top" | "bottom";
   mouseInteraction?: boolean;
-  intro?: boolean;
+  intro?: boolean; // lower the curtain into place on mount; otherwise it fades in
   opacity?: number;
-  lightMode?: boolean;
+  lightMode?: boolean; // ink on a light canvas instead of light on a dark one (eased)
+  rays?: number; // 0..1, faint vertical rays in the curtain; 0 skips their noise
   paused?: boolean;
-  dpr?: number;
+  resolution?: number; // fraction of the device pixel ratio to render at (capped at 2x)
+  dpr?: number; // absolute pixel ratio; `resolution` wins when both are set
   maxFps?: number; // 0: every frame
   className?: string;
   style?: CSSProperties;
@@ -78,16 +89,22 @@ type Settings = {
   intro: boolean;
   opacity: number;
   lightMode: boolean;
+  rays: number;
   paused: boolean;
+  resolution?: number;
   dpr?: number;
   maxFps: number;
 };
 
 type Program = { program: WebGLProgram; uniforms: Record<string, WebGLUniformLocation | null> };
+type Lch = number[]; // OKLCh: lightness, chroma, hue in radians
 
 const MAX_STOPS = 5;
 const MAX_LAYERS = 3;
 const INTRO_SECONDS = 2.4;
+const APPEAR_SECONDS = 1.2;
+const PALETTE_SECONDS = 1.5;
+const LIGHT_SECONDS = 0.2; // time constant: light mode settles in about 600 ms
 
 const VERTEX = `#version 300 es
 in vec2 aPosition;
@@ -95,6 +112,8 @@ void main() {
   gl_Position = vec4(aPosition, 0.0, 1.0);
 }`;
 
+// Kept line for line with display/shaders/aurora.frag; the differences are
+// the host's: pixel coordinates, the pointer's pull, uniform names, opacity.
 const FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
@@ -114,6 +133,8 @@ uniform vec3 uPointer;
 uniform float uReveal;
 uniform float uOpacity;
 uniform float uLightMode;
+uniform float uRays;
+uniform vec3 uDrift;
 out vec4 outColor;
 
 vec3 permute(vec3 x) {
@@ -167,13 +188,20 @@ vec3 toSrgb(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 
+// The pair of stops either side of t is picked by comparison, not by a
+// computed index: GLSL ES 1.00 (the display's) only promises constant ones.
 vec3 ramp(float t) {
-  float x = clamp(t, 0.0, 1.0) * float(uStopCount - 1);
-  int i = int(min(floor(x), float(uStopCount - 2)));
-  float f = x - float(i);
+  float n = clamp(float(uStopCount), 2.0, 5.0);
+  float x = clamp(t, 0.0, 1.0) * (n - 1.0);
+  float i = min(floor(x), n - 2.0);
+  float f = x - i;
   f = f * f * (3.0 - 2.0 * f);
-  vec3 lch = mix(uStops[i], uStops[i + 1], f);
-  lch.x = mix(lch.x, min(lch.x, 0.7), uLightMode);
+  vec3 a = uStops[0];
+  vec3 b = uStops[1];
+  if (i > 0.5) { a = uStops[1]; b = uStops[2]; }
+  if (i > 1.5) { a = uStops[2]; b = uStops[3]; }
+  if (i > 2.5) { a = uStops[3]; b = uStops[4]; }
+  vec3 lch = mix(a, b, f);
   return toSrgb(oklabToLinear(vec3(lch.x, lch.y * cos(lch.z), lch.y * sin(lch.z))));
 }
 
@@ -192,49 +220,66 @@ void main() {
   float t = uTime;
   float reach = uPointer.z * exp(-pow((X - uPointer.x) / 0.38, 2.0));
 
-  vec3 glow = vec3(0.0);
+  vec3 light = vec3(0.0); // over a dark sky: the layers screened, premultiplied
   float cover = 0.0;
+  vec3 ink = vec3(1.0); // on a light canvas: what the layers let through, multiplied
   for (int k = 0; k < ${MAX_LAYERS}; k++) {
     if (k >= uLayers) break;
     float layer = float(k);
     float seed = layer * 13.7;
     float pace = t * (1.0 - layer * 0.18);
-    float warp = snoise(vec2(X * 0.45 * uScale + pace * 0.02 + seed, pace * 0.05 + seed));
-    float wave = snoise(vec2(X * 0.75 * uScale + warp * 0.35 - pace * 0.03 + seed, pace * 0.07 - seed)) * 0.72
-      + snoise(vec2(X * 1.6 * uScale + warp * 0.5 + pace * 0.04 - seed, pace * 0.1 + seed * 0.5)) * 0.28;
-    float hem = uHeight + layer * 0.07 + wave * 0.15 * uAmplitude;
-    hem += reach * 0.08 * (layer < 0.5 ? 1.0 : 0.4);
-    hem = mix(-0.25, hem, uReveal);
+    // A slow 2D warp that the hem folds through: it bends the waves in place
+    // and in time, so nothing slides along X at a steady rate.
+    vec2 q = vec2(X * 0.45 * uScale, pace * 0.035 + seed);
+    vec2 w = vec2(snoise(q), snoise(q + vec2(5.2, 1.3)));
+    float wave = snoise(vec2(X * 0.75 * uScale, pace * 0.05 - seed) + w * 0.35) * 0.72
+      + snoise(vec2(X * 1.6 * uScale, pace * 0.09 + seed * 0.5) + w * 0.5) * 0.28;
+    float edge = uHeight + layer * 0.07 + wave * 0.15 * uAmplitude;
+    edge += reach * 0.08 * (layer < 0.5 ? 1.0 : 0.4);
+    edge = mix(-0.25, edge, uReveal);
 
     float soft = (0.04 + uBlend * 0.16) * (1.0 + layer * 0.9);
-    float rise = hem - y;
+    float rise = edge - y;
     float low = -soft - uGlow * 0.14;
     float high = 0.26 + soft * 0.6;
     float body = pow(smootherstep(low, high, rise), 1.5 + uGlow * 0.6);
-    float lobes = 0.86 + 0.14 * snoise(vec2(X * 0.9 * uScale - pace * 0.025 + seed, y * 0.3 + pace * 0.04));
-    float alpha = body * lobes * (layer < 0.5 ? 1.0 : 0.32 / layer);
-    alpha = clamp(alpha * (1.0 + reach * 0.25 * smootherstep(0.9, 0.0, abs(y - hem))), 0.0, 1.0);
+    float alpha = body * (0.86 + 0.14 * w.y) * (layer < 0.5 ? 1.0 : 0.32 / layer);
+    // Rays: soft streaks along the fall of the curtain (a noise stretched
+    // tall), bent by the same warp, gathered where the warp says, and
+    // strongest just above the hem. They only take light away.
+    if (uRays > 0.0) {
+      float n = snoise(vec2(X * 7.0 * uScale + w.x * 2.0, y * 0.5 + pace * 0.1 - seed));
+      float along = smootherstep(-0.1, 0.1, rise) * (1.0 - 0.6 * smootherstep(0.1, 0.5, rise));
+      float gather = smootherstep(-0.3, 0.5, w.y);
+      alpha *= 1.0 - uRays * 0.22 * n * n * along * gather;
+    }
+    alpha = clamp(alpha * (1.0 + reach * 0.25 * smootherstep(0.9, 0.0, abs(y - edge))), 0.0, 1.0);
 
-    vec3 tint = ramp(u + 0.05 * sin(pace * 0.08 + layer * 2.3) + layer * 0.1 + max(rise, 0.0) * 0.05);
-    glow = 1.0 - (1.0 - glow) * (1.0 - tint * alpha);
+    float sway = layer < 0.5 ? uDrift.x : (layer < 1.5 ? uDrift.y : uDrift.z);
+    vec3 tint = ramp(u + sway + layer * 0.1 + max(rise, 0.0) * 0.05);
+    light = 1.0 - (1.0 - light) * (1.0 - tint * alpha);
     cover = 1.0 - (1.0 - cover) * (1.0 - alpha);
+    // As ink the colour is a filter: its own channel passes in full, so the
+    // canvas is tinted, never greyed.
+    ink *= 1.0 - alpha * (1.0 - tint / max(max(tint.r, tint.g), max(tint.b, 0.001)));
   }
 
-  float fade = smootherstep(0.0, 0.7, uReveal) * uOpacity;
   float strength = clamp(uBrightness, 0.0, 2.0);
-  glow *= fade * min(strength, 1.0);
-  cover *= fade * min(strength, 1.0);
-  glow = 1.0 - pow(1.0 - glow, vec3(max(strength, 1.0)));
-  float dither = (hash(frag) - 0.5) / 255.0;
+  float gain = smootherstep(0.0, 0.7, uReveal) * min(strength, 1.0);
+  vec4 onDark = vec4(1.0 - pow(1.0 - light * gain, vec3(max(strength, 1.0))), cover * gain);
+  // Ink laid on with a plain "over": the alpha is the most a channel absorbs
+  // and the colour what the others keep, which on a light canvas comes out
+  // as a multiply. A faint tail is held back so the page isn't stained.
+  vec3 absorb = (1.0 - pow(ink, vec3(max(strength, 1.0)))) * gain * smootherstep(0.0, 0.25, cover * gain) * 0.7;
+  float inked = max(absorb.r, max(absorb.g, absorb.b));
+  vec4 col = mix(onDark, vec4(inked - absorb, inked), uLightMode);
 
-  if (uLightMode > 0.5) {
-    vec3 tint = cover > 0.0001 ? glow / cover : vec3(0.0);
-    cover *= smootherstep(0.0, 0.25, cover);
-    float alpha = cover * 0.7;
-    outColor = vec4(tint * alpha + dither, clamp(alpha + dither, 0.0, 1.0));
-    return;
-  }
-  outColor = vec4(glow + dither, clamp(cover + dither, 0.0, 1.0));
+  // Triangular dither, one step of the final picture: the opacity comes
+  // after it, so it is scaled up by as much. Only where there is light.
+  vec2 cell = floor(frag);
+  float dither = (hash(cell) + hash(cell + 17.13) - 1.0) / 255.0;
+  col += dither / max(uOpacity, 0.1) * min(col.a * 255.0, 1.0);
+  outColor = clamp(col, 0.0, 1.0) * uOpacity;
 }`;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -247,7 +292,7 @@ export function glowStops(): string[] {
   return blue && coral && amber ? [blue, coral, amber, blue] : ["#5b7cf5", "#f07f5a", "#f6b94a", "#5b7cf5"];
 }
 
-const toOklch = (rgb: number[]): number[] => {
+const toOklch = (rgb: number[]): Lch => {
   const [r, g, b] = rgb.map((c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
@@ -260,7 +305,7 @@ const toOklch = (rgb: number[]): number[] => {
   return [lab[0], Math.hypot(lab[1], lab[2]), Math.atan2(lab[2], lab[1])];
 };
 
-const unwrapHues = (stops: number[][]): number[][] => {
+const unwrapHues = (stops: Lch[]): Lch[] => {
   const known = stops.findIndex((stop) => stop[1] > 0.02);
   const anchor = known === -1 ? 0 : stops[known][2];
   let previous = anchor;
@@ -271,6 +316,43 @@ const unwrapHues = (stops: number[][]): number[][] => {
     previous = hue;
     return [stop[0], stop[1], hue];
   });
+};
+
+// One palette part way to another, stop by stop in OKLCh: lightness and
+// chroma straight across, the hue the short way round (a grey stop takes its
+// partner's hue). AuroraGlow.qml eases its palette the same way.
+const blendPalettes = (from: Lch[], to: Lch[], t: number): Lch[] =>
+  unwrapHues(
+    to.map((b, index) => {
+      const a = from[index] ?? b;
+      const ha = a[1] > 0.02 ? a[2] : b[2];
+      const hb = b[1] > 0.02 ? b[2] : ha;
+      const turn = hb - ha - Math.PI * 2 * Math.round((hb - ha) / (Math.PI * 2));
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, ha + turn * t];
+    }),
+  );
+
+const samePalette = (a: Lch[], b: Lch[]) =>
+  a.length === b.length && a.every((stop, index) => stop.every((value, k) => Math.abs(value - b[index][k]) < 1e-4));
+
+const easeInOutSine = (t: number) => 0.5 - 0.5 * Math.cos(Math.PI * clamp(t, 0, 1));
+
+// The hue's slow sway, per layer: two octaves of smooth 1D gradient noise on
+// the layer's own clock. It is the same for every pixel, so it's worked out
+// here once a frame rather than in the shader. AuroraGlow.qml has the same.
+const lattice = (i: number) => {
+  const s = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return (s - Math.floor(s)) * 2 - 1;
+};
+const noise1 = (x: number) => {
+  const i = Math.floor(x);
+  const f = x - i;
+  const s = f * f * f * (f * (f * 6 - 15) + 10);
+  return 2 * (lattice(i) * f * (1 - s) + lattice(i + 1) * (f - 1) * s);
+};
+const hueDrift = (time: number, layer: number) => {
+  const pace = time * (1 - layer * 0.18);
+  return 0.07 * (0.7 * noise1(pace * 0.03 + layer * 3.1) + 0.3 * noise1(pace * 0.071 + 7.7 + layer * 1.3));
 };
 
 const compile = (gl: WebGL2RenderingContext, type: number, source: string) => {
@@ -320,10 +402,12 @@ const Aurora = ({
   layers = 1,
   direction = "top",
   mouseInteraction = true,
-  intro = true,
+  intro = false,
   opacity = 1,
   lightMode = false,
+  rays = 1,
   paused = false,
+  resolution,
   dpr,
   maxFps = 0,
   className = "",
@@ -348,7 +432,9 @@ const Aurora = ({
     intro,
     opacity: clamp(opacity, 0, 1),
     lightMode,
+    rays: clamp(rays, 0, 1),
     paused,
+    resolution: resolution === undefined ? undefined : Math.max(0.1, resolution),
     dpr,
     maxFps: Math.max(0, maxFps),
   };
@@ -393,32 +479,63 @@ const Aurora = ({
 
     const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const cache = new Map<string, number[]>();
     const parse = (value: string): number[] => {
-      const cached = cache.get(value);
-      if (cached) return cached;
-      let rgb = [1, 1, 1];
-      if (probe) {
-        probe.clearRect(0, 0, 1, 1);
-        probe.fillStyle = "#ffffff";
-        probe.fillStyle = value;
-        probe.fillRect(0, 0, 1, 1);
-        const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
-        rgb = [r / 255, g / 255, b / 255];
-      }
-      cache.set(value, rgb);
-      return rgb;
+      if (!probe) return [1, 1, 1];
+      probe.clearRect(0, 0, 1, 1);
+      probe.fillStyle = "#ffffff";
+      probe.fillStyle = value;
+      probe.fillRect(0, 0, 1, 1);
+      const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
+      return [r / 255, g / 255, b / 255];
     };
+    // Each set of stops is parsed once; a change of stops glides from the
+    // palette on screen to the new one.
+    const palettes = new Map<string, Lch[]>();
+    const paletteFor = (stops: string[]) => {
+      const key = stops.join("|");
+      let palette = palettes.get(key);
+      if (!palette) {
+        palette = unwrapHues(stops.map((value) => toOklch(parse(value))));
+        if (palettes.size >= 16) palettes.clear(); // stops that never settle don't pile up
+        palettes.set(key, palette);
+      }
+      return palette;
+    };
+    const glide = { key: "", from: [] as Lch[], to: [] as Lch[], mix: 1 };
+    const shownPalette = () => (glide.mix < 1 ? blendPalettes(glide.from, glide.to, easeInOutSine(glide.mix)) : glide.to);
     const palette = new Float32Array(MAX_STOPS * 3);
+    let paletteDirty = true;
+    const retarget = (s: Settings) => {
+      const key = s.stops.join("|");
+      if (key === glide.key) return;
+      const first = !glide.key;
+      glide.key = key;
+      const next = paletteFor(s.stops);
+      // The same colours spelled another way: nothing to glide.
+      if (!first && samePalette(next, glide.to)) return;
+      // The first palette, less motion, or a different number of stops: no glide.
+      const snap = first || reduce || glide.to.length !== next.length;
+      glide.from = snap ? next : shownPalette();
+      glide.to = next;
+      glide.mix = snap ? 1 : 0;
+      paletteDirty = true;
+    };
 
     const view = { width: 1, height: 1 };
     const pointer = { x: 0, y: 0, inside: false };
+    const start = settingsRef.current;
+    retarget(start);
     const state = {
-      clock: 0,
+      // From the wall clock, so a remount doesn't open on the same curtain;
+      // within the hour, so uTime stays small enough for a 32-bit float to
+      // step evenly.
+      clock: ((Date.now() / 1000) % 3600) * start.speed,
       px: 0,
       py: 0.5,
       reach: 0,
-      reveal: settingsRef.current.intro && !reduce ? 0 : 1,
+      reveal: start.intro && !reduce ? 0 : 1,
+      appear: start.intro || reduce ? 1 : 0,
+      light: start.lightMode ? 1 : 0,
     };
     let raf = 0;
     let last = 0;
@@ -426,15 +543,18 @@ const Aurora = ({
 
     const render = () => {
       const s = settingsRef.current;
-      unwrapHues(s.stops.map((value) => toOklch(parse(value)))).forEach((stop, index) => palette.set(stop, index * 3));
-      const reveal = state.reveal;
+      const t = s.time !== undefined ? s.time * s.speed * 0.1 : state.clock;
+      if (paletteDirty) {
+        shownPalette().forEach((stop, index) => palette.set(stop, index * 3));
+        paletteDirty = false;
+      }
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.useProgram(program.program);
       gl.bindVertexArray(vao);
       gl.uniform2f(u.uResolution, canvas.width, canvas.height);
-      gl.uniform1f(u.uTime, s.time !== undefined ? s.time * s.speed * 0.1 : state.clock);
+      gl.uniform1f(u.uTime, t);
       gl.uniform3fv(u.uStops, palette);
-      gl.uniform1i(u.uStopCount, s.stops.length);
+      gl.uniform1i(u.uStopCount, glide.to.length);
       gl.uniform1f(u.uAmplitude, s.amplitude);
       gl.uniform1f(u.uBlend, s.blend);
       gl.uniform1f(u.uHeight, s.height);
@@ -444,23 +564,32 @@ const Aurora = ({
       gl.uniform1i(u.uLayers, s.layers);
       gl.uniform1f(u.uFlip, s.flip);
       gl.uniform3f(u.uPointer, state.px, state.py, state.reach);
-      gl.uniform1f(u.uReveal, 1 - Math.pow(1 - reveal, 3));
-      gl.uniform1f(u.uOpacity, s.opacity);
-      gl.uniform1f(u.uLightMode, s.lightMode ? 1 : 0);
+      gl.uniform1f(u.uReveal, 1 - Math.pow(1 - state.reveal, 3));
+      gl.uniform1f(u.uOpacity, s.opacity * easeInOutSine(state.appear));
+      gl.uniform1f(u.uLightMode, state.light);
+      gl.uniform1f(u.uRays, s.rays);
+      gl.uniform3f(u.uDrift, hueDrift(t, 0), hueDrift(t, 1), hueDrift(t, 2));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+
+    // Light mode, a new palette and the first fade-in ease on real time, also
+    // while the curtain itself is paused. True while any is still on its way.
+    const settle = (s: Settings, dt: number) => {
+      const light = s.lightMode ? 1 : 0;
+      state.light += (light - state.light) * (1 - Math.exp(-dt / LIGHT_SECONDS));
+      if (reduce || Math.abs(light - state.light) < 0.002) state.light = light;
+      if (glide.mix < 1) {
+        glide.mix = reduce ? 1 : Math.min(1, glide.mix + dt / PALETTE_SECONDS);
+        paletteDirty = true;
+      }
+      if (state.appear < 1) state.appear = reduce ? 1 : Math.min(1, state.appear + dt / APPEAR_SECONDS);
+      return state.light !== light || glide.mix < 1 || state.appear < 1;
     };
 
     const frame = (now: number) => {
       raf = 0;
       if (!visible || document.hidden) return;
       const s = settingsRef.current;
-      // Paused, or asked for less motion: one still frame, and the loop stops.
-      if (s.paused || reduce) {
-        state.reveal = 1;
-        render();
-        last = 0;
-        return;
-      }
       // A capped frame rate skips frames until the next slot is due.
       if (s.maxFps > 0 && last && now - last < 1000 / s.maxFps - 2) {
         raf = requestAnimationFrame(frame);
@@ -469,31 +598,44 @@ const Aurora = ({
       const longest = s.maxFps > 0 ? Math.max(0.05, 2 / s.maxFps) : 0.05;
       const dt = last ? clamp((now - last) / 1000, 0.0005, longest) : 1 / 60;
       last = now;
-      state.clock += dt * s.speed;
-      const engaged = s.mouseInteraction && pointer.inside;
-      const follow = 1 - Math.exp(-dt / 0.6);
-      if (engaged) {
-        const tx = (pointer.x - view.width / 2) / view.height;
-        const ty = s.flip ? 1 - pointer.y / view.height : pointer.y / view.height;
-        state.px += (tx - state.px) * follow;
-        state.py += (ty - state.py) * follow;
+      // Paused, or asked for less motion: a still picture (once anything
+      // easing has arrived, the loop stops).
+      const still = s.paused || reduce;
+      if (still) state.reveal = 1;
+      else {
+        state.clock += dt * s.speed;
+        const engaged = s.mouseInteraction && pointer.inside;
+        const follow = 1 - Math.exp(-dt / 0.6);
+        if (engaged) {
+          const tx = (pointer.x - view.width / 2) / view.height;
+          const ty = s.flip ? 1 - pointer.y / view.height : pointer.y / view.height;
+          state.px += (tx - state.px) * follow;
+          state.py += (ty - state.py) * follow;
+        }
+        state.reach += ((engaged ? 1 : 0) - state.reach) * (1 - Math.exp(-dt / (engaged ? 0.9 : 1.4)));
+        if (!s.intro) state.reveal = 1;
+        else if (state.reveal < 1) state.reveal = Math.min(1, state.reveal + dt / INTRO_SECONDS);
       }
-      state.reach += ((engaged ? 1 : 0) - state.reach) * (1 - Math.exp(-dt / (engaged ? 0.9 : 1.4)));
-      if (!s.intro) state.reveal = 1;
-      else if (state.reveal < 1) state.reveal = Math.min(1, state.reveal + dt / INTRO_SECONDS);
+      const settling = settle(s, dt);
       render();
-      raf = requestAnimationFrame(frame);
+      if (!still || settling) raf = requestAnimationFrame(frame);
+      else last = 0;
     };
 
     const wake = () => {
       if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame);
     };
 
+    // `resolution` is a share of the device's pixels; `dpr` an absolute ratio.
+    const pixelRatio = (s: Settings) => {
+      const device = window.devicePixelRatio || 1;
+      return Math.min(s.resolution !== undefined ? s.resolution * device : s.dpr || device, 2);
+    };
+
     const resize = () => {
-      const s = settingsRef.current;
       const width = Math.max(1, container.clientWidth);
       const height = Math.max(1, container.clientHeight);
-      const ratio = Math.min(s.dpr || window.devicePixelRatio || 1, 2);
+      const ratio = pixelRatio(settingsRef.current);
       view.width = width;
       view.height = height;
       canvas.width = Math.max(1, Math.round(width * ratio));
@@ -547,11 +689,13 @@ const Aurora = ({
     document.addEventListener("visibilitychange", onVisibility);
     resize();
 
-    let lastDpr = settingsRef.current.dpr;
+    const ratioKey = (s: Settings) => `${s.resolution}|${s.dpr}`;
+    let lastRatio = ratioKey(settingsRef.current);
     wakeRef.current = () => {
       const s = settingsRef.current;
-      if (s.dpr !== lastDpr) {
-        lastDpr = s.dpr;
+      retarget(s);
+      if (ratioKey(s) !== lastRatio) {
+        lastRatio = ratioKey(s);
         resize();
         return;
       }

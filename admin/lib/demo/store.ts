@@ -1,8 +1,13 @@
 import "server-only";
 import { buildDemoState, type DemoAgent, type DemoState } from "@/lib/demo/fixtures";
 import { DataError } from "@/lib/errors";
-import { ONLINE_WINDOW_MS } from "@/lib/format";
+import { dayKey, dayLabel, safeTimeZone } from "@/lib/events";
+import { formatPrice, ONLINE_WINDOW_MS } from "@/lib/format";
 import type { QuoteLatestRow } from "@/lib/holdings";
+import { agoLabel, buildInsights, clip } from "@/lib/insights";
+import { rangeOf, windowChange, type SeriesPoint } from "@/lib/series";
+import { metricRows, SERIES_DAYS, tickerRows, todayFacts, toTicker, untilLabel, type TodayFacts } from "@/lib/today";
+import { formatMetricValue } from "@/lib/widgets";
 import type {
   BackendStatus,
   Bot,
@@ -214,6 +219,35 @@ export function demoSettings(): Settings {
 
 export function demoListAudit(lim: number, off: number): AuditEntry[] {
   return state().audit.slice(off, off + lim);
+}
+
+// listSeries: each key's rows in the window, the newest `limit` of them,
+// oldest → newest (the fixtures hold thirty days of both).
+export function demoListSeries(kind: "quotes" | "metrics", keys: string[], days: number, limit: number): Record<string, SeriesPoint[]> {
+  const s = state();
+  const from = Date.now() - days * DAY;
+  const rows =
+    kind === "quotes"
+      ? s.quotes.map((q) => ({ key: q.symbol, id: q.id, t: Date.parse(q.as_of), v: q.price }))
+      : s.metrics.map((m) => ({ key: m.key, id: m.id, t: Date.parse(m.as_of), v: m.value }));
+  return Object.fromEntries(
+    keys.map((k) => [
+      k,
+      rows
+        .filter((r) => r.key === k && r.t >= from)
+        .sort((a, b) => b.t - a.t || b.id - a.id)
+        .slice(0, limit)
+        .reverse()
+        .map(({ t, v }) => ({ t, v })),
+    ]),
+  );
+}
+
+// listIngestSince: the push log is kept newest first already.
+export function demoListIngestSince(hours: number, limit: number, status?: "ok" | "error"): IngestEntry[] {
+  return state()
+    .ingest.filter((e) => since(e.created_at, hours * HOUR) && (!status || e.status === status))
+    .slice(0, limit);
 }
 
 // ─────────────────────────── Mutations ───────────────────────────
@@ -659,19 +693,276 @@ export function demoRunBot(id: string): { title?: string; error?: string } {
   return { error: "demo mode doesn't call Grok; deploy McFly and add XAI_API_KEY to run bots" };
 }
 
-// A canned streamed answer: demo mode has no assistant to ask.
-export function demoAsk(message: string): Response {
-  const reply = `In demo mode I can't look anything up, but on your real McFly I'd answer "${message.slice(0, 80)}" from what's on the display: your briefs, markets, projects, calendar and today's Pulse.`;
+// ───────────────────────────── Assistant ─────────────────────────────
+// Demo mode has no model. It answers from the fixtures with a keyword
+// matcher, as the display's demo does (display/src/models/Assistant.cpp
+// demoAnswer): names first (a symbol or company, a project, a metric, an
+// event, a story, an agent), then topics. The phrasing stays templated and the
+// fallback says so, so nobody mistakes it for the real assistant.
+
+const COUNT_WORDS = ["Nothing", "One thing", "Two things", "Three things", "Four things", "Five things"];
+
+// Other names for the fixtures' symbols and metric keys, as norm() leaves
+// them ("S&P" becomes "s p"). Whole phrases, not each word of a label: "open"
+// from "Open orders" or "today" from "Sales today" would catch questions
+// meant for the calendar or the brief.
+const ALIASES: Record<string, string[]> = {
+  SPY: ["s p", "s p 500", "the index", "spx"],
+  "sales.today": ["sales", "revenue", "takings"],
+  "orders.open": ["orders"],
+  "site.uptime": ["up time", "the site", "outage"],
+  "api.p95": ["api", "latency"],
+  steps: ["walked", "walking", "step count"],
+};
+
+// Lowercase words with single spaces and a space at each end, so a phrase
+// matches whole words only (" apple " is not in " pineapple ").
+const norm = (text: string) =>
+  ` ${text
+    .toLowerCase()
+    .replace(/[^a-z0-9.%^]+/g, " ")
+    .replace(/\.+(?= |$)/g, "")
+    .trim()} `;
+const mentions = (q: string, phrase: string | null | undefined) => {
+  const p = phrase ? norm(phrase).trim() : "";
+  return p.length > 1 && q.includes(` ${p} `);
+};
+// A title, or (for chips that clipped it) its first three words.
+const mentionsTitle = (q: string, title: string) => {
+  const words = norm(title).trim().split(" ");
+  return mentions(q, title) || (words.length > 3 && mentions(q, words.slice(0, 3).join(" ")));
+};
+const sentence = (text: string) => {
+  const t = text.trim().replace(/[\s.;:,]+$/, "");
+  return t ? `${t}.` : "";
+};
+const signed = (n: number, digits = 2) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
+
+function demoToday(now: number) {
+  const s = state();
+  const timeZone = safeTimeZone(s.settings.timezone);
+  const quotes = demoListQuotes();
+  const metrics = demoListMetrics();
+  const series = {
+    quotes: demoListSeries("quotes", tickerRows(quotes).map((q) => q.symbol), SERIES_DAYS, Infinity),
+    metrics: demoListSeries("metrics", metricRows(metrics).map((m) => m.key), SERIES_DAYS, Infinity),
+  };
+  const today = dayKey(new Date(now), timeZone);
+  const reportRow = demoListNewsReports(10).find((r) => r.report_date === today) ?? null;
+  const report = reportRow ? demoNewsReport(reportRow.id) : null;
+  const facts = todayFacts({
+    now: new Date(now),
+    timeZone,
+    quotes,
+    metrics,
+    series,
+    projects: demoListProjects(),
+    events: demoListEvents(1, 8),
+    brief: demoListBriefs(1, 0)[0] ?? null,
+    report: reportRow && report ? { ...reportRow, items: report.items } : null,
+  });
+  return { timeZone, quotes, report, facts };
+}
+
+function spanDays(points: SeriesPoint[]): number {
+  return points.length > 1 ? Math.max(1, Math.round((points[points.length - 1].t - points[0].t) / DAY)) : 0;
+}
+
+function trend(points: SeriesPoint[], unit: string | null | undefined, money?: (n: number) => string): string {
+  const change = windowChange(points);
+  const range = rangeOf(points);
+  const days = spanDays(points);
+  if (!change || !range || days < 2) return "";
+  const fmt = money ?? ((n: number) => formatMetricValue(n, unit));
+  const where = range.position >= 0.85 ? ", and it's near the top of that range" : range.position <= 0.15 ? ", and it's near the bottom of that range" : "";
+  const dir = change.abs >= 0 ? "up" : "down";
+  const moved =
+    change.pct == null ? `${dir} ${fmt(Math.abs(change.abs))}` : Math.abs(change.pct) < 0.05 ? "about flat" : `${dir} ${Math.abs(change.pct).toFixed(1)}%`;
+  return `Over the last ${days} days it's ${moved}, ranging ${fmt(range.min)} to ${fmt(range.max)}${where}.`;
+}
+
+function digest(facts: TodayFacts, timeZone: string, now: number): string {
+  // The same input as loadToday: refused pushes only.
+  const insights = buildInsights({ ...facts, timeZone, ingest: demoListIngestSince(24, Infinity, "error") }, now);
+  if (!insights.length) return "A quiet day so far: nothing is blocked, nothing moved much and nothing is about to start.";
+  const clauses = insights.map((i) => {
+    if (i.kind === "pulse") return `today's Pulse leads with “${i.title}”`;
+    if ((i.kind === "blocked" || i.kind === "metric") && i.detail) return `${i.title} (${i.detail})`;
+    return i.title;
+  });
+  const n = insights.length;
+  const first = `${clauses[0][0].toUpperCase()}${clauses[0].slice(1)}${clauses[1] ? `, and ${clauses[1]}` : ""}.`;
+  const rest = clauses.length > 2 ? ` Also: ${clauses.slice(2).join("; ")}.` : "";
+  return `${COUNT_WORDS[n] ?? `${n} things`} stand${n === 1 ? "s" : ""} out today. ${first}${rest}`;
+}
+
+function projectAnswer(p: ProjectRow, now: number): string {
+  const parts = [`${p.name} is ${p.status}${p.progress != null && p.status !== "done" ? ` at ${Math.round(p.progress)}%` : ""}.`];
+  if (p.next_step) parts.push(`Next: ${sentence(p.next_step)}`);
+  if (p.last_update && p.last_update_at) parts.push(`Last update ${agoLabel(Date.parse(p.last_update_at), now)}: ${sentence(p.last_update)}`);
+  return parts.join(" ");
+}
+
+function demoAnswer(question: string, now: number): string {
+  // "Hey McFly, …" or "…, McFly?" is talking to the assistant, not asking
+  // about the project of the same name.
+  const raw = norm(question);
+  const q = raw.replace(/^ (?:(?:hey|hi|ok|okay) )?mcfly /, " ").replace(/ mcfly $/, " ");
+  const { timeZone, quotes, report, facts } = demoToday(now);
+  const projects = demoListProjects();
+  const events = demoListEvents(1, 8);
+  const at = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" });
+  const when = (iso: string) => {
+    const day = dayLabel(dayKey(iso, timeZone), timeZone, new Date(now));
+    return `${day === "Today" ? "today" : day === "Tomorrow" ? "tomorrow" : `on ${day}`} at ${at.format(new Date(iso))}`;
+  };
+
+  const quoteAnswer = (quote: QuoteRow) => {
+    const series = demoListSeries("quotes", [quote.symbol], SERIES_DAYS, Infinity)[quote.symbol];
+    const t = toTicker(quote, series, timeZone);
+    const ratio = t.changePct != null && t.swingPct ? Math.abs(t.changePct) / t.swingPct : null;
+    const move = t.changePct != null ? `, ${t.changePct >= 0 ? "up" : "down"} ${Math.abs(t.changePct).toFixed(2)}% today` : "";
+    const usual = ratio != null && ratio >= 1.5 ? `, about ${ratio.toFixed(1)}× its usual daily move` : "";
+    const name = t.name && t.name !== t.symbol ? `${t.name} (${t.symbol})` : t.symbol;
+    return [`${name} is at ${t.price}${move}${usual}.`, trend(series, null, (n) => formatPrice(n, quote.currency)), t.note ? sentence(t.note) : ""].filter(Boolean).join(" ");
+  };
+  const metricAnswer = (metric: TodayFacts["metrics"][number]) => {
+    const series = demoListSeries("metrics", [metric.key], SERIES_DAYS, Infinity)[metric.key];
+    const parts = [`${metric.label}: ${metric.valueLabel}${metric.deltaLabel ? ` (${metric.deltaLabel} since the reading before)` : ""}.`];
+    if (metric.z != null && Math.abs(metric.z) >= 3 && metric.usual != null) {
+      parts.push(`That's unusually ${metric.z > 0 ? "high" : "low"} for it: it usually sits around ${formatMetricValue(metric.usual, metric.unit)}${metric.good == null ? "" : metric.good ? ", and here that's good news" : ", and here that's bad news"}.`);
+    } else {
+      parts.push(trend(series, metric.unit));
+    }
+    if (metric.note) parts.push(sentence(metric.note));
+    return parts.filter(Boolean).join(" ");
+  };
+  const shown = quotes.filter((x) => !x.hidden && x.price != null);
+
+  // A symbol or a company.
+  const quote = shown.find((x) => mentions(q, x.symbol) || mentions(q, x.name));
+  if (quote) return quoteAnswer(quote);
+
+  // A project by name.
+  const project = projects.find((p) => mentions(q, p.name));
+  if (project) return projectAnswer(project, now);
+  if (/ next steps? /.test(q)) {
+    const open = projects.filter((p) => p.status !== "done" && p.next_step);
+    return open.length ? `Next steps: ${open.map((p) => `${p.name}, ${p.next_step!.replace(/[.\s]+$/, "")}`).join("; ")}.` : "None of the projects has a next step written down.";
+  }
+
+  // A metric by label or key.
+  const metric = facts.metrics.find((m) => mentions(q, m.label) || mentions(q, m.key));
+  if (metric) return metricAnswer(metric);
+
+  // An event, a story or an agent, by name.
+  const event = events.find((e) => mentionsTitle(q, e.title));
+  if (event) {
+    const range = event.all_day ? `all day ${when(event.starts_at).replace(/ at .*$/, "")}` : when(event.starts_at);
+    const soon = !event.all_day && Date.parse(event.starts_at) > now ? ` That's ${untilLabel(Date.parse(event.starts_at), now, true)}.` : "";
+    return `${event.title} is ${range}${event.location ? ` at ${event.location}` : ""}, on the ${event.calendar} calendar.${soon} The demo calendar has no notes for it, so there's nothing more to prepare from here.`;
+  }
+  const other = demoListNewsReports(10).find((r) => r.id !== report?.report.id);
+  const stories = [...(report?.items ?? []), ...(other ? (demoNewsReport(other.id)?.items ?? []) : [])];
+  const story = stories.find((i) => mentionsTitle(q, i.headline));
+  if (story) {
+    const which = report?.items.includes(story) ? "today's" : "yesterday's";
+    return `From ${which} Pulse, under ${story.section_name}: ${sentence(story.headline)} ${sentence(story.takeaway)}${story.source_domain ? ` Source: ${story.source_domain}.` : ""}`;
+  }
+  const briefs = demoListBriefs(50, 0);
+  const author = state().agents.find((a) => mentions(q, a.name) && briefs.some((b) => b.agent_id === a.id));
+  if (author) {
+    const b = briefs.find((x) => x.agent_id === author.id)!;
+    return `${author.name} posted “${b.title}” ${agoLabel(Date.parse(b.published_at), now)}. ${clip(b.body.replace(/^- /gm, "").split(/\n+/).map(sentence).join(" "), 400)}`;
+  }
+
+  // What people call a fixture when it isn't its full name ("the S&P",
+  // "sales"), once nothing matched in full.
+  const aliased = (key: string) => (ALIASES[key] ?? []).some((a) => mentions(q, a));
+  const quoteByAlias = shown.find((x) => aliased(x.symbol));
+  if (quoteByAlias) return quoteAnswer(quoteByAlias);
+  const metricByAlias = facts.metrics.find((m) => aliased(m.key));
+  if (metricByAlias) return metricAnswer(metricByAlias);
+
+  // Topics.
+  if (/ (news|pulse|story|stories|headline|headlines) /.test(q)) {
+    if (!report || !facts.hero) return "There's no Pulse report yet today.";
+    const others = report.items.filter((i) => i.headline !== facts.hero!.headline).slice(0, 2).map((i) => i.headline);
+    return `Today's Pulse has ${report.items.length} stories. It leads with “${facts.hero.headline}”${others.length ? `; also ${others.map((h) => `“${h}”`).join(" and ")}` : ""}.`;
+  }
+  if (/summar|my day|should (i )?know|catch me up|what matters|anything new|overview/.test(q)) return digest(facts, timeZone, now);
+  if (/ (blocked|blocking|stuck|blocker|blockers) /.test(q)) {
+    const blocked = projects.filter((p) => p.status === "blocked");
+    if (!blocked.length) return "Nothing is blocked right now.";
+    return blocked.map((p) => `${p.name} is blocked${p.next_step ? `, waiting on: ${p.next_step.replace(/[.\s]+$/, "")}` : ""}.`).join(" ");
+  }
+  if (/ (market|markets|stock|stocks|portfolio|watchlist|movers|mover|trading|tickers) /.test(q)) {
+    const movers = [...facts.tickers].sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0));
+    if (!movers.length) return "No quotes have come in yet.";
+    const top = movers[0];
+    return `Biggest movers first: ${movers.map((t) => `${t.symbol} ${t.changePct != null ? signed(t.changePct) : t.change} at ${t.price}`).join(", ")}.${top.note ? ` On ${top.symbol}: ${sentence(top.note)}` : ""}`;
+  }
+  if (/ (metric|metrics|kpi|kpis|numbers|dashboard|dashboards) /.test(q)) {
+    if (!facts.metrics.length) return "No metrics have come in yet.";
+    const odd = facts.metrics.find((m) => m.z != null && Math.abs(m.z) >= 3);
+    return `${facts.metrics.map((m) => `${m.label} ${m.valueLabel}${m.deltaLabel ? ` (${m.deltaLabel})` : ""}`).join(", ")}.${odd ? ` ${odd.label} stands out: unusually ${odd.z! > 0 ? "high" : "low"} for it.` : ""}`;
+  }
+  if (/ (calendar|meeting|meetings|next|schedule|event|events|agenda|appointment) /.test(q)) {
+    const on = facts.events.find((e) => !e.all_day && Date.parse(e.starts_at) <= now);
+    const upcoming = facts.events.filter((e) => Date.parse(e.starts_at) > now || e.all_day).slice(0, 3);
+    const lead = on ? `On now: ${on.title}${on.location ? ` at ${on.location}` : ""}, until ${at.format(new Date(on.ends_at))}. ` : "";
+    if (!upcoming.length) return `${lead}Nothing else is on the calendar this week.`;
+    return `${lead}Next up: ${upcoming.map((e) => `${e.title} ${e.all_day ? `(all day ${when(e.starts_at).replace(/ at .*$/, "")})` : when(e.starts_at)}${e.location ? ` at ${e.location}` : ""}`).join(", then ")}.`;
+  }
+  if (/ (brief|briefs|briefing|today|latest|update|updates) /.test(q)) {
+    const b = briefs[0];
+    if (!b) return "No briefs have come in yet.";
+    return `From ${b.agent_name}, ${agoLabel(Date.parse(b.published_at), now)}: ${sentence(b.title)} ${clip(b.body.replace(/^- /gm, "").split(/\n+/).map(sentence).join(" "), 400)}`;
+  }
+  if (/ (project|projects|working on|progress) /.test(q)) {
+    return `${projects.length} projects: ${projects.map((p) => `${p.name} is ${p.status}${p.progress != null && p.status !== "done" ? ` at ${Math.round(p.progress)}%` : ""}`).join("; ")}.`;
+  }
+
+  // Nothing else asked for: "How's McFly?" was about the project after all.
+  const named = projects.find((p) => mentions(raw, p.name));
+  if (named) return projectAnswer(named, now);
+
+  const symbol = [...facts.tickers].sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0))[0]?.symbol ?? "NVDA";
+  const name = (facts.blocked[0] ?? projects[0])?.name ?? "a project";
+  const label = (facts.metrics.find((m) => m.z != null && Math.abs(m.z) >= 3) ?? facts.metrics[0])?.label ?? "a metric";
+  return `This is the demo, so I answer from the sample feeds with simple keyword matching, not a model. Ask about a symbol (${symbol}), a project (${name}), a metric (${label}), your calendar or today's Pulse, or say “summarize my day”.`;
+}
+
+// The first `n` sentences: quick mode is one or two spoken sentences.
+function firstSentences(text: string, n: number): string {
+  const parts = text.split(/(?<=[.!?”])\s+(?=[A-Z“])/);
+  return parts.slice(0, n).join(" ");
+}
+
+// Streams like the assistant function: a beat to think, then delta events a
+// word at a time, then done with the whole reply (model "demo").
+export function demoAsk(message: string, mode: "chat" | "quick" | "read" = "chat"): Response {
+  const full = demoAnswer(message, Date.now());
+  const reply = mode === "quick" ? firstSentences(full, 2) : full;
   const words = reply.split(/(?<= )/);
   const encoder = new TextEncoder();
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let cancelled = false;
   const body = new ReadableStream({
     async start(controller) {
+      await wait(400);
       for (const w of words) {
+        if (cancelled) return;
         controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify({ text: w })}\n\n`));
-        await new Promise((r) => setTimeout(r, 25));
+        await wait(25);
       }
+      if (cancelled) return;
       controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ reply, model: "demo" })}\n\n`));
       controller.close();
+    },
+    // The page went away mid-answer: stop writing to a closed stream.
+    cancel() {
+      cancelled = true;
     },
   });
   return new Response(body, { headers: { "Content-Type": "text/event-stream" } });

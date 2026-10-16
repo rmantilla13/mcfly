@@ -13,16 +13,23 @@ import {
   setMetricAction,
   setSymbolAction,
 } from "@/app/(console)/actions";
+import { BriefsFeed } from "@/components/BriefsFeed";
 import { BriefsTable } from "@/components/BriefsTable";
 import { CalendarList } from "@/components/CalendarList";
 import { DashboardsTable } from "@/components/DashboardsTable";
 import { FeedTabs } from "@/components/FeedTabs";
+import { MarketsGrid } from "@/components/MarketsGrid";
+import { MetricsGrid } from "@/components/MetricsGrid";
 import { MetricsTable } from "@/components/MetricsTable";
 import { NewsReportsTable } from "@/components/NewsReportsTable";
 import { PageHeader } from "@/components/PageHeader";
+import { ProjectsBoard } from "@/components/ProjectsBoard";
 import { ProjectsTable } from "@/components/ProjectsTable";
 import { QuotesTable } from "@/components/QuotesTable";
 import { Pagination, pageHref, readPage, readString } from "@/components/bits";
+import { FeedHeader } from "@/components/feed/bits";
+import { NewsReportCards } from "@/components/feed/NewsReportCards";
+import { ViewSwitch } from "@/components/feed/ViewSwitch";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -34,11 +41,14 @@ import {
   listNewsReports,
   listProjects,
   listQuotes,
+  listSeries,
   requireAdmin,
 } from "@/lib/data";
 import { safeTimeZone } from "@/lib/events";
-import { readFeedTab } from "@/lib/feed-tabs";
+import { type FeedTab, readFeedTab } from "@/lib/feed-tabs";
 import { plural } from "@/lib/format";
+import type { SeriesPoint } from "@/lib/series";
+import type { MetricRow, QuoteRow } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Feed" };
 
@@ -46,7 +56,31 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 const DELETED: Record<string, string> = { "1": "Report deleted.", project: "Project deleted.", dashboard: "Dashboard deleted." };
 
-// One flush card per tab: a header line, then the table.
+// The feeds' month of history for the cards' lines. A failed read costs the
+// lines, not the page.
+const SERIES_DAYS = 30;
+async function history(kind: "quotes" | "metrics", keys: string[]): Promise<Record<string, SeriesPoint[]>> {
+  if (keys.length === 0) return {};
+  try {
+    return await listSeries(kind, keys, SERIES_DAYS);
+  } catch (error) {
+    console.error(`${kind} history for the feed failed:`, error);
+    return {};
+  }
+}
+
+// The shown symbols' and metrics' month, and the time it was read at (the
+// briefs' expiry bars run against it).
+async function histories(quotes: QuoteRow[], metrics: MetricRow[]) {
+  const [q, m] = await Promise.all([
+    history("quotes", quotes.filter((x) => !x.hidden && x.price != null).map((x) => x.symbol)),
+    history("metrics", metrics.filter((x) => !x.hidden && x.value != null).map((x) => x.key)),
+  ]);
+  return { quotes: q, metrics: m, now: Date.now() };
+}
+
+// One flush card per tab: a header line, then the table. The tabs that have
+// cards keep their table here, under Manage.
 function Section({ title, description, children }: { title: string; description: ReactNode; children: ReactNode }) {
   return (
     <Card className="gap-0 py-0">
@@ -76,6 +110,11 @@ export default async function FeedPage({ searchParams }: Props) {
   ]);
   const timeZone = safeTimeZone(settings.timezone);
   const deleted = DELETED[readString(sp.deleted)];
+  const { quotes: quoteHistory, metrics: metricHistory, now } = await histories(quotes, metrics);
+  // Manage (the tables) or cards, for the tab the page opened on; the others
+  // open on their cards.
+  const manage = readString(sp.view) === "manage";
+  const viewOf = (t: FeedTab) => (manage && t === tab ? "manage" : "cards");
 
   return (
     <>
@@ -93,10 +132,22 @@ export default async function FeedPage({ searchParams }: Props) {
             label: "Briefs",
             count: briefs.rows.length,
             content: (
-              <Section title="Briefs" description="Newest first. Expired briefs are pruned by the ingest function after a day.">
-                <BriefsTable briefs={briefs.rows} deleteAction={deleteBriefAction} />
-                <Pagination page={briefs.page} hasMore={briefs.hasMore} shown={briefs.rows.length} href={pageHref("/feed", { tab: "briefs" })} />
-              </Section>
+              <ViewSwitch
+                initial={viewOf("briefs")}
+                header={<FeedHeader title="Briefs" description="A day at a time, newest first. Expired briefs are pruned by the ingest function after a day." />}
+                cards={
+                  <>
+                    <BriefsFeed briefs={briefs.rows} timeZone={timeZone} now={now} />
+                    <Pagination page={briefs.page} hasMore={briefs.hasMore} shown={briefs.rows.length} href={pageHref("/feed", { tab: "briefs" })} />
+                  </>
+                }
+                manage={
+                  <Section title="Briefs" description="Newest first. Expired briefs are pruned by the ingest function after a day.">
+                    <BriefsTable briefs={briefs.rows} deleteAction={deleteBriefAction} />
+                    <Pagination page={briefs.page} hasMore={briefs.hasMore} shown={briefs.rows.length} href={pageHref("/feed", { tab: "briefs", view: "manage" })} />
+                  </Section>
+                }
+              />
             ),
           },
           {
@@ -104,9 +155,16 @@ export default async function FeedPage({ searchParams }: Props) {
             label: "Markets",
             count: quotes.length,
             content: (
-              <Section title="Markets" description={<>{plural(quotes.length, "symbol")} · the display lists the ones that aren&apos;t hidden, by order then symbol.</>}>
-                <QuotesTable quotes={quotes} setAction={setSymbolAction} deleteAction={deleteSymbolAction} />
-              </Section>
+              <ViewSwitch
+                initial={viewOf("markets")}
+                header={<FeedHeader title="Markets" description={<>{plural(quotes.length, "symbol")}, in the display&apos;s order · the last 30 days</>} />}
+                cards={<MarketsGrid quotes={quotes} series={quoteHistory} timeZone={timeZone} />}
+                manage={
+                  <Section title="Markets" description={<>{plural(quotes.length, "symbol")} · the display lists the ones that aren&apos;t hidden, by order then symbol.</>}>
+                    <QuotesTable quotes={quotes} setAction={setSymbolAction} deleteAction={deleteSymbolAction} />
+                  </Section>
+                }
+              />
             ),
           },
           {
@@ -114,9 +172,16 @@ export default async function FeedPage({ searchParams }: Props) {
             label: "News",
             count: reports.length,
             content: (
-              <Section title="News" description="Daily Pulse reports, newest first. Open one to read its stories.">
-                <NewsReportsTable reports={reports} deleteAction={deleteNewsReportAction} />
-              </Section>
+              <ViewSwitch
+                initial={viewOf("news")}
+                header={<FeedHeader title="News" description="Daily Pulse reports, newest first. Open one to read its stories." />}
+                cards={<NewsReportCards reports={reports} />}
+                manage={
+                  <Section title="News" description="Daily Pulse reports, newest first. Open one to read its stories.">
+                    <NewsReportsTable reports={reports} deleteAction={deleteNewsReportAction} />
+                  </Section>
+                }
+              />
             ),
           },
           {
@@ -124,9 +189,16 @@ export default async function FeedPage({ searchParams }: Props) {
             label: "Projects",
             count: projects.length,
             content: (
-              <Section title="Projects" description="What the agents report work on, done ones last. Open one for its history.">
-                <ProjectsTable projects={projects} deleteAction={deleteProjectAction} />
-              </Section>
+              <ViewSwitch
+                initial={viewOf("projects")}
+                header={<FeedHeader title="Projects" description="What the agents report work on, by status. Open one for its history." />}
+                cards={<ProjectsBoard projects={projects} />}
+                manage={
+                  <Section title="Projects" description="What the agents report work on, done ones last. Open one for its history.">
+                    <ProjectsTable projects={projects} deleteAction={deleteProjectAction} />
+                  </Section>
+                }
+              />
             ),
           },
           {
@@ -134,9 +206,16 @@ export default async function FeedPage({ searchParams }: Props) {
             label: "Metrics",
             count: metrics.length,
             content: (
-              <Section title="Metrics" description={<>{plural(metrics.length, "metric")} by group · the display shows the ones that aren&apos;t hidden, in order.</>}>
-                <MetricsTable metrics={metrics} setAction={setMetricAction} deleteAction={deleteMetricAction} />
-              </Section>
+              <ViewSwitch
+                initial={viewOf("metrics")}
+                header={<FeedHeader title="Metrics" description={<>{plural(metrics.length, "metric")} by group, in the display&apos;s order · green is good news</>} />}
+                cards={<MetricsGrid metrics={metrics} series={metricHistory} />}
+                manage={
+                  <Section title="Metrics" description={<>{plural(metrics.length, "metric")} by group · the display shows the ones that aren&apos;t hidden, in order.</>}>
+                    <MetricsTable metrics={metrics} setAction={setMetricAction} deleteAction={deleteMetricAction} />
+                  </Section>
+                }
+              />
             ),
           },
           {

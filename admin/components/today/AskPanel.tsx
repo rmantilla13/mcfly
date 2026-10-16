@@ -3,8 +3,8 @@
 import { Maximize2Icon, MicIcon, SendIcon, SparklesIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { speakReply, stopSpeaking, storedVoice } from "@/components/voice/speech";
-import { useAsk } from "@/components/voice/useAsk";
+import { speakReply, stopSpeaking, storedVoice, useVoice } from "@/components/voice/speech";
+import { saveThread, useAsk } from "@/components/voice/useAsk";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import ShinyText from "@/components/reactbits/ShinyText";
@@ -55,6 +55,7 @@ export function AskPanel() {
   const remembered = useSyncExternalStore(noSubscribe, storedSpeak, () => false);
   const [speakChoice, setSpeak] = useState<boolean | null>(null);
   const speak = speakChoice ?? remembered;
+  useVoice(speak); // read aloud in the account's voice, kept up while replies are spoken
   const speakRef = useRef(speak);
   useEffect(() => {
     speakRef.current = speak;
@@ -157,8 +158,9 @@ export function AskPanel() {
             <MicIcon className="size-5" />
           </button>
         ) : null}
+        {/* Full screen, taking this conversation along; /voice is a tap away there. */}
         <Button type="button" size="icon-sm" variant="ghost" className="text-white hover:bg-white/10 hover:text-white" asChild>
-          <Link href="/voice" aria-label="Talk to McFly full screen">
+          <Link href="/ask" aria-label="Open Ask McFly full screen" onClick={() => turns.length && saveThread(turns)}>
             <Maximize2Icon />
           </Link>
         </Button>

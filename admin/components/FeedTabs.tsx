@@ -8,7 +8,8 @@ export type FeedTabSpec = { value: FeedTab; label: string; count: number; conten
 
 // The feeds as tabs. The chosen tab is kept in ?tab= (without a navigation,
 // so a reload or a pagination link lands on the same one); the content of
-// every tab is rendered on the server.
+// every tab is rendered on the server. A tab opens on its cards: Manage
+// (?view=, components/feed/ViewSwitch.tsx) belongs to the tab it was chosen on.
 export function FeedTabs({ initial, tabs }: { initial: FeedTab; tabs: FeedTabSpec[] }) {
   const [tab, setTab] = useState<FeedTab>(initial);
   const change = (next: string) => {
@@ -18,11 +19,14 @@ export function FeedTabs({ initial, tabs }: { initial: FeedTab; tabs: FeedTabSpe
     url.searchParams.set("tab", t);
     url.searchParams.delete("page");
     url.searchParams.delete("deleted");
+    url.searchParams.delete("view");
     window.history.replaceState(window.history.state, "", url);
   };
   return (
-    <Tabs value={tab} onValueChange={change}>
-      <TabsList className="h-auto max-w-full flex-wrap justify-start">
+    <Tabs value={tab} onValueChange={change} className="gap-5">
+      {/* On a phone the tabs wrap; the list grows with them (the primitive
+          fixes its height for one row). */}
+      <TabsList className="max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto">
         {tabs.map((t) => (
           <TabsTrigger key={t.value} value={t.value} className="h-7 flex-none">
             {t.label} <TabCount n={t.count} />

@@ -2,6 +2,7 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
+import { isKokoroVoice, type KokoroVoice } from "@/lib/account-voice";
 import type { ActionResult } from "@/lib/action-result";
 import * as data from "@/lib/data";
 import { DataError } from "@/lib/errors";
@@ -465,9 +466,38 @@ export async function updateDeviceSettingsAction(_prev: ActionResult, fd: FormDa
       voice: voice as DisplaySettings["voice"],
       voiceSpeed: Math.round(speed * 100) / 100,
     };
+    const before = (await data.listDevices()).find((d) => d.id === id)?.settings.voice;
     await data.updateDeviceSettings(id, patch);
+    // The voice is the account's: a new one goes to every display, and the
+    // web and the app follow it (lib/account-voice.ts).
+    if (patch.voice && patch.voice !== before) await data.setAccountVoice(patch.voice);
     return { ok: true, message: "Saved. The display picks it up within a minute." };
   });
+}
+
+// The account's voice, for the voice page and Ask (lib/account-voice.ts).
+// Read-only, so no rerender.
+export async function accountVoiceAction(): Promise<KokoroVoice | null> {
+  await data.requireAdmin();
+  try {
+    return await data.getAccountVoice();
+  } catch (err) {
+    console.error("reading the account's voice failed:", err);
+    return null; // the browser keeps speaking with what it has
+  }
+}
+
+// A Kokoro voice picked on the web goes to every display; the Pi and the
+// app follow it. "This device's voice" never comes here.
+export async function setAccountVoiceAction(voice: string): Promise<ActionResult> {
+  return mutate(
+    async () => {
+      if (!isKokoroVoice(voice)) throw new DataError("Pick a voice.");
+      const displays = await data.setAccountVoice(voice);
+      return { ok: true, message: displays ? "Every display and the app speak with it now." : "No display yet: this browser keeps it." };
+    },
+    { rerender: false },
+  );
 }
 
 // ───────────────────────────── Grok bots ─────────────────────────────

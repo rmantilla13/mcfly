@@ -80,7 +80,12 @@ function TabsContent({
   return (
     <TabsPrimitive.Content
       data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none", className)}
+      className={cn(
+        "flex-1 text-sm outline-none",
+        // The tab coming in fades up (only the active one is mounted).
+        "data-active:motion-safe:animate-in data-active:motion-safe:fade-in-0 data-active:motion-safe:slide-in-from-bottom-2 data-active:motion-safe:duration-300",
+        className
+      )}
       {...props}
     />
   )

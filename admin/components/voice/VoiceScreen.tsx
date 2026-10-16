@@ -7,14 +7,16 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { cn } from "cn";
 import { SpectrumGlow, type GlowInput } from "./SpectrumGlow";
 import ShinyText from "@/components/reactbits/ShinyText";
-import { kokoro, speakReply, stopSpeaking, storedVoice, storeVoice, VOICES, type KokoroState, type VoiceId } from "./speech";
+import { chooseVoice, kokoro, speakReply, stopSpeaking, useVoice, VOICES, type KokoroState, type VoiceId } from "./speech";
 import { useAsk } from "./useAsk";
 
 // Talking to McFly, full screen: the Homestead voice glow fills the bottom,
 // rising with your voice, gathering into a travelling beam while McFly
 // thinks, and pulsing while it speaks. Tap the mic and talk; it stops when
 // you pause. With "Keep talking" on, it listens again after each answer.
-// The mic is only on while the button says so.
+// The mic is only on while the button says so. Before the first question it
+// offers a few, built from what is on the feeds (lib/suggestions.ts, the same
+// ones Today shows).
 
 type Recognition = {
   lang: string;
@@ -33,9 +35,7 @@ function recognitionClass(): (new () => Recognition) | null {
 const noSubscribe = () => () => {};
 const IDLE: KokoroState = { status: "idle", percent: 0 };
 
-const SUGGESTIONS = ["What's next today?", "How are the markets?", "What's in today's Pulse?", "Anything blocked?"];
-
-export function VoiceScreen() {
+export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
   const router = useRouter();
   const canListen = useSyncExternalStore(noSubscribe, () => !!recognitionClass(), () => false);
   const [listening, setListening] = useState(false);
@@ -46,9 +46,7 @@ export function VoiceScreen() {
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState("");
   const [micError, setMicError] = useState<string | null>(null);
-  const remembered = useSyncExternalStore(noSubscribe, storedVoice, () => "af_heart" as VoiceId);
-  const [voiceChoice, setVoiceChoice] = useState<VoiceId | null>(null);
-  const voice = voiceChoice ?? remembered;
+  const voice = useVoice(); // the account's, so a pick on the Pi or the phone shows up here within a minute
   const voiceState = useSyncExternalStore(kokoro().subscribe, kokoro().getState, () => IDLE);
   const voiceRef = useRef(voice);
   useEffect(() => {
@@ -233,11 +231,7 @@ export function VoiceScreen() {
         </button>
         <select
           value={voice}
-          onChange={(e) => {
-            const v = e.target.value as VoiceId;
-            setVoiceChoice(v);
-            storeVoice(v);
-          }}
+          onChange={(e) => chooseVoice(e.target.value as VoiceId)}
           aria-label="Voice"
           className="h-9 rounded-full border-0 bg-white/10 px-3 text-sm text-white/85 outline-none hover:bg-white/15 [&>option]:text-black"
         >
@@ -272,7 +266,7 @@ export function VoiceScreen() {
           <div className="flex flex-col gap-6">
             <p className="text-[44px] leading-tight font-medium tracking-[-0.02em] max-md:text-3xl">What would you like to know?</p>
             <div className="flex flex-wrap gap-2.5">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"

@@ -1,7 +1,8 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
+import { LocateTimeZone } from "@/components/LocateTimeZone";
 import { useFormAction } from "@/components/useFormAction";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
@@ -30,6 +31,8 @@ const PROVIDERS = [
 
 export function SettingsForm({ action, settings }: { action: FormAction; settings: Settings }) {
   const id = useId();
+  // Controlled so "Use my location" can fill it; the remount below resets it on save.
+  const [timezone, setTimezone] = useState(settings.timezone);
   const { result, pending, submit, reset } = useFormAction(action, (res) => {
     if (res?.ok && res.message) toast.success(res.message);
   });
@@ -60,13 +63,20 @@ export function SettingsForm({ action, settings }: { action: FormAction; setting
                 Time zone
               </FieldLabel>
               <FieldContent>
-                <Input id={`${id}-timezone`} name="timezone" defaultValue={settings.timezone} required maxLength={64} list={`${id}-zones`} className="max-w-xs" spellCheck={false} />
+                <Input id={`${id}-timezone`} name="timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} required maxLength={64} list={`${id}-zones`} className="max-w-xs" spellCheck={false} />
                 <datalist id={`${id}-zones`}>
                   {COMMON_TIMEZONES.map((tz) => (
                     <option key={tz} value={tz} />
                   ))}
                 </datalist>
-                <FieldDescription>An IANA name like America/Chicago. The clock, the day&apos;s report and retention use it.</FieldDescription>
+                <LocateTimeZone
+                  value={timezone}
+                  onFound={(zone) => {
+                    setTimezone(zone);
+                    reset();
+                  }}
+                />
+                <FieldDescription>Where the display is, from your location or typed as an IANA name like America/Chicago. The clock, the day&apos;s report and retention use it.</FieldDescription>
               </FieldContent>
             </Field>
           </FieldGroup>

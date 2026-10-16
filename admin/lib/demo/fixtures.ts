@@ -17,10 +17,11 @@ import type {
 
 // Fixture data for demo mode (NEXT_PUBLIC_ADMIN_DEMO=1), shaped like
 // backend/supabase/seed.sql: the same six agents, briefs, symbols, Pulse
-// report, projects, metrics, dashboards and events, plus a little history so
-// the tables have something to show. Deterministic (seeded) and relative to
-// when the server started, so screenshots always look fresh. Nothing here is
-// a real account or key.
+// report, projects, metrics, dashboards and events, plus thirty days of quote
+// and metric history for the charts and the insights (one big mover, one
+// metric off its usual). Deterministic (seeded) and relative to when the
+// server started, so screenshots always look fresh. Nothing here is a real
+// account or key.
 
 export type DemoAgent = {
   scopes?: import("@/lib/types").AgentScope[];
@@ -172,13 +173,15 @@ function rng(seed: number) {
   };
 }
 
-type QuoteSpec = { symbol: string; name: string; price: number; change: number; change_pct: number; note?: string; sort: number };
+// vol: the usual daily move in percent, so the history swings like the real
+// thing (an index fund calmer than Tesla). NVDA's day is the big one.
+type QuoteSpec = { symbol: string; name: string; price: number; change: number; change_pct: number; note?: string; sort: number; vol: number };
 
 const QUOTES: QuoteSpec[] = [
-  { symbol: "SPY", name: "S&P 500 ETF", price: 668.42, change: 2.11, change_pct: 0.32, sort: 0 },
-  { symbol: "AAPL", name: "Apple", price: 247.9, change: 2.78, change_pct: 1.13, note: "Services beat; iPhone 18 demand steady.", sort: 1 },
-  { symbol: "NVDA", name: "NVIDIA", price: 191.25, change: 2.85, change_pct: 1.51, sort: 2 },
-  { symbol: "TSLA", name: "Tesla", price: 402.1, change: -5.3, change_pct: -1.3, sort: 3 },
+  { symbol: "SPY", name: "S&P 500 ETF", price: 668.42, change: 2.11, change_pct: 0.32, sort: 0, vol: 0.6 },
+  { symbol: "AAPL", name: "Apple", price: 247.9, change: 2.78, change_pct: 1.13, note: "Services beat; iPhone 18 demand steady.", sort: 1, vol: 1.1 },
+  { symbol: "NVDA", name: "NVIDIA", price: 191.25, change: 6.29, change_pct: 3.4, note: "Data-center orders beat; leading the Nasdaq.", sort: 2, vol: 1.6 },
+  { symbol: "TSLA", name: "Tesla", price: 402.1, change: -5.3, change_pct: -1.3, note: "Deliveries guidance came in light.", sort: 3, vol: 2.2 },
 ];
 
 // What the stocks agent sends with today's quotes, as a brokerage-reading
@@ -197,12 +200,15 @@ const QUOTE_DATA: Record<string, Record<string, unknown>> = {
   NVDA: {
     position: { shares: 60, avg_cost: 121.8 },
     signals: [{ text: "RSI 72: above 70 for the first time since July", tone: "up" }, { text: "Volume 1.8× its 30-day average", tone: "watch" }],
-    stats: { open: 188.9, high: 192.4, low: 188.1, prev_close: 188.4, volume: 312000000, avg_volume: 173000000, market_cap: 4.66e12, pe: 54.8, low_52w: 86.6, high_52w: 195.0, earnings: "Nov 19, after close" },
+    stats: { open: 185.9, high: 192.4, low: 184.6, prev_close: 184.96, volume: 312000000, avg_volume: 173000000, market_cap: 4.66e12, pe: 54.8, low_52w: 86.6, high_52w: 195.0, earnings: "Nov 19, after close" },
   },
   TSLA: { signals: [{ text: "Fell below its 50-day average ($406.80)", tone: "down" }] },
 };
 
-const PULSE_SECTIONS: { key: string; name: string; items: { id: string; h: string; t: string; url: string; image?: string }[] }[] = [
+type PulseSection = { key: string; name: string; items: { id: string; h: string; t: string; url: string; image?: string }[] };
+
+// Today's report (the hero is "gemini").
+const PULSE_TODAY: PulseSection[] = [
   {
     key: "s",
     name: "Social",
@@ -261,13 +267,84 @@ const PULSE_SECTIONS: { key: string; name: string; items: { id: string; h: strin
   },
 ];
 
-// The seed's metrics: today's values and the unit/group each one carries.
-const METRICS: { key: string; label: string; value: number; unit?: string; delta?: number; delta_pct?: number; group: string; note?: string; sort: number }[] = [
-  { key: "sales.today", label: "Sales today", value: 4280, unit: "USD", delta_pct: 12.5, group: "Store", sort: 0 },
-  { key: "orders.open", label: "Open orders", value: 17, delta: -3, group: "Store", sort: 1 },
-  { key: "site.uptime", label: "Uptime", value: 99.98, unit: "%", group: "Ops", sort: 0 },
-  { key: "api.p95", label: "API p95", value: 212, unit: "ms", delta: -18, group: "Ops", note: "After the cache change.", sort: 1 },
-  { key: "steps", label: "Steps", value: 6420, delta_pct: -8, group: "Me", sort: 0 },
+// Yesterday's report (the hero is "shorts").
+const PULSE_YESTERDAY: PulseSection[] = [
+  {
+    key: "s",
+    name: "Social",
+    items: [
+      {
+        id: "shorts",
+        h: "YouTube lets Shorts run to three minutes",
+        t: "Longer Shorts blur into regular uploads; plan cut-downs for both.",
+        url: "https://blog.youtube/",
+        image: "/demo-thumb.svg",
+      },
+      {
+        id: "threads",
+        h: "Threads opens posting to scheduling tools",
+        t: "Third-party schedulers can publish to Threads directly.",
+        url: "https://about.fb.com/news/",
+      },
+    ],
+  },
+  {
+    key: "a",
+    name: "Paid Ads",
+    items: [
+      {
+        id: "dsp",
+        h: "Amazon DSP drops its minimum spend",
+        t: "Self-serve programmatic is now open to small brands.",
+        url: "https://advertising.amazon.com/blog",
+      },
+      {
+        id: "linkedin",
+        h: "LinkedIn puts video ads in every feed",
+        t: "Video placements no longer need a managed account.",
+        url: "https://business.linkedin.com/marketing-solutions/blog",
+      },
+    ],
+  },
+  {
+    key: "i",
+    name: "AI Tech",
+    items: [
+      {
+        id: "voice",
+        h: "Realtime voice models get half as cheap",
+        t: "Voice agents cost less to run at scale; worth a second look.",
+        url: "https://openai.com/news/",
+      },
+    ],
+  },
+];
+
+// The seed's metrics: today's values and the unit/group each one carries,
+// plus where the history sits (base, with a relative day-to-day noise). API
+// p95 has just dropped well below its usual, so the demo has an anomaly.
+type MetricSpec = {
+  key: string;
+  label: string;
+  value: number;
+  unit?: string;
+  delta?: number;
+  delta_pct?: number;
+  group: string;
+  note?: string;
+  sort: number;
+  base: number;
+  noise: number;
+  digits: number;
+  max?: number;
+};
+
+const METRICS: MetricSpec[] = [
+  { key: "sales.today", label: "Sales today", value: 4280, unit: "USD", delta_pct: 12.5, group: "Store", sort: 0, base: 3900, noise: 0.09, digits: 0 },
+  { key: "orders.open", label: "Open orders", value: 17, delta: -3, group: "Store", sort: 1, base: 21, noise: 0.15, digits: 0 },
+  { key: "site.uptime", label: "Uptime", value: 99.98, unit: "%", group: "Ops", sort: 0, base: 99.96, noise: 0.0002, digits: 2, max: 100 },
+  { key: "api.p95", label: "API p95", value: 212, unit: "ms", delta: -18, group: "Ops", note: "After the cache change.", sort: 1, base: 241, noise: 0.02, digits: 0 },
+  { key: "steps", label: "Steps", value: 6420, delta_pct: -8, group: "Me", sort: 0, base: 8100, noise: 0.15, digits: 0 },
 ];
 
 // The seed's two dashboards, as the agent pushes them.
@@ -297,6 +374,9 @@ function hostOf(url: string): string | null {
 
 export function buildDemoState(now = Date.now()): DemoState {
   const rand = rng(20261014);
+  // Roughly a standard normal draw (three uniforms), for the histories.
+  const gauss = () => (rand() + rand() + rand() - 1.5) * 2;
+  const round = (n: number, digits = 2) => Math.round(n * 10 ** digits) / 10 ** digits;
   const ago = (ms: number) => new Date(now - ms).toISOString();
   const minutes = (m: number) => ago(m * 60_000);
   const hours = (h: number) => ago(h * 3_600_000);
@@ -340,6 +420,10 @@ export function buildDemoState(now = Date.now()): DemoState {
   ];
   const byId = (id: string) => agents.find((a) => a.id === id)!;
 
+  // A day in the display's zone, as a YYYY-MM-DD key (0 is today).
+  const dayOf = (offset: number) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now + offset * 86_400_000));
+
   const brief = (p: Omit<DemoBrief, "id" | "created_at" | "expires_at"> & { expires_at?: string | null }): DemoBrief => ({
     id: uuid(), created_at: p.published_at, expires_at: null, ...p,
   });
@@ -362,7 +446,7 @@ export function buildDemoState(now = Date.now()): DemoState {
     }),
     brief({
       agent_id: GROK_ID, external_id: "daily-1", title: "Morning briefing", kind: "daily", published_at: hours(27),
-      body: "Three things for today.\n\n- Dentist at 10.\n- The Pulse report has 11 stories; the hero is the Gemini launch.\n- 68° and sunny.",
+      body: "Three things for today.\n\n- Dentist at 10.\n- The Pulse has 5 stories, led by YouTube's longer Shorts.\n- 68° and sunny.",
     }),
     brief({
       agent_id: WEATHER_ID, external_id: "storm", title: "Storm warning lifted", kind: "update", published_at: days(11),
@@ -374,40 +458,46 @@ export function buildDemoState(now = Date.now()): DemoState {
     }),
   ];
 
-  // Thirty days of quotes per symbol; the newest row is the seed's price and
-  // the older ones drift behind it.
+  // Thirty days of quotes per symbol, built backward from the seed's row:
+  // yesterday's close is today's price less today's change, and each day
+  // before moves by about the symbol's usual swing. Every row's change is
+  // its move from the day before, so the history and the numbers agree.
   const quotes: DemoQuote[] = [];
   let nextQuoteId = 1;
   for (const spec of QUOTES) {
     let price = spec.price;
+    let prev = spec.price - spec.change;
     for (let day = 0; day < 30; day++) {
-      const asOf = day === 0 ? minutes(4) : days(day);
+      const change = round(price - prev);
       quotes.push({
         id: nextQuoteId++, agent_id: STOCKS_ID, symbol: spec.symbol, name: spec.name,
-        price: Math.round(price * 100) / 100,
-        change: day === 0 ? spec.change : Math.round((rand() - 0.5) * 600) / 100,
-        change_pct: day === 0 ? spec.change_pct : Math.round((rand() - 0.5) * 300) / 100,
-        currency: "USD", note: day === 0 ? (spec.note ?? null) : null, as_of: asOf,
+        price: round(price),
+        change: day === 0 ? spec.change : change,
+        change_pct: day === 0 ? spec.change_pct : round((change / prev) * 100),
+        currency: "USD", note: day === 0 ? (spec.note ?? null) : null, as_of: day === 0 ? minutes(4) : days(day),
         ...(day === 0 && QUOTE_DATA[spec.symbol] ? { data: QUOTE_DATA[spec.symbol] } : {}),
       });
-      price = price * (1 - (rand() - 0.48) * 0.03);
+      price = prev;
+      prev = price / (1 + (spec.vol / 100) * gauss());
     }
   }
+  // Oldest first, as pushes arrive (ids grow with time).
+  quotes.sort((a, b) => a.as_of.localeCompare(b.as_of));
+  quotes.forEach((q, i) => (q.id = i + 1));
   const symbols: DemoSymbol[] = QUOTES.map((q) => ({ symbol: q.symbol, name: q.name, sort_order: q.sort, hidden: false, updated_at: days(12) }));
 
-  const reports: NewsReport[] = [
-    {
-      id: uuid(), agent_id: PULSE_ID, slug: "2026-10-14", report_date: "2026-10-14", display_date: "Oct 14, 2026",
-      hero_item: "gemini", published_at: hours(6), created_at: hours(6),
-    },
-    {
-      id: uuid(), agent_id: PULSE_ID, slug: "2026-10-13", report_date: "2026-10-13", display_date: "Oct 13, 2026",
-      hero_item: "reels", published_at: hours(30), created_at: hours(30),
-    },
-  ];
+  // Today's and yesterday's Pulse, dated in the display's zone from when the
+  // server started, so Today always has a report (and its hero).
+  const pulseReport = (dayOffset: number, hero: string, published: string): NewsReport => {
+    const day = dayOf(dayOffset);
+    const [y, m, d] = day.split("-").map(Number);
+    const display = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, m - 1, d));
+    return { id: uuid(), agent_id: PULSE_ID, slug: day, report_date: day, display_date: display, hero_item: hero, published_at: published, created_at: published };
+  };
+  const reports: NewsReport[] = [pulseReport(0, "gemini", hours(6)), pulseReport(-1, "shorts", hours(30))];
   const items: NewsItem[] = [];
-  for (const report of reports) {
-    PULSE_SECTIONS.forEach((section, s) => {
+  for (const [r, report] of reports.entries()) {
+    (r === 0 ? PULSE_TODAY : PULSE_YESTERDAY).forEach((section, s) => {
       section.items.forEach((item, i) => {
         items.push({
           id: uuid(), report_id: report.id, section_key: section.key, section_name: section.name, section_order: s,
@@ -418,7 +508,8 @@ export function buildDemoState(now = Date.now()): DemoState {
     });
   }
 
-  // Projects, as the GitHub watcher reports them (the seed's three).
+  // Projects, as the GitHub watcher reports them: the seed's three and one
+  // that's finished.
   let nextUpdateId = 1;
   const update = (kind: ProjectUpdate["kind"], text: string, at: string, url: string | null = null): ProjectUpdate => ({
     id: nextUpdateId++, kind, text, url, happened_at: at,
@@ -447,22 +538,35 @@ export function buildDemoState(now = Date.now()): DemoState {
       summary: "Voice handbook app; launch copy is done.", next_step: null, link: null, color: "#F07F5A", updated_at: days(4),
       updates: [update("done", "Launch copy approved", days(4))],
     },
+    {
+      id: uuid(), agent_id: GITHUB_ID, key: "voice", name: "Voice replies", kind: "task", status: "done", progress: 100, sort_order: 3,
+      summary: "Spoken answers with Kokoro on the display and in the console.", next_step: null, link: null, color: null, updated_at: days(1),
+      updates: [
+        update("done", "Kokoro voice shipped to the display and the console", days(1)),
+        update("deploy", "Voice service 1.2 on the kitchen display", days(1.3)),
+        update("pr", "#9 Read replies aloud: merged", days(2.5)),
+      ],
+    },
   ];
 
-  // Metrics: today's row plus a week of history for each.
+  // Metrics: today's row plus about thirty days behind it. Yesterday is
+  // whatever today's delta says it was; the days before scatter around the
+  // metric's usual level.
   const metrics: DemoMetric[] = [];
-  let nextMetricId = 1;
   for (const m of METRICS) {
-    let value = m.value;
-    for (let day = 0; day < 8; day++) {
+    const yesterday = m.delta != null ? m.value - m.delta : m.delta_pct != null ? m.value / (1 + m.delta_pct / 100) : m.base;
+    for (let day = 0; day < 30; day++) {
+      const raw = day === 0 ? m.value : day === 1 ? yesterday : m.base * (1 + m.noise * gauss());
       metrics.push({
-        id: nextMetricId++, agent_id: OPS_ID, key: m.key, label: m.label, value: Math.round(value * 100) / 100,
+        id: 0, agent_id: OPS_ID, key: m.key, label: m.label, value: round(Math.min(raw, m.max ?? Infinity), m.digits),
         unit: m.unit ?? null, delta: day === 0 ? (m.delta ?? null) : null, delta_pct: day === 0 ? (m.delta_pct ?? null) : null,
         note: day === 0 ? (m.note ?? null) : null, as_of: day === 0 ? minutes(9) : days(day),
       });
-      value = value * (1 - (rand() - 0.5) * (m.unit === "%" ? 0.001 : 0.15));
     }
   }
+  metrics.sort((a, b) => a.as_of.localeCompare(b.as_of));
+  metrics.forEach((m, i) => (m.id = i + 1));
+  const nextMetricId = metrics.length + 1;
   const metricSettings: DemoMetricSetting[] = METRICS.map((m) => ({ key: m.key, label: m.label, group_name: m.group, sort_order: m.sort, hidden: false }));
 
   const dashboards: DemoDashboard[] = [
@@ -472,13 +576,6 @@ export function buildDemoState(now = Date.now()): DemoState {
 
   // Events around today in the display's zone: the seed's six, moved to
   // this week so the calendar tab always has today and tomorrow.
-  const today = new Date(now);
-  const dayOf = (offset: number) => {
-    const d = new Date(today.getTime() + offset * 86_400_000);
-    // The day in the display's zone, as a YYYY-MM-DD key.
-    const p = new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-    return p;
-  };
   const at = (dayOffset: number, hour: number, minute = 0) => {
     const midnight = Date.parse(zonedMidnightUtc(dayOf(dayOffset), TIMEZONE));
     return new Date(midnight + (hour * 60 + minute) * 60_000).toISOString();

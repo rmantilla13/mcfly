@@ -1,97 +1,120 @@
 import "server-only";
 
-import { getNewsReport, getProjectUpdates, getSettings, listBriefs, listEvents, listNewsReports, listProjects, listQuotes } from "@/lib/data";
+import {
+  getNewsReport,
+  getProjectUpdates,
+  getSettings,
+  listBriefs,
+  listDevices,
+  listEvents,
+  listIngestSince,
+  listMetrics,
+  listNewsReports,
+  listProjects,
+  listQuotes,
+  listSeries,
+} from "@/lib/data";
 import { dayKey, safeTimeZone } from "@/lib/events";
-import { cssColor, formatChange, formatPrice, changeDirection } from "@/lib/format";
-import { buildTimeline, STATUS_COLOR, type TimelineItem } from "@/lib/today";
+import { buildInsights, type Insight } from "@/lib/insights";
+import type { SeriesPoint } from "@/lib/series";
+import { displayBackdrop, type Backdrop } from "@/lib/sky";
+import { buildSuggestions } from "@/lib/suggestions";
+import { buildTimeline, buildTomorrow, metricRows, SERIES_DAYS, tickerRows, todayFacts, type TimelineItem, type TodayFacts } from "@/lib/today";
 
 // Everything the Today page and the ambient view show, read once on the
 // server in the display's time zone. Plain JSON, so it crosses into the
-// client components that keep the clock.
+// client components that keep the clock. The insights and suggestions are
+// worked out here from the same rows, with no model call: the page reads
+// this again every 60 s in every open tab.
 
-export type TodayEvent = { id: string; title: string; calendar: string; location: string | null; starts_at: string; ends_at: string; all_day: boolean; color: string };
-export type TodayTicker = { symbol: string; price: string; change: string; direction: "up" | "down" | "flat" };
-export type TodayProject = { id: string; name: string; next: string; progress: number | null; color: string };
-export type TodayBrief = { agent: string; color: string; publishedAt: string; title: string; summary: string } | null;
-export type TodayHero = { reportId: string; source: string; color: string; count: number; headline: string; takeaway: string; imageUrl: string | null } | null;
+export type { Insight, InsightKind, InsightTone } from "@/lib/insights";
+export type { SeriesPoint } from "@/lib/series";
+export type { TodayBrief, TodayEvent, TodayHero, TodayMetric, TodayProject, TodayTicker } from "@/lib/today";
 
-export type TodayData = {
+export type TodayData = TodayFacts & {
   nowMs: number;
   timeZone: string;
   displayName: string;
+  backdrop: Backdrop; // behind the ambient view: the display's choice (lib/sky.ts displayBackdrop)
   timeline: TimelineItem[];
-  events: TodayEvent[]; // from now on, today and the next week
-  tickers: TodayTicker[];
-  blocked: TodayProject[];
-  brief: TodayBrief;
-  hero: TodayHero;
+  tomorrow: TimelineItem[]; // tomorrow's events: the preview under the day
+  insights: Insight[]; // ranked, at most 5 (lib/insights.ts)
+  suggestions: string[]; // at most 4, each ≤ 42 characters (lib/suggestions.ts)
 };
+
+// Sparklines, the insights' history and the push log are extras: a failed
+// read logs and leaves them empty rather than taking the page down. The
+// history comes from a cache up to an hour old (lib/data.ts listSeries);
+// todayFacts puts each latest row on its end.
+function extra<T>(what: string, fallback: T) {
+  return (err: unknown): T => {
+    console.error(`today: ${what} unavailable:`, err instanceof Error ? err.message : err);
+    return fallback;
+  };
+}
 
 export async function loadToday(): Promise<TodayData> {
   const now = new Date();
-  const [settings, briefs, quotes, reports, projects, events] = await Promise.all([
+  const [settings, briefs, quotes, metrics, reports, projects, events, ingest, devices] = await Promise.all([
     getSettings(),
     listBriefs(1),
     listQuotes(),
+    listMetrics(),
     listNewsReports(10),
     listProjects(),
     listEvents(1, 8),
+    // Only the refused pushes, for the "refused" insight: the ok rows would be
+    // up to 1000 a day, every minute, and judging a quiet agent needs a week
+    // of them (lib/insights.ts), more than this page should read.
+    listIngestSince(24, { status: "error" }).catch(extra("push log", [])),
+    // The displays, for the ambient view's backdrop: without them it is the mesh.
+    listDevices().catch(extra("displays", [])),
   ]);
   const timeZone = safeTimeZone(settings.timezone);
   const today = dayKey(now, timeZone);
 
-  // Only today's reports and today's project updates need a second read.
+  // Only today's reports and today's project updates need a second read,
+  // alongside the history of what the page charts.
   const todaysReports = reports.filter((r) => r.report_date === today);
-  const details = await Promise.all(todaysReports.map((r) => getNewsReport(r.id)));
+  const movedToday = projects.filter((p) => p.last_update_at && dayKey(p.last_update_at, timeZone) === today);
+  const symbols = tickerRows(quotes).map((q) => q.symbol);
+  const keys = metricRows(metrics).map((m) => m.key);
+  const none: Record<string, SeriesPoint[]> = {};
+  const [details, updates, quoteSeries, metricSeries] = await Promise.all([
+    Promise.all(todaysReports.map((r) => getNewsReport(r.id))),
+    Promise.all(movedToday.map((p) => getProjectUpdates(p.id, 20))),
+    symbols.length ? listSeries("quotes", symbols, SERIES_DAYS).catch(extra("quote history", none)) : none,
+    keys.length ? listSeries("metrics", keys, SERIES_DAYS).catch(extra("metric history", none)) : none,
+  ]);
   const fullReports = todaysReports.flatMap((r, i) => {
     const d = details[i];
     return d ? [{ ...r, items: d.items }] : [];
   });
-  const movedToday = projects.filter((p) => p.last_update_at && dayKey(p.last_update_at, timeZone) === today);
-  const updates = await Promise.all(movedToday.map((p) => getProjectUpdates(p.id, 20)));
   const projectsIn = movedToday.map((p, i) => ({ ...p, updates: updates[i] }));
 
   const timeline = buildTimeline({ briefs: briefs.rows, reports: fullReports, projects: projectsIn, events, timeZone, now });
-
-  const latest = briefs.rows[0];
-  const heroReport = fullReports[0];
-  const heroItem = heroReport
-    ? ([...heroReport.items].sort((a, b) => a.section_order - b.section_order || a.position - b.position).find(
-        (i) => heroReport.hero_item && i.item_key === heroReport.hero_item,
-      ) ?? heroReport.items[0])
-    : null;
+  const tomorrow = buildTomorrow({ events, timeZone, now });
+  const facts = todayFacts({
+    now,
+    timeZone,
+    quotes,
+    metrics,
+    series: { quotes: quoteSeries, metrics: metricSeries },
+    projects,
+    events,
+    brief: briefs.rows[0] ?? null,
+    report: fullReports[0] ?? null,
+  });
 
   return {
     nowMs: now.getTime(),
     timeZone,
     displayName: settings.display_name,
+    backdrop: displayBackdrop(devices),
     timeline,
-    events: events
-      .filter((e) => Date.parse(e.ends_at) > now.getTime())
-      .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
-      .map((e) => ({ id: e.id, title: e.title, calendar: e.calendar, location: e.location, starts_at: e.starts_at, ends_at: e.ends_at, all_day: e.all_day, color: cssColor(e.color) ?? "#5B7CF5" })),
-    tickers: quotes
-      .filter((q) => !q.hidden && q.price != null)
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .slice(0, 6)
-      .map((q) => ({ symbol: q.symbol, price: formatPrice(q.price, q.currency), change: q.change_pct != null ? formatChange(null, q.change_pct) : formatChange(q.change, null), direction: changeDirection(q.change, q.change_pct) })),
-    blocked: projects
-      .filter((p) => p.status === "blocked")
-      .map((p) => ({ id: p.id, name: p.name, next: p.next_step || p.summary || "", progress: p.progress, color: cssColor(p.color) ?? STATUS_COLOR.blocked })),
-    brief: latest
-      ? { agent: latest.agent_name, color: cssColor(latest.agent_color) ?? "#5B7CF5", publishedAt: latest.published_at, title: latest.title, summary: latest.body.replace(/[#*_`>]/g, "").split(/\n\s*\n/)[0].replace(/\s+/g, " ").trim() }
-      : null,
-    hero:
-      heroReport && heroItem
-        ? {
-            reportId: heroReport.id,
-            source: heroReport.agent_name || "Daily Pulse",
-            color: cssColor(heroReport.agent_color) ?? "#5B7CF5",
-            count: heroReport.items.length,
-            headline: heroItem.headline,
-            takeaway: heroItem.takeaway ?? "",
-            imageUrl: heroItem.image_url,
-          }
-        : null,
+    tomorrow,
+    ...facts,
+    insights: buildInsights({ ...facts, timeZone, ingest }, now.getTime()),
+    suggestions: buildSuggestions({ ...facts, nowMs: now.getTime() }),
   };
 }

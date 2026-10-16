@@ -186,7 +186,7 @@ export function DisplaySettingsDialog({ device, action }: { device: Device; acti
               </div>
               <Choice
                 name="voice"
-                label="Voice (Homestead's)"
+                label="Voice (here, on the web and in the app)"
                 value={s.voice}
                 options={[["af_heart", "Heart"], ["af_bella", "Bella"], ["am_michael", "Michael"], ["am_fenrir", "Fenrir"]]}
               />

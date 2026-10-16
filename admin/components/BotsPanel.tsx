@@ -1,13 +1,14 @@
 "use client";
 
 import { CheckCircle2Icon, PauseIcon, PencilIcon, PlayIcon, SparklesIcon, Trash2Icon, XCircleIcon, ZapIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { ScopeSwitches } from "@/components/agents/ScopeSwitches";
 import { ColorField } from "@/components/NewAgentForm";
 import { useFormAction } from "@/components/useFormAction";
 import { EmptyState, Swatch, Time } from "@/components/bits";
+import { ThinkingText } from "@/components/today/ThinkingText";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -167,6 +168,37 @@ function BotForm({ bot, action, onDone }: { bot: BotStarter | Bot; action: FormA
   );
 }
 
+// What a run is up to, as far as the page can tell: it hears nothing until
+// the run is done (up to two minutes), so the words move on with the time.
+// Grok searches, reads what it found, then writes.
+const RUN_STAGES_MS = [0, 20_000, 45_000, 90_000];
+
+function runStage(bot: Bot, stage: number): string {
+  const where = [bot.web_search && "the web", bot.x_search && "X"].filter(Boolean).join(" and ");
+  const writes = bot.output === "news" ? "the Pulse report" : "the brief";
+  return [
+    where ? `Grok is searching ${where}…` : "Grok is thinking it over…",
+    where ? "Reading what it found…" : "Working it through…",
+    `Writing ${writes}…`,
+    "Nearly there. A run can take up to two minutes…",
+  ][stage];
+}
+
+// Shown only while a run is going, so each run starts from the first words.
+function RunStatus({ bot }: { bot: Bot }) {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    const timers = RUN_STAGES_MS.slice(1).map((at, i) => setTimeout(() => setStage(i + 1), at));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  return (
+    <p className="flex items-center gap-2 text-sm" role="status">
+      <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <ThinkingText text={runStage(bot, stage)} />
+    </p>
+  );
+}
+
 function BotCard({ bot, actions, onEdit }: { bot: Bot; actions: Actions; onEdit: () => void }) {
   const run = useFormAction(actions.run, (res) => res?.ok && res.message && toast.success(res.message));
   const enable = useFormAction(actions.enable, (res) => res?.ok && res.message && toast.success(res.message));
@@ -185,7 +217,7 @@ function BotCard({ bot, actions, onEdit }: { bot: Bot; actions: Actions; onEdit:
           <input type="hidden" name="bot_id" value={bot.id} />
           <Button type="submit" size="sm" variant="outline" disabled={run.pending}>
             {run.pending ? <Spinner data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
-            {run.pending ? "Running… (up to 2 min)" : "Run now"}
+            {run.pending ? "Running…" : "Run now"}
           </Button>
         </form>
         <form onSubmit={enable.submit}>
@@ -212,8 +244,8 @@ function BotCard({ bot, actions, onEdit }: { bot: Bot; actions: Actions; onEdit:
           }
         />
       </div>
-      <p className="line-clamp-2 text-sm text-muted-foreground">{bot.prompt}</p>
-      {run.result && !run.result.ok ? <p className="text-sm text-destructive">{run.result.error}</p> : null}
+      {run.pending ? <RunStatus bot={bot} /> : <p className="line-clamp-2 text-sm text-muted-foreground">{bot.prompt}</p>}
+      {run.result && !run.result.ok && !run.pending ? <p className="text-sm text-destructive">{run.result.error}</p> : null}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
         <span>{bot.enabled ? <>Next run <Time iso={bot.next_run_at} /></> : "Paused"}</span>
         <span>Last run {bot.last_run_at ? <Time iso={bot.last_run_at} /> : "never"}</span>
