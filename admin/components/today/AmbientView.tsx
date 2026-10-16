@@ -5,13 +5,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type CSSProperties } from "react";
 import type { TodayData } from "@/lib/today-data";
 import { formatClock, untilLabel } from "@/lib/today";
+import { GlowAurora } from "@/components/GlowAurora";
 import { clockParts, useLiveRefresh, useNow } from "./TodayView";
 
 // The display's ambient screen saver, in a browser: readable from across
 // the room on a spare monitor or a tablet. The gradient drifts, the clock
 // and what's next sit on it, and a rail of cards from the feeds runs along
 // the bottom. Any click or key goes back to Today. The whole composition
-// moves a few pixels every minute against burn-in; cards dim at night.
+// moves a few pixels every minute against burn-in; cards dim at night, when
+// an aurora in the glow colours hangs over the clock (GlowAurora; the
+// display's ambient saver has the same one). Like the display's, it draws at
+// half resolution and 15 frames a second: this page stays up all night.
 
 function hourIn(ms: number, timeZone: string): number {
   return Number(new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(new Date(ms)));
@@ -82,6 +86,11 @@ export function AmbientView({ data }: { data: TodayData }) {
       <div className="ambient-blob ambient-blob-1" aria-hidden="true" />
       <div className="ambient-blob ambient-blob-2" aria-hidden="true" />
       <div className="ambient-blob ambient-blob-3" aria-hidden="true" />
+      {night ? (
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <GlowAurora dark height={0.36} amplitude={1.1} blend={0.7} layers={2} opacity={0.3} speed={0.35} mouseInteraction={false} dpr={0.5} maxFps={15} />
+        </div>
+      ) : null}
       <div className="film-grain" aria-hidden="true" />
 
       <div

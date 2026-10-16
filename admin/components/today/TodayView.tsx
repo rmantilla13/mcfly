@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AskPanel } from "./AskPanel";
+import { FlipClock } from "./FlipClock";
 import { cssColor } from "@/lib/format";
 import type { TodayData } from "@/lib/today-data";
 import { focusIndex, formatClock, greeting, rowState, untilLabel, upNext, type TimelineItem } from "@/lib/today";
@@ -69,7 +70,7 @@ export function TodayView({ data }: { data: TodayData }) {
             {greeting(now, tz, data.displayName)}
           </p>
           <p className="flex items-baseline gap-2" suppressHydrationWarning>
-            <span className="text-[96px] leading-none font-light tracking-[-0.04em] tabular-nums max-md:text-7xl">{clock.time}</span>
+            <FlipClock time={clock.time} className="text-[96px] leading-none font-light tracking-[-0.04em] max-md:text-7xl" />
             <span className="text-xl text-muted-foreground">{clock.ampm}</span>
           </p>
           <p className="mt-1 text-[15px] text-muted-foreground" suppressHydrationWarning>

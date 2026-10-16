@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "cn";
 import { SpectrumGlow, type GlowInput } from "./SpectrumGlow";
+import ShinyText from "@/components/reactbits/ShinyText";
 import { kokoro, speakReply, stopSpeaking, storedVoice, storeVoice, VOICES, type KokoroState, type VoiceId } from "./speech";
 import { useAsk } from "./useAsk";
 
@@ -288,7 +289,9 @@ export function VoiceScreen() {
       </section>
 
       <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 pb-10">
-        <p className={cn("text-sm", micError || error ? "text-[#FF9B8A]" : "text-white/70")}>{status}</p>
+        <p className={cn("text-sm", micError || error ? "text-[#FF9B8A]" : "text-white/70")}>
+          {!micError && !error && (listening || waiting) ? <ShinyText text={status} color="rgba(255, 255, 255, 0.7)" shineColor="#ffffff" speed={1.6} /> : status}
+        </p>
         {typing ? (
           <form
             className="flex w-[min(560px,90vw)] items-center gap-2 rounded-full bg-white/10 p-1.5 backdrop-blur"

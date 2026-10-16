@@ -2,15 +2,21 @@
 
 import { CalendarIcon, FileTextIcon, GitCommitHorizontalIcon, NewspaperIcon, TrendingUpIcon, ZapIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { GlowAurora } from "@/components/GlowAurora";
+import SplitFlapText from "@/components/reactbits/SplitFlapText";
 
 // The sign-in page's living backdrop: the display's glow drifting in three
-// blobs, a light that follows the pointer, and on wide screens a column of
-// the kinds of cards agents push, floating past a live clock. Everything is
+// blobs, an aurora in the same colours hanging from the top (it leans toward
+// the pointer), a light that follows the pointer, and on wide screens a column
+// of the kinds of cards agents push, floating past a live clock and a
+// split-flap board that flips through what agents report. Everything is
 // sample text: nothing here comes from the database before sign-in.
 //
-// Motion is CSS (globals.css, "login-" classes), so it runs off the main
-// thread and stops under prefers-reduced-motion. The pointer light writes two
-// CSS variables at most once a frame.
+// The blobs, cards and ring are CSS (globals.css, "login-" classes), so they
+// run off the main thread; the aurora is one WebGL pass (GlowAurora) and the
+// board flips with CSS keyframes (components/reactbits). All of it stops under
+// prefers-reduced-motion. The pointer light writes two CSS variables at most
+// once a frame.
 
 const SAMPLES: { icon: typeof ZapIcon; kicker: string; title: string; color: string }[] = [
   { icon: FileTextIcon, kicker: "Grok · Daily", title: "Morning briefing", color: "#7A64E8" },
@@ -20,6 +26,9 @@ const SAMPLES: { icon: typeof ZapIcon; kicker: string; title: string; color: str
   { icon: GitCommitHorizontalIcon, kicker: "McFly", title: "CI green on main", color: "#3DB37A" },
   { icon: ZapIcon, kicker: "Market desk · Alert", title: "TSLA up 4% on deliveries", color: "#F6B94A" },
 ];
+
+// What the board flips through: the cards' news, as an agent would say it.
+const REPORTS = ["BRIEF READY", "NVDA +1.51%", "PULSE: 6 STORIES", "STANDUP IN 18 MIN", "CI GREEN ON MAIN", "TSLA +4.0%"];
 
 function Clock() {
   const [now, setNow] = useState<Date | null>(null);
@@ -94,6 +103,9 @@ export function LoginScene({ children }: { children: ReactNode }) {
       <div className="login-blob login-blob-1" aria-hidden="true" />
       <div className="login-blob login-blob-2" aria-hidden="true" />
       <div className="login-blob login-blob-3" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <GlowAurora height={0.3} amplitude={1.2} blend={0.6} layers={2} opacity={0.75} speed={0.55} dpr={1} />
+      </div>
       <div className="login-spotlight" aria-hidden="true" />
       <div className="film-grain" aria-hidden="true" />
 
@@ -106,6 +118,24 @@ export function LoginScene({ children }: { children: ReactNode }) {
             <br />
             <span className="login-shimmer">on one screen.</span>
           </h2>
+          <div className="login-rise" style={{ animationDelay: "320ms" }}>
+            <SplitFlapText
+              words={REPORTS}
+              padTo={17}
+              fontSize={24}
+              gap={3}
+              tileRadius={5}
+              tileColor="#1B1A1F"
+              textColor="#F3F2EF"
+              glare={0.4}
+              charset="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+%."
+              flipsPerChar={5}
+              flipDuration={0.09}
+              stagger={0.035}
+              cycleDelay={3200}
+              depth={0.4}
+            />
+          </div>
           <div className="relative flex h-[300px] flex-col gap-3 overflow-hidden [mask-image:linear-gradient(transparent,black_18%,black_82%,transparent)]">
             <div className="login-drift flex flex-col gap-3">
               {[...SAMPLES, ...SAMPLES].map((s, i) => (

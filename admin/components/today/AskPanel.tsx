@@ -7,6 +7,7 @@ import { speakReply, stopSpeaking, storedVoice } from "@/components/voice/speech
 import { useAsk } from "@/components/voice/useAsk";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
+import ShinyText from "@/components/reactbits/ShinyText";
 
 // Ask McFly on the web, like the display's ask bar: type, or hold the mic and
 // speak (the browser's own speech recognition, where it has one). The answer
@@ -120,7 +121,7 @@ export function AskPanel() {
         <div ref={log} className="relative flex max-h-72 flex-col gap-3 overflow-y-auto px-5 pt-4" aria-live="polite">
           {turns.map((t, i) => (
             <p key={i} className={cn("text-[15px] leading-relaxed whitespace-pre-wrap", t.role === "user" ? "text-white/60" : "text-white")}>
-              {t.text || (busy && i === turns.length - 1 ? "…" : "")}
+              {t.text || (busy && i === turns.length - 1 ? <ShinyText text="Thinking…" color="rgba(255, 255, 255, 0.5)" shineColor="#ffffff" speed={1.6} /> : "")}
             </p>
           ))}
         </div>

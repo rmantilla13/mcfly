@@ -75,5 +75,10 @@ display.
   `https://mcfly.bot/pair?code=…`, and all three must agree.
 - `display/third_party/qrcodegen` is Project Nayuki's library (MIT), vendored
   as is.
+- `admin/components/reactbits/` and `display/shaders/aurora.frag` are ported
+  from React Bits (MIT + Commons Clause), not McFly's own BSD code. Using them
+  in McFly is allowed; selling or redistributing the components themselves,
+  ported or not, is not. Keep the licence header at the top of each file, and
+  give anything else taken from React Bits the same header.
 - The voice service's WebSocket protocol (`voice/mcfly_voice/protocol.py`
   and `display/src/voice/VoiceClient.cpp`) changes on both sides at once.
