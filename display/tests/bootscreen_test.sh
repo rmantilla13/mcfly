@@ -202,6 +202,7 @@ if kill -0 "$pid" 2>/dev/null; then
 fi
 
 # A player that takes a while to let go of the screen after TERM.
+mkdir -p "$tmp/bin"
 cat >"$tmp/bin/ffplay" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$$" >"${MCFLY_FAKE_PLAYER:?}.pid"
