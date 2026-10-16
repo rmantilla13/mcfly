@@ -72,6 +72,8 @@ admin RPCs.
 | `news_reports` | A Daily Pulse report: `agent_id`, `slug` (unique, normally the date), `report_date`, `display_date` (as the agent wrote it), `hero_item` (an item key), `published_at` |
 | `news_items` | `report_id`, `section_key`, `section_name`, `section_order`, `item_key` (unique per report and section), `position`, `headline` (≤300), `takeaway` (≤2000), `url` (http/https), `image_url`, `source_domain` (host without www) |
 | `admin_audit_log` | Every admin change, written by the RPCs and the functions |
+| `calendar_sources` | Calendar subscriptions, read every 15 minutes by `calendar-sync` into `events` under the built-in agent `calendar-subscriptions`: `kind` ∈ ical · google, `name` (unique; the events' calendar), `url` (an iCal link, kind ical; service role only, the console sees its host), `google_account_id` + `google_calendar_id` (kind google), `color`, `enabled`, `last_synced_at`, `last_error`, `event_count` |
+| `google_accounts` | Service role only (RLS on, no policies): a Google account the admin signed in with: `email` (unique), `refresh_token`, `scope`, `connected_by`, `connected_at`, `last_error`. `google_oauth_states` (same) holds a sign-in under way: `state`, `user_id`, `return_to`, ten minutes |
 
 Retention: `prune_feed()` applies the settings (old briefs, old quote
 history keeping the newest row per symbol, old reports, 90 days of log).
@@ -111,17 +113,31 @@ mutation writes `admin_audit_log`.
 | `admin_revoke_device(device)` | jsonb { user_id, auth_user_removed }; the `admin` function finishes the auth user |
 | `admin_get_settings()` / `admin_update_settings(display_name, timezone, briefs_keep_days, quotes_keep_days, news_keep_reports)` | jsonb settings; nulls keep; an unknown timezone is refused |
 | `admin_set_admin(target, make_admin)` | void; the last admin can't be removed; displays can't be admins |
+| `admin_list_calendar_sources()` | rows: id, name, host, color, enabled, last_synced_at, last_error, event_count, created_at, kind, account_id, account_email, google_calendar_id |
+| `admin_add_calendar_source(name, url, color)` / `admin_update_calendar_source(source, name, color, enabled)` / `admin_delete_calendar_source(source)` | uuid / void / void (with the events) |
+| `admin_list_google_accounts()` | rows: id, email, connected_at, last_error, calendars |
+| `admin_add_google_calendar(account, calendar_id, name, color)` | uuid: a `calendar_sources` row of kind google (a taken name gets the account's email appended) |
+| `admin_delete_google_account(account)` | the email; its calendars and their events go too (the `google-calendar` function revokes at Google first) |
 | `admin_list_audit(lim, off)` | rows: id, created_at, admin_email, action, target_type, target_id, details |
 
 Audit actions: create_agent, rotate_agent_key, update_agent, revoke_agent,
 delete_agent, delete_brief, set_symbol, delete_symbol, delete_news_report,
 rename_device, revoke_device, pair_device (written by pair-device),
-update_settings, set_admin.
+update_settings, set_admin, add_calendar_source, update_calendar_source,
+delete_calendar_source, connect_google_account (written by google-calendar,
+as the admin who began the sign-in), disconnect_google_account.
+
+Service role only, for the functions: `calendar_sources_due(source)` (the
+enabled subscriptions with each Google calendar's account and token),
+`calendar_source_synced(source, count, error)`, `google_oauth_begin(state,
+who, return_to)` / `google_oauth_finish(state)` (one use, ten minutes),
+`google_account_save(email, refresh_token, scope, who)` (upsert by email),
+`google_account_credentials(account)`, `google_account_failed(account, error)`.
 
 ## 2. Edge functions
 
 All answer JSON with the CORS headers; errors are `{ error }`. The gateway's
-JWT check is off for all four (`config.toml`); each checks its caller.
+JWT check is off for all of them (`config.toml`); each checks its caller.
 
 ### 2.1 `ingest` (agents)
 
@@ -183,6 +199,39 @@ short lists. Model: `ASSISTANT_MODEL` secret, default `claude-sonnet-5-5`.
 Login: `ANTHROPIC_API_KEY` secret. Errors: 400 bad body, 401 no session,
 403 not a reader, 503 model unavailable (`{ error }`, or an `error` event
 once the stream has begun).
+
+### 2.5 `google-calendar`
+
+The Google sign-in behind the console's Calendars page. Secrets:
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, optional `GOOGLE_REDIRECT_URI`
+(default `<project>/functions/v1/google-calendar/callback`). Scopes asked
+for: `openid email https://www.googleapis.com/auth/calendar.readonly`, with
+`access_type=offline` and `prompt=consent` so a refresh token comes back.
+
+```
+POST { action: "connect", return_to, email? }   admin JWT → { ok, url }  (Google's authorization page; a random
+                                                 state is kept with google_oauth_begin, ten minutes, one use)
+GET  /callback?code&state                        Google's redirect of the admin's browser → 302 to return_to
+                                                 ?google=connected, or ?google_error=<sentence>. The state is
+                                                 spent (google_oauth_finish), the code traded for tokens, the
+                                                 account's email read from the id token, the refresh token kept
+                                                 with google_account_save; a sign-in without the calendar scope
+                                                 or a refresh token is revoked at Google and refused
+POST { action: "calendars", account }            admin JWT → { ok, email, calendars: [{ id, name, color, primary,
+                                                 access_role, selected }] }  (Google's calendarList, now)
+POST { action: "disconnect", account }           admin JWT → { ok, email }  (revoked at Google, then
+                                                 admin_delete_google_account as the admin)
+```
+
+Errors: 400 bad body, 401 no session, 403 not an admin, 404 unknown account,
+409 Google no longer accepts the sign-in (the account's `last_error` is set;
+connect again), 503 secrets missing or Google unreachable.
+
+`calendar-sync` (every 15 minutes, or one source from "Sync now") reads each
+enabled subscription: a link's iCal, or for a Google calendar
+`events.list(singleEvents, −1 day … +60 days)` with a token refreshed once
+per account per run, then `ingest_events` with `replace` under the built-in
+agent. An `invalid_grant` from Google marks the account (`google_account_failed`).
 
 ## 3. Pi display
 

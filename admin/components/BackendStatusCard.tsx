@@ -63,6 +63,15 @@ export function BackendStatusCard({ status }: { status: BackendStatus }) {
           <Row ok={status.secrets ? secret("XAI_API_KEY") : null} title="Grok (assistant and Grok bots)">
             {status.secrets == null ? "Couldn't check." : secret("XAI_API_KEY") ? "XAI_API_KEY is set." : <>Add XAI_API_KEY under Edge Functions → Secrets{dash("functions/secrets")}</>}
           </Row>
+          <Row ok={status.secrets ? secret("GOOGLE_CLIENT_ID") && secret("GOOGLE_CLIENT_SECRET") : null} title="Google Calendar (sign in on the Calendars page)">
+            {status.secrets == null ? (
+              "Couldn't check."
+            ) : secret("GOOGLE_CLIENT_ID") && secret("GOOGLE_CLIENT_SECRET") ? (
+              "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set."
+            ) : (
+              <>Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET under Edge Functions → Secrets{dash("functions/secrets")} How to get them: docs/ADMIN.md, Google Calendar.</>
+            )}
+          </Row>
           <Row ok={!!scheduled} title="Schedules (calendars every 15 min, bots every 5)">
             {scheduled ? (
               <>

@@ -1,11 +1,13 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isKokoroVoice, type KokoroVoice } from "@/lib/account-voice";
 import type { ActionResult } from "@/lib/action-result";
 import * as data from "@/lib/data";
 import { DataError } from "@/lib/errors";
+import { googleReturnTo } from "@/lib/google-calendars";
 import { isCompleteCode, sanitizeCode } from "@/lib/pairing";
 import { knownTimeZone } from "@/lib/timezones";
 import type { DisplaySettings } from "@/lib/types";
@@ -416,6 +418,60 @@ export async function syncCalendarSourceAction(_prev: ActionResult, fd: FormData
     const result = await data.syncCalendarSource(uuid(fd, "source_id"));
     if (result.error) throw new DataError(result.error);
     return { ok: true, message: `Synced: ${result.count ?? 0} events.` };
+  });
+}
+
+// ───────────────────────────── Google accounts ─────────────────────────────
+
+// Sends the admin to Google. A plain form action that ends in a redirect, so
+// it stays out of mutate(), whose try would swallow the redirect; a failure
+// comes back to the page as ?google_error=, the way the sign-in's own
+// failures do.
+export async function connectGoogleAction(fd: FormData): Promise<void> {
+  await data.requireAdmin();
+  const h = await headers();
+  const host = h.get("host");
+  const origin = h.get("origin") ?? (host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : null);
+  const returnTo = googleReturnTo(origin);
+  let url: string | null = null;
+  let problem = "Something went wrong. Try again.";
+  if (!returnTo) {
+    problem = "Couldn't tell this console's own address, so Google would have nowhere to send you back.";
+  } else {
+    try {
+      url = await data.beginGoogleConnect(returnTo, text(fd, "email", 320) || null);
+    } catch (err) {
+      if (err instanceof DataError) problem = sentence(err.message);
+      else console.error("google connect failed:", err);
+    }
+  }
+  redirect(url ?? `/calendars?google_error=${encodeURIComponent(problem)}`);
+}
+
+// A calendar's switch: on adds it (and reads it right away), off removes it
+// with its events.
+export async function toggleGoogleCalendarAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const name = text(fd, "name", 80) || "Google";
+    if (text(fd, "on", 8) === "true") {
+      const calendarId = text(fd, "calendar_id", 300);
+      if (!calendarId) throw new DataError("Which calendar?");
+      const id = await data.addGoogleCalendar(uuid(fd, "account_id"), calendarId, name, color(fd, "color"));
+      const result: { count?: number; error?: string } = await data.syncCalendarSource(id).catch(() => ({ error: "it will be read in the next 15 minutes" }));
+      return {
+        ok: true,
+        message: result.error ? `${name} added. ${sentence(result.error)}` : `${name} added with ${result.count ?? 0} events.`,
+      };
+    }
+    await data.deleteCalendarSource(uuid(fd, "source_id"));
+    return { ok: true, message: `${name} removed, with its events.` };
+  });
+}
+
+export async function disconnectGoogleAccountAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const email = await data.disconnectGoogleAccount(uuid(fd, "account_id"));
+    return { ok: true, message: `${email} disconnected. Its calendars left the display.` };
   });
 }
 

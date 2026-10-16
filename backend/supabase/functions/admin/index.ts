@@ -66,6 +66,8 @@ Deno.serve(async (req) => {
             ANTHROPIC_API_KEY: has("ANTHROPIC_API_KEY"),
             XAI_API_KEY: has("XAI_API_KEY"),
             MCFLY_CRON_SECRET: has("MCFLY_CRON_SECRET"),
+            GOOGLE_CLIENT_ID: has("GOOGLE_CLIENT_ID"),
+            GOOGLE_CLIENT_SECRET: has("GOOGLE_CLIENT_SECRET"),
           },
           models: {
             assistant: Deno.env.get("ASSISTANT_MODEL") ?? null,

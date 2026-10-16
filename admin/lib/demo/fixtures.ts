@@ -126,6 +126,8 @@ export type DemoEvent = {
 export type DemoState = {
   bots: import("@/lib/types").Bot[];
   calendarSources: import("@/lib/types").CalendarSource[];
+  googleAccounts: import("@/lib/types").GoogleAccount[];
+  googleCalendars: Record<string, import("@/lib/types").GoogleCalendar[]>; // by account id, as Google lists them
   memories: import("@/lib/types").MemoryNote[];
   admin: Admin;
   agents: DemoAgent[];
@@ -663,11 +665,28 @@ export function buildDemoState(now = Date.now()): DemoState {
     note(GITHUB_ID, "Last reported: CI green on main, PR #12 opened.", false, "last-run", minutes(35)),
   ];
 
-  const calendarSources = [
-    { id: uuid(), name: "Work", host: "calendar.google.com", color: "#5B7CF5", enabled: true, last_synced_at: minutes(9),
-      last_error: null, event_count: 14, created_at: days(10) },
+  // One Google account signed in, two of its three calendars shown, and an
+  // iCloud link whose address was reset.
+  const googleAccountId = uuid();
+  const googleAccounts: import("@/lib/types").GoogleAccount[] = [
+    { id: googleAccountId, email: "ricky@example.com", connected_at: days(10), last_error: null, calendars: 2 },
+  ];
+  const googleCalendars: Record<string, import("@/lib/types").GoogleCalendar[]> = {
+    [googleAccountId]: [
+      { id: "ricky@example.com", name: "Ricky", color: "#4F7CF7", primary: true, access_role: "owner", selected: true },
+      { id: "c_work@group.calendar.google.com", name: "Work", color: "#5B7CF5", primary: false, access_role: "writer", selected: true },
+      { id: "en.usa#holiday@group.v.calendar.google.com", name: "Holidays in United States", color: "#0B8043", primary: false, access_role: "reader", selected: true },
+    ],
+  };
+  const google = { kind: "google" as const, host: "calendar.google.com", account_id: googleAccountId, account_email: "ricky@example.com" };
+  const calendarSources: import("@/lib/types").CalendarSource[] = [
+    { id: uuid(), name: "Work", color: "#5B7CF5", enabled: true, last_synced_at: minutes(9), last_error: null, event_count: 14,
+      created_at: days(10), ...google, google_calendar_id: "c_work@group.calendar.google.com" },
+    { id: uuid(), name: "Ricky", color: "#4F7CF7", enabled: true, last_synced_at: minutes(9), last_error: null, event_count: 9,
+      created_at: days(10), ...google, google_calendar_id: "ricky@example.com" },
     { id: uuid(), name: "Family", host: "p52-caldav.icloud.com", color: "#F07F5A", enabled: true, last_synced_at: hours(3),
-      last_error: "the link answered 404; it may have been reset, or the calendar isn't shared", event_count: 6, created_at: days(4) },
+      last_error: "the link answered 404; it may have been reset, or the calendar isn't shared", event_count: 6, created_at: days(4),
+      kind: "ical", account_id: null, account_email: null, google_calendar_id: null },
   ];
 
   const bots: import("@/lib/types").Bot[] = [
@@ -686,6 +705,8 @@ export function buildDemoState(now = Date.now()): DemoState {
   return {
     bots,
     calendarSources,
+    googleAccounts,
+    googleCalendars,
     memories,
     admin,
     agents,

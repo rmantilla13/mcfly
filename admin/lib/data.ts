@@ -27,6 +27,8 @@ import type {
   DashboardRow,
   Device,
   EventRow,
+  GoogleAccount,
+  GoogleCalendar,
   IngestEntry,
   MetricRow,
   NewAgent,
@@ -813,7 +815,16 @@ export async function listCalendarSources(): Promise<CalendarSource[]> {
   const rows = src.demo
     ? demo.demoListCalendarSources()
     : list<CalendarSource>(await rpc(src.db, "admin_list_calendar_sources"), "admin_list_calendar_sources");
-  return rows.map((c) => ({ ...c, enabled: c.enabled !== false, event_count: num(c.event_count), color: c.color ?? null }));
+  return rows.map((c) => ({
+    ...c,
+    enabled: c.enabled !== false,
+    event_count: num(c.event_count),
+    color: c.color ?? null,
+    kind: c.kind === "google" ? "google" : "ical",
+    account_id: c.account_id ?? null,
+    account_email: c.account_email ?? null,
+    google_calendar_id: c.google_calendar_id ?? null,
+  }));
 }
 
 export async function addCalendarSource(name: string, url: string, color: string | null): Promise<string> {
@@ -840,6 +851,58 @@ export async function syncCalendarSource(id: string): Promise<{ count?: number; 
   if (src.demo) return demo.demoSyncCalendarSource(id);
   const res = await invokeFunction<{ synced?: { count?: number; error?: string }[] }>(src.db, "calendar-sync", { source: id });
   return res.synced?.[0] ?? { error: "that calendar is paused or gone" };
+}
+
+// ───────────────────────────── Google accounts ─────────────────────────────
+// The sign-in itself happens in the google-calendar function (spec §2.5):
+// this app sends the admin there and reads back what it may see.
+
+export async function listGoogleAccounts(): Promise<GoogleAccount[]> {
+  const src = await source();
+  const rows = src.demo
+    ? demo.demoListGoogleAccounts()
+    : list<GoogleAccount>(await rpc(src.db, "admin_list_google_accounts"), "admin_list_google_accounts");
+  return rows.map((a) => ({ ...a, calendars: num(a.calendars), last_error: a.last_error ?? null }));
+}
+
+// The account's calendars, from Google (the function refreshes the token and
+// asks). A failure is a sentence for the page, not an exception, so the rest
+// of the page still renders with what is subscribed.
+export async function listGoogleCalendars(accountId: string): Promise<{ calendars: GoogleCalendar[] } | { error: string }> {
+  const src = await source();
+  if (src.demo) return demo.demoListGoogleCalendars(accountId);
+  try {
+    const res = await invokeFunction<{ calendars?: GoogleCalendar[] }>(src.db, "google-calendar", { action: "calendars", account: accountId });
+    return { calendars: Array.isArray(res.calendars) ? res.calendars : [] };
+  } catch (err) {
+    return { error: err instanceof DataError ? err.message : "couldn't reach Google" };
+  }
+}
+
+// Where the admin's browser goes to sign in. `returnTo` is this console's
+// Calendars page; `email` preselects an account (connecting one again).
+export async function beginGoogleConnect(returnTo: string, email: string | null): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoConnectGoogle(returnTo);
+  const res = await invokeFunction<{ url?: string }>(src.db, "google-calendar", { action: "connect", return_to: returnTo, ...(email ? { email } : {}) });
+  if (typeof res.url !== "string" || !/^https:\/\/accounts\.google\.com\//.test(res.url)) {
+    throw new DataError("Google's sign-in didn't start; check Settings → Backend.");
+  }
+  return res.url;
+}
+
+// Revokes at Google and removes the account, its calendars and their events.
+export async function disconnectGoogleAccount(id: string): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoDisconnectGoogleAccount(id);
+  const res = await invokeFunction<{ email?: string }>(src.db, "google-calendar", { action: "disconnect", account: id });
+  return typeof res.email === "string" ? res.email : "The account";
+}
+
+export async function addGoogleCalendar(account: string, calendarId: string, name: string, color: string | null): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoAddGoogleCalendar(account, calendarId, name, color);
+  return rpc<string>(src.db, "admin_add_google_calendar", { account, calendar_id: calendarId, name, color });
 }
 
 // ───────────────────────────── Grok bots ─────────────────────────────
@@ -925,8 +988,8 @@ export async function askAssistant(message: string, history: AskTurn[], mode: As
 // ───────────────────────────── Backend status ─────────────────────────────
 
 // The newest migration this console was built for (backend/supabase/migrations).
-export const EXPECTED_MIGRATION = "20261015000007";
-const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots"];
+export const EXPECTED_MIGRATION = "20261016000011";
+const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar"];
 
 export async function getBackendStatus(): Promise<BackendStatus> {
   const src = await source();

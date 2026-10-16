@@ -313,8 +313,11 @@ export type AuditEntry = {
 
 export type Page<T> = { rows: T[]; page: number; hasMore: boolean };
 
-// A calendar subscription (an iCal link McFly reads every 15 minutes). The
-// link itself never reaches the console: only its host.
+// A calendar subscription McFly reads every 15 minutes: an iCal link, or a
+// calendar of a Google account the admin signed in with (read through the
+// Calendar API). Neither the link nor the sign-in reaches the console: a
+// link shows its host, a Google calendar its account's email.
+export type CalendarSourceKind = "ical" | "google";
 export type CalendarSource = {
   id: string;
   name: string;
@@ -325,6 +328,30 @@ export type CalendarSource = {
   last_error: string | null;
   event_count: number;
   created_at: string;
+  kind: CalendarSourceKind;
+  account_id: string | null; // kind google: the connected account
+  account_email: string | null;
+  google_calendar_id: string | null;
+};
+
+// A Google account the admin signed in with (migration 20261016000011). The
+// refresh token stays on the server; this is all the console sees.
+export type GoogleAccount = {
+  id: string;
+  email: string;
+  connected_at: string;
+  last_error: string | null; // "Google no longer accepts this sign-in…"
+  calendars: number; // subscribed from it
+};
+
+// One calendar of a connected account, as Google lists it.
+export type GoogleCalendar = {
+  id: string;
+  name: string;
+  color: string | null;
+  primary: boolean;
+  access_role: string;
+  selected: boolean; // shown in Google Calendar's own list
 };
 
 // A Grok bot: an agent McFly runs itself on a schedule, through xAI's API

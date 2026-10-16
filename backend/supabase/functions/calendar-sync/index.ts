@@ -1,21 +1,24 @@
-// calendar-sync: reads each calendar subscription's iCal link and writes its
-// events (the next 60 days, the past day) through ingest_events with replace,
-// under the built-in "Calendar subscriptions" agent. Migrations
-// 20261015000002 (the sources) and 20261015000003 (the schedule).
+// calendar-sync: reads each calendar subscription and writes its events (the
+// next 60 days, the past day) through ingest_events with replace, under the
+// built-in "Calendar subscriptions" agent. A subscription is an iCal link
+// (migration 20261015000002) or a calendar of a Google account the admin
+// signed in with (20261016000011), read through the Calendar API with that
+// account's refresh token. The schedule is 20261015000003.
 //
 //   POST {}                    every enabled source   (pg_cron, every 15 min)
 //   POST { source: "<uuid>" }  one source              ("Sync now" in the console)
 //
 // Who may call: pg_cron, with `x-mcfly-cron: <the Vault secret>` (../_shared/cron.ts), or a
-// platform admin with their own JWT. The links are read with the service
-// role and never leave this function.
+// platform admin with their own JWT. The links and the tokens are read with
+// the service role and never leave this function.
 //
 // Answers { ok: true, synced: [{ name, count } | { name, error }] }.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isCronCall } from "../_shared/cron.ts";
+import { type GoogleConfig, googleConfig, listEvents, refreshAccessToken, SETUP_MESSAGE, shapeEvents, type TokenFailure, type Tokens } from "../_shared/google.ts";
 import { bearerToken, isUuid, json, preflight, readJson } from "../_shared/http.ts";
-import { MAX_EVENTS, parseIcs } from "./ics.ts";
+import { type EventItem, MAX_EVENTS, parseIcs } from "./ics.ts";
 import { refusedMessage } from "./links.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -71,29 +74,87 @@ async function download(url: string): Promise<{ text: string } | { error: string
   return { text };
 }
 
-type Source = { id: string; name: string; url: string; color: string | null; agent: string };
+type Source = {
+  id: string;
+  name: string;
+  url: string | null;
+  color: string | null;
+  agent: string;
+  kind: "ical" | "google";
+  google_calendar_id: string | null;
+  account_id: string | null;
+  account_email: string | null;
+  refresh_token: string | null;
+};
 
-async function syncOne(s: Source): Promise<{ name: string; count?: number; error?: string }> {
+type Window = { from: Date; to: Date };
+type Read = { items: EventItem[] } | { error: string };
+
+async function readLink(s: Source, w: Window): Promise<Read> {
+  if (!s.url) return { error: "this subscription has no link" };
   const got = await download(s.url);
+  if ("error" in got) return got;
+  try {
+    return { items: parseIcs(got.text, { from: w.from, to: w.to, color: s.color }) };
+  } catch (err) {
+    console.error(`calendar ${s.name} didn't parse:`, err);
+    return { error: "the calendar couldn't be read (not valid iCal)" };
+  }
+}
+
+// One access token per Google account per run, however many of its
+// calendars are due.
+class AccessTokens {
+  private pending = new Map<string, Promise<Tokens | TokenFailure>>();
+  constructor(private cfg: GoogleConfig | null) {}
+  for(account: string, refreshToken: string): Promise<Tokens | TokenFailure> {
+    if (!this.cfg) return Promise.resolve({ error: SETUP_MESSAGE, revoked: false });
+    let p = this.pending.get(account);
+    if (!p) {
+      p = refreshAccessToken(this.cfg, refreshToken);
+      this.pending.set(account, p);
+    }
+    return p;
+  }
+}
+
+// What the console shows under the account when its sign-in is gone.
+async function markAccount(account: string, error: string): Promise<void> {
+  const { error: dbError } = await service.rpc("google_account_failed", { account, error });
+  if (dbError) console.error("google_account_failed failed:", dbError.message);
+}
+
+async function readGoogle(s: Source, w: Window, tokens: AccessTokens): Promise<Read> {
+  if (!s.account_id || !s.refresh_token || !s.google_calendar_id) return { error: "this calendar's Google account is gone; connect it and add the calendar again" };
+  const token = await tokens.for(s.account_id, s.refresh_token);
+  if ("error" in token) {
+    if (token.revoked) await markAccount(s.account_id, token.error);
+    return { error: token.error };
+  }
+  const listed = await listEvents(token.access_token, s.google_calendar_id, w.from, w.to);
+  if (!listed.ok) {
+    if (listed.revoked) await markAccount(s.account_id, listed.error);
+    return { error: listed.error };
+  }
+  return { items: shapeEvents(listed.items, { color: s.color }) };
+}
+
+async function syncOne(s: Source, tokens: AccessTokens): Promise<{ name: string; count?: number; error?: string }> {
+  const now = Date.now();
+  const window = { from: new Date(now - DAY), to: new Date(now + 60 * DAY) };
+  const got = s.kind === "google" ? await readGoogle(s, window, tokens) : await readLink(s, window);
   let error: string | null = null;
   let count = 0;
   if ("error" in got) {
     error = got.error;
   } else {
-    try {
-      const now = Date.now();
-      const items = parseIcs(got.text, { from: new Date(now - DAY), to: new Date(now + 60 * DAY), color: s.color });
-      const { data, error: dbError } = await service.rpc("ingest_events", {
-        agent: s.agent,
-        items: items.slice(0, MAX_EVENTS).map((i) => ({ ...i, calendar: s.name })),
-        replace_calendar: s.name,
-      });
-      if (dbError) error = dbError.message;
-      else count = Number(data ?? items.length);
-    } catch (err) {
-      console.error(`calendar ${s.name} didn't parse:`, err);
-      error = "the calendar couldn't be read (not valid iCal)";
-    }
+    const { data, error: dbError } = await service.rpc("ingest_events", {
+      agent: s.agent,
+      items: got.items.slice(0, MAX_EVENTS).map((i) => ({ ...i, calendar: s.name })),
+      replace_calendar: s.name,
+    });
+    if (dbError) error = dbError.message;
+    else count = Number(data ?? got.items.length);
   }
   const { error: saveError } = await service.rpc("calendar_source_synced", { source: s.id, count, error });
   if (saveError) console.error("calendar_source_synced failed:", saveError.message);
@@ -120,7 +181,8 @@ Deno.serve(async (req) => {
     return json({ error: "couldn't read the calendar list; try again in a moment" }, 503);
   }
   const sources = (data ?? []) as Source[];
+  const tokens = new AccessTokens(googleConfig());
   const synced = [];
-  for (const s of sources) synced.push(await syncOne(s));
+  for (const s of sources) synced.push(await syncOne(s, tokens));
   return json({ ok: true, synced });
 });

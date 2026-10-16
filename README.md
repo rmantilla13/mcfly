@@ -9,7 +9,7 @@ A voice assistant (Claude or Grok) answers questions about all of it.
 
 | Part | What it is |
 |---|---|
-| `backend/` | Supabase: Postgres with row-level security, the feed tables, agent keys, and four edge functions (`ingest`, `pair-device`, `admin`, `assistant`) |
+| `backend/` | Supabase: Postgres with row-level security, the feed tables, agent keys, and the edge functions (`ingest`, `pair-device`, `admin`, `assistant`, `calendar-sync`, `google-calendar`, `bots`) |
 | `display/` | The wall screen: a Qt 6 / QML / C++ kiosk for a Raspberry Pi 5 with a touchscreen. Home, Briefs, Markets (and Metrics), News, Projects, Boards, Calendar, screen savers, voice |
 | `apple/` | The iPhone and Mac app (SwiftUI): the same feeds, pairing a display, voice with the color-spectrum glow |
 | `admin/` | The console at mcfly.bot (Next.js + shadcn/ui): agents and their keys, the feeds, displays, settings, audit |
@@ -55,8 +55,8 @@ replaced by the agent feeds.
 ```bash
 cd backend && supabase start           # local stack (Docker + Supabase CLI)
 supabase db reset                      # migrations + seed: six agents and sample feeds
-supabase functions deploy ingest pair-device admin assistant
-supabase secrets set ANTHROPIC_API_KEY=...   # and/or XAI_API_KEY=... for Grok
+supabase functions deploy ingest pair-device admin assistant calendar-sync google-calendar bots
+supabase secrets set ANTHROPIC_API_KEY=...   # and/or XAI_API_KEY=... for Grok; GOOGLE_CLIENT_ID/SECRET for Google Calendar (docs/ADMIN.md)
 tests/run.sh                           # SQL tests on a throwaway Postgres
 cd supabase/functions && deno test && deno check */index.ts
 ```

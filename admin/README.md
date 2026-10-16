@@ -27,6 +27,7 @@ session in httpOnly cookies and `proxy.ts` refreshes it on every request):
 | `/feed/news/[id]` | `admin_news_report`, `admin_delete_news_report` |
 | `/feed/projects/[id]` | `admin_list_projects` (the row), `admin_project_updates`, `admin_delete_project` |
 | `/feed/dashboards/[id]` | `admin_list_dashboards` (the row; its widgets drawn read-only), `admin_delete_dashboard` |
+| `/calendars` | Google: `admin_list_google_accounts`, `admin_add_google_calendar`, the `google-calendar` function (`connect` → Google → its callback, `calendars`, `disconnect`). Links: `admin_add_calendar_source`. Both: `admin_list_calendar_sources`, `admin_update_calendar_source`, `admin_delete_calendar_source`, the `calendar-sync` function (one source, "Sync now") |
 | `/displays`, `/pair` | `admin_list_devices`, `admin_rename_device`, the `admin` function (`revoke_device`), the `pair-device` function (`claim`) |
 | `/settings` | `admin_get_settings`, `admin_update_settings` (only the changed fields; includes the assistant provider and the metrics/events retention) |
 | `/audit` | `admin_list_audit` |

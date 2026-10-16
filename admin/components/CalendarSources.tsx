@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarIcon, PauseIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { LinkIcon, PauseIcon, PlayIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ConfirmAction } from "@/components/ConfirmAction";
@@ -19,15 +19,24 @@ import type { CalendarSource } from "@/lib/types";
 
 type Actions = { add: FormAction; update: FormAction; remove: FormAction; sync: FormAction };
 
-// Calendar subscriptions: paste a calendar's iCal link, McFly reads it every
-// 15 minutes and its events show on the display, the web and the apps.
+// The Calendars page's links section: paste a calendar's iCal link (iCloud,
+// Outlook, anything that publishes one), McFly reads it every 15 minutes and
+// its events show on the display, the web and the apps. Google calendars
+// have the sign-in above this (GoogleCalendars); only link subscriptions are
+// listed here.
 export function CalendarSources({ sources, actions }: { sources: CalendarSource[]; actions: Actions }) {
   return (
-    <div className="flex flex-col gap-6">
+    <section className="flex flex-col gap-4" aria-labelledby="calendar-links">
+      <div className="min-w-0">
+        <h2 id="calendar-links" className="font-heading text-lg font-semibold">
+          Calendar links
+        </h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">For a calendar that isn&apos;t on Google: iCloud, Outlook, or any iCal link.</p>
+      </div>
       <AddCalendar action={actions.add} />
       {sources.length === 0 ? (
-        <EmptyState title="No calendars yet" icon={<CalendarIcon />}>
-          Paste an iCal link above. Your events show up on the display within a minute.
+        <EmptyState title="No calendar links" icon={<LinkIcon />}>
+          Paste an iCal link above. Its events show up on the display within a minute.
         </EmptyState>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -36,7 +45,7 @@ export function CalendarSources({ sources, actions }: { sources: CalendarSource[
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -53,7 +62,7 @@ function AddCalendar({ action }: { action: FormAction }) {
         <div className="grid grid-cols-[200px_minmax(0,1fr)_auto] items-end gap-3 max-lg:grid-cols-1">
           <Field>
             <FieldLabel htmlFor="cal-name">Name</FieldLabel>
-            <Input id="cal-name" name="name" required maxLength={80} placeholder="Work" autoComplete="off" />
+            <Input id="cal-name" name="name" required maxLength={80} placeholder="Family" autoComplete="off" />
           </Field>
           <Field>
             <FieldLabel htmlFor="cal-url">iCal link</FieldLabel>
@@ -62,7 +71,7 @@ function AddCalendar({ action }: { action: FormAction }) {
               name="url"
               required
               maxLength={2000}
-              placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+              placeholder="https://p12-caldav.icloud.com/published/2/…"
               autoComplete="off"
               spellCheck={false}
               value={link}
@@ -75,14 +84,14 @@ function AddCalendar({ action }: { action: FormAction }) {
           </Field>
         </div>
         <FieldDescription>
-          Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. iCloud: share the
-          calendar as Public and copy the link. Outlook: Settings → Calendar → Shared calendars → Publish, then the ICS link.
+          iCloud: share the calendar as Public and copy the link. Outlook: Settings → Calendar → Shared calendars → Publish, then the ICS
+          link. A Google calendar&apos;s &quot;Secret address in iCal format&quot; works here too, but signing in above is simpler and fresher.
           The link stays on the server; this page only ever shows its host. Read-only: McFly doesn&apos;t change your calendar.
         </FieldDescription>
         {isGooglePublicAddress(link) ? (
           <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-            That&apos;s Google&apos;s public address, which only works if the calendar is public. For your own calendar, use its
-            Secret address in iCal format (same page, a little lower).
+            That&apos;s Google&apos;s public address, which only works if the calendar is public. For your own Google calendars, connect the
+            account above instead.
           </p>
         ) : null}
         {result && !result.ok ? <FieldError>{result.error}</FieldError> : null}

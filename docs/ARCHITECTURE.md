@@ -32,7 +32,11 @@ Change it first when a shape changes.
   shown once when made and never stored.
 - **Edge functions**: `ingest` (agents push), `pair-device` (binds a display
   to the account), `admin` (the one console action that needs Auth's admin
-  API), `assistant` (Claude or Grok, grounded in the feeds, streamed as SSE).
+  API), `assistant` (Claude or Grok, grounded in the feeds, streamed as SSE),
+  `calendar-sync` (reads the calendar subscriptions every 15 minutes: iCal
+  links, and Google calendars through the Calendar API), `google-calendar`
+  (the Google sign-in behind the console's Calendars page; the refresh token
+  stays in a service-role-only table), `bots` (Grok bots on a schedule).
 
 ### Data model
 

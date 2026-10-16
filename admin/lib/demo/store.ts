@@ -23,6 +23,8 @@ import type {
   DashboardRow,
   Device,
   EventRow,
+  GoogleAccount,
+  GoogleCalendar,
   IngestEntry,
   MetricRow,
   NewAgent,
@@ -613,7 +615,7 @@ export function demoAddCalendarSource(name: string, url: string, color: string |
   const id = crypto.randomUUID();
   s.calendarSources.push({
     id, name, host: new URL(link).host, color, enabled: true, last_synced_at: null, last_error: null, event_count: 0,
-    created_at: new Date().toISOString(),
+    created_at: new Date().toISOString(), kind: "ical", account_id: null, account_email: null, google_calendar_id: null,
   });
   audit("add_calendar_source", "calendar_source", id, { name });
   return id;
@@ -641,6 +643,73 @@ export function demoSyncCalendarSource(id: string): { count?: number; error?: st
   c.last_error = null;
   c.event_count = Math.max(c.event_count, 3);
   return { count: c.event_count };
+}
+
+// ───────────────────────────── Google accounts ─────────────────────────────
+
+function findGoogleAccount(id: string): GoogleAccount {
+  const a = state().googleAccounts.find((x) => x.id === id);
+  if (!a) throw new DataError("that Google account isn't connected");
+  return a;
+}
+
+export function demoListGoogleAccounts(): GoogleAccount[] {
+  const s = state();
+  return s.googleAccounts.map((a) => ({ ...a, calendars: s.calendarSources.filter((c) => c.account_id === a.id).length }));
+}
+
+export function demoListGoogleCalendars(accountId: string): { calendars: GoogleCalendar[] } | { error: string } {
+  const s = state();
+  const account = s.googleAccounts.find((a) => a.id === accountId);
+  if (!account) return { error: "that Google account isn't connected" };
+  if (account.last_error) return { error: account.last_error };
+  return { calendars: s.googleCalendars[accountId] ?? [] };
+}
+
+// Demo: "signing in" connects a sample account on the spot and comes
+// straight back, the way Google's redirect would.
+export function demoConnectGoogle(returnTo: string): string {
+  const s = state();
+  const email = "demo@example.com";
+  let account = s.googleAccounts.find((a) => a.email === email);
+  if (account) {
+    account.last_error = null;
+    account.connected_at = new Date().toISOString();
+  } else {
+    account = { id: crypto.randomUUID(), email, connected_at: new Date().toISOString(), last_error: null, calendars: 0 };
+    s.googleAccounts.push(account);
+    s.googleCalendars[account.id] = [
+      { id: email, name: "Demo", color: "#0B8043", primary: true, access_role: "owner", selected: true },
+      { id: "c_demo_team@group.calendar.google.com", name: "Team", color: "#7A64E8", primary: false, access_role: "writer", selected: true },
+    ];
+  }
+  audit("connect_google_account", "google_account", account.id, { email });
+  return `${returnTo}?google=connected`;
+}
+
+export function demoDisconnectGoogleAccount(id: string): string {
+  const s = state();
+  const account = findGoogleAccount(id);
+  s.googleAccounts = s.googleAccounts.filter((a) => a.id !== id);
+  delete s.googleCalendars[id];
+  s.calendarSources = s.calendarSources.filter((c) => c.account_id !== id);
+  audit("disconnect_google_account", "google_account", id, { email: account.email });
+  return account.email;
+}
+
+export function demoAddGoogleCalendar(accountId: string, calendarId: string, name: string, color: string | null): string {
+  const s = state();
+  const account = findGoogleAccount(accountId);
+  if (s.calendarSources.some((c) => c.account_id === accountId && c.google_calendar_id === calendarId)) throw new DataError("that calendar is already added");
+  let wanted = name.trim().slice(0, 80) || "Google";
+  if (s.calendarSources.some((c) => c.name === wanted)) wanted = `${wanted} (${account.email})`.slice(0, 80);
+  const id = crypto.randomUUID();
+  s.calendarSources.push({
+    id, name: wanted, host: "calendar.google.com", color, enabled: true, last_synced_at: null, last_error: null, event_count: 0,
+    created_at: new Date().toISOString(), kind: "google", account_id: accountId, account_email: account.email, google_calendar_id: calendarId,
+  });
+  audit("add_calendar_source", "calendar_source", id, { name: wanted, kind: "google", account: account.email });
+  return id;
 }
 
 export function demoUpdateDeviceSettings(id: string, patch: DisplaySettings) {
@@ -971,8 +1040,8 @@ export function demoAsk(message: string, mode: "chat" | "quick" | "read" = "chat
 export function demoBackendStatus(expected: string): BackendStatus {
   const s = state();
   return {
-    functions: ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots"].map((name) => ({ name, ok: true })),
-    secrets: { ANTHROPIC_API_KEY: true, XAI_API_KEY: false, MCFLY_CRON_SECRET: true },
+    functions: ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar"].map((name) => ({ name, ok: true })),
+    secrets: { ANTHROPIC_API_KEY: true, XAI_API_KEY: false, MCFLY_CRON_SECRET: true, GOOGLE_CLIENT_ID: true, GOOGLE_CLIENT_SECRET: true },
     latestMigration: expected,
     expectedMigration: expected,
     cron: [
