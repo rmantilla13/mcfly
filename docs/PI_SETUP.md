@@ -383,6 +383,39 @@ it powered with a black picture: add `MCFLY_PANEL_POWER=off` to
 | Use your own boot video | `sudo cp my-video.mp4 /etc/mcfly/boot.mp4` and reboot. Delete it to go back to the built-in clip |
 | Check power and temperature | `vcgencmd get_throttled` (`0x0` is good) and `vcgencmd measure_temp` |
 
+### Watching performance from your computer
+
+`display/scripts/pi-perf.sh` prints the Pi's vitals once a second while McFly
+runs, over SSH, and changes nothing on the Pi: the temperature and any
+throttling, the CPU and GPU clocks, the CPU the display and the voice service
+use, the GPU's work, memory, the fan, and the busiest process that isn't
+McFly (a build or a test heating it). `--help` explains each column, and
+`--csv run.csv` keeps the numbers for a before and after. Use your own
+username for `pi`:
+
+```bash
+MCFLY_PI=pi@mcfly.local display/scripts/pi-perf.sh
+MCFLY_PI=pi@mcfly.local display/scripts/pi-perf.sh --count 30 --csv before.csv
+```
+
+With a key of its own, add `MCFLY_PI_KEY=~/.ssh/<key file>` (or `-i`). On the
+10.1" panel the screen saver idles near 30 GPU jobs a second and Home near the
+panel's 60 (its ticker moves every frame). From 80 °C the Pi slows itself
+down: the NOW column says HOT.
+
+### Performance on the screen itself
+
+With `MCFLY_PERF_HUD=1` in `/etc/mcfly/display.env` (then
+`sudo systemctl restart mcfly-display`), the top right corner of the panel
+shows the app's own numbers, once a second: the frames it drew and their
+work on the render thread (the longest too), the GPU's busy share and jobs,
+the app's CPU and memory, and the temperature, clock and any throttling. The
+frame count is exact, where `pi-perf.sh`'s GPU jobs also count each cached
+layer the GPU redrew. Its border turns amber from 80 °C or while the Pi is
+held back. It adds one small redraw a second; without the variable it is
+never sampled or shown. It works in a window on a computer too:
+`MCFLY_PERF_HUD=1 build/display/mcfly-display --demo --windowed`.
+
 ## Start over (clean install)
 
 To remove McFly completely and install it fresh (for example after an install

@@ -16,6 +16,7 @@
 #include "backend/SupabaseClient.h"
 #include "hardware/DisplayController.h"
 #include "hardware/PanelPower.h"
+#include "hardware/PerfMonitor.h"
 #include "hardware/SystemController.h"
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
@@ -154,6 +155,9 @@ int main(int argc, char *argv[])
     // The web console and this screen edit the same settings.
     SettingsBridge settingsBridge(&store, &display, &assistant, &voice);
     HomeGlance glance(&store); // the assistant-first Home's opening lines
+    // The performance overlay, with MCFLY_PERF_HUD=1 (development). Always
+    // there for QML to read; off, it never samples.
+    PerfMonitor perf;
 
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Store", &store);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &display);
@@ -161,6 +165,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "AI", &assistant);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", &voice);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", &glance);
+    qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Perf", &perf);
     qmlRegisterUncreatableType<ChatModel>("McFly.Core", 1, 0, "ChatModel", "Owned by AI");
 
     QQmlApplicationEngine engine;
@@ -188,6 +193,7 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
     engine.load(mainUrl);
     reportGraphics(engine);
+    perf.attach(qobject_cast<QQuickWindow *>(engine.rootObjects().value(0)));
 
     store.start();
     voice.start();

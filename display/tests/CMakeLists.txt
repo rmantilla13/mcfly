@@ -186,6 +186,17 @@ target_link_libraries(tst_homeglance PRIVATE mcfly-core Qt6::Gui Qt6::Test)
 add_test(NAME tst_homeglance COMMAND tst_homeglance)
 set_tests_properties(tst_homeglance PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# The performance overlay's sampler (PerfMonitor): the /proc, /sys and
+# vcgencmd text it reads on a Pi, from fixtures; that off it never samples;
+# that on it counts a window's frames.
+qt_add_executable(tst_perfmonitor tst_perfmonitor.cpp
+    ../src/hardware/PerfMonitor.h ../src/hardware/PerfMonitor.cpp)
+target_include_directories(tst_perfmonitor PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(tst_perfmonitor PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_perfmonitor PRIVATE Qt6::Gui Qt6::Quick Qt6::Test)
+add_test(NAME tst_perfmonitor COMMAND tst_perfmonitor)
+set_tests_properties(tst_perfmonitor PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # The settings bridge with a real DisplayController (no store, assistant or voice).
 qt_add_executable(tst_settingsbridge tst_settingsbridge.cpp
     ../src/models/SettingsBridge.h ../src/models/SettingsBridge.cpp

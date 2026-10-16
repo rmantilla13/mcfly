@@ -444,6 +444,40 @@ ApplicationWindow {
         }
     }
 
+    // The performance overlay (MCFLY_PERF_HUD=1, for development): frames,
+    // GPU, this process and the Pi's temperature and clock, in the top right
+    // corner over everything, once a second (PerfMonitor). Off, it is never
+    // shown and nothing in it changes. Like the toast's, its Layer is a point,
+    // so it takes no taps; it hides while the panel sleeps.
+    Layer {
+        z: 7
+        x: window.width - 12
+        y: 12
+        width: 0
+        height: 0
+        visible: Perf.enabled && !Device.screenOff
+        Rectangle {
+            x: -width
+            width: perfText.implicitWidth + 24
+            height: perfText.implicitHeight + 16
+            radius: 12
+            color: Qt.rgba(0, 0, 0, 0.85)
+            border.width: Perf.warn ? 2 : 0
+            border.color: Theme.warning
+            Text {
+                id: perfText
+                x: 12
+                y: 8
+                text: Perf.lines.join("\n")
+                color: "white"
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                font.features: ({ "tnum": 1 })
+                lineHeight: 1.15
+            }
+        }
+    }
+
     // Offline indicator: top right beside the rail, top centre over a bar
     // (so it never sits on a header's second-row controls).
     Rectangle {
