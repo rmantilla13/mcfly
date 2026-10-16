@@ -5,6 +5,7 @@
 #include <QNetworkProxy>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QTimer>
 #include <QWebSocket>
 #include <QWebSocketServer>
 
@@ -39,6 +40,11 @@ class TestQuickAnswer : public QObject
     QWebSocketServer *m_server = nullptr;
     QPointer<QWebSocket> m_peer;
     QList<QJsonObject> m_received;
+    // What the next `listen` turns hear, in order; "" (nothing heard) once
+    // they run out. And how long a reply takes to say.
+    QStringList m_heard;
+    int m_speakMs = 0;
+    QString m_speaking; // the id being "said"
 
     SupabaseClient *m_client = nullptr;
     FeedStore *m_store = nullptr;
@@ -64,6 +70,25 @@ class TestQuickAnswer : public QObject
                 out << m.value("text").toString();
         return out;
     }
+    int listens() const
+    {
+        int n = 0;
+        for (const QJsonObject &m : m_received)
+            n += m.value("type").toString() == "listen" ? 1 : 0;
+        return n;
+    }
+    void sendToDisplay(const QJsonObject &m)
+    {
+        if (m_peer)
+            m_peer->sendTextMessage(QString::fromUtf8(QJsonDocument(m).toJson(QJsonDocument::Compact)));
+    }
+    void finishSpeech(const QString &id)
+    {
+        if (id.isEmpty() || id != m_speaking)
+            return;
+        m_speaking.clear();
+        sendToDisplay({{"type", "spoken"}, {"id", id}});
+    }
 
 private slots:
     void initTestCase()
@@ -80,9 +105,25 @@ private slots:
             connect(m_peer, &QWebSocket::textMessageReceived, this, [this](const QString &t) {
                 const QJsonObject m = QJsonDocument::fromJson(t.toUtf8()).object();
                 m_received << m;
-                if (m.value("type").toString() == "speak") // "said" at once
-                    m_peer->sendTextMessage(QStringLiteral("{\"type\":\"spoken\",\"id\":\"%1\"}")
-                                                .arg(m.value("id").toString()));
+                const QString type = m.value("type").toString();
+                if (type == "speak") {
+                    // "Said" after m_speakMs (at once by default).
+                    m_speaking = m.value("id").toString();
+                    QTimer::singleShot(m_speakMs, this, [this, id = m_speaking]() { finishSpeech(id); });
+                } else if (type == "listen") {
+                    // As the service does: cut any speech short, then one
+                    // listening turn that hears the next of m_heard.
+                    finishSpeech(m_speaking);
+                    const QString heard = m_heard.isEmpty() ? QString() : m_heard.takeFirst();
+                    sendToDisplay({{"type", "wake"}, {"source", "button"}});
+                    sendToDisplay({{"type", "state"}, {"state", "listening"}});
+                    QTimer::singleShot(50, this, [this, heard]() {
+                        sendToDisplay({{"type", "transcript"}, {"text", heard}, {"final", true}});
+                        sendToDisplay({{"type", "state"}, {"state", "idle"}});
+                    });
+                } else if (type == "cancel") {
+                    sendToDisplay({{"type", "state"}, {"state", "idle"}});
+                }
             });
             m_peer->sendTextMessage(R"({"type":"hello","version":"1","wakeword":true,"wakeword_name":"hey_jarvis","tts":true,"stt":true})");
             m_peer->sendTextMessage(R"({"type":"state","state":"idle"})");
@@ -103,7 +144,24 @@ private slots:
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_TEST_QML_DIR));
         QQmlComponent component(m_engine);
-        component.setData("import McFly\nQuickAnswer { width: 1280; height: 800 }", QUrl());
+        // With the voice turns routed to it as Main.qml routes them.
+        component.setData("import QtQuick\n"
+                          "import McFly\n"
+                          "import McFly.Core\n"
+                          "QuickAnswer {\n"
+                          "    id: quick\n"
+                          "    width: 1280\n"
+                          "    height: 800\n"
+                          "    Connections {\n"
+                          "        target: Voice\n"
+                          "        function onWoke(source) {\n"
+                          "            if (!(quick.followingUp && quick.phase === 'listening')) quick.start()\n"
+                          "        }\n"
+                          "        function onHeard(text) { if (quick.phase === 'listening') quick.hear(text) }\n"
+                          "        function onHeardNothing() { if (quick.phase === 'listening') quick.miss() }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl());
         m_quick = component.create();
         QVERIFY2(m_quick, qPrintable(component.errorString()));
         m_quick->setParent(this);
@@ -113,6 +171,11 @@ private slots:
     {
         call("dismiss", false);
         m_ai->reset();
+        m_voice->setFollowUp(true);
+        m_quick->setProperty("maxTurns", 6);
+        m_heard.clear();
+        m_speakMs = 0;
+        m_speaking.clear();
         QTest::qWait(50);
         m_received.clear();
     }
@@ -121,16 +184,98 @@ private slots:
 
     void answersAndSpeaks()
     {
+        m_voice->setFollowUp(false); // the card on its own: one question, one answer
         call("start");
         QCOMPARE(phase(), QStringLiteral("listening"));
         call("hear", QStringLiteral("how are the markets"));
         QCOMPARE(phase(), QStringLiteral("thinking"));
         QTRY_COMPARE(phase(), QStringLiteral("done"));
         QTRY_COMPARE(spokenTexts(), QStringList{m_ai->replyText()});
-        // Dismissed 6 s after `spoken`, not before.
+        // Dismissed 6 s after `spoken`, not before, and the mic stays shut.
         QTest::qWait(4500);
         QCOMPARE(phase(), QStringLiteral("done"));
+        QCOMPARE(listens(), 0);
         QTRY_COMPARE_WITH_TIMEOUT(phase(), QStringLiteral("hidden"), 4000);
+    }
+
+    // ── Conversations: after an answer is read out, it listens again ──
+
+    void listensForAFollowUp()
+    {
+        m_heard = {QStringLiteral("what's in the news")};
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        // Once it's been said, the card opens the mic again by itself, after
+        // the echo has had a moment to fade.
+        QCOMPARE(listens(), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 1, 3000);
+        QVERIFY(m_quick->property("followingUp").toBool());
+        QCOMPARE(m_quick->property("earlierQuestion").toString(), QStringLiteral("how are the markets"));
+        // What it heard is answered and read out in turn, as part of the
+        // same conversation (the assistant got the first turn as history).
+        QTRY_COMPARE(spokenTexts().size(), 2);
+        QVERIFY2(spokenTexts().at(1).startsWith("Top of today"), qPrintable(spokenTexts().at(1)));
+        QCOMPARE(m_quick->property("turns").toInt(), 2);
+        // Then nobody says anything more: no "didn't catch that", just gone.
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 2, 3000);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
+        QCOMPARE(spokenTexts().size(), 2);
+    }
+
+    void thanksEndsTheConversation()
+    {
+        m_heard = {QStringLiteral("Okay, thanks McFly.")};
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 1, 4000);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
+        QCOMPARE(spokenTexts().size(), 1);           // nothing more said
+        QCOMPARE(m_ai->messages()->rowCount(), 2);  // and nothing more asked
+        QCOMPARE(listens(), 1);
+    }
+
+    void hearingItselfEndsIt()
+    {
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        // The mic catches the end of the answer, still echoing in the room.
+        const QStringList words = spokenTexts().first().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        m_heard = {words.mid(words.size() - 4).join(QLatin1Char(' '))};
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 1, 4000);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
+        QCOMPARE(spokenTexts().size(), 1);
+        QCOMPARE(m_ai->messages()->rowCount(), 2);
+    }
+
+    void stopsAfterEnoughTurns()
+    {
+        m_quick->setProperty("maxTurns", 1);
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        QTest::qWait(1500);
+        QCOMPARE(listens(), 0);
+        QCOMPARE(phase(), QStringLiteral("done")); // closes 6 s after, as without follow-ups
+    }
+
+    void tappingCutsIn()
+    {
+        m_speakMs = 5000; // a long answer, still being read
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        QCOMPARE(phase(), QStringLiteral("done"));
+        // A tap on the card: McFly stops talking and listens.
+        call("followUp");
+        QCOMPARE(phase(), QStringLiteral("listening"));
+        QTRY_COMPARE(listens(), 1);
+        // The cut-short reply's `spoken` doesn't start another follow-up, and
+        // the turn hears nothing: the conversation ends.
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
+        QTest::qWait(1200);
+        QCOMPARE(listens(), 1);
     }
 
     void nothingHeard()

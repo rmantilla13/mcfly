@@ -59,10 +59,11 @@ public:
     void setProvider(const QString &provider);
     QString effectiveProvider() const;
 
-    // A chat message (the assistant panel, push-to-talk).
+    // A chat message (typed in the assistant panel, or a chip).
     Q_INVOKABLE void ask(const QString &text);
-    // A short spoken answer (wake word). Speaks the reply when it's done if
-    // spoken replies are on.
+    // A short spoken answer to anything asked out loud: the voice card (wake
+    // word, the mic on Home, its follow-ups) and push-to-talk in the panel.
+    // Speaks the reply when it's done if spoken replies are on.
     Q_INVOKABLE void askQuick(const QString &text);
     // Stops the reply in flight, keeping whatever has arrived.
     Q_INVOKABLE void stop();
@@ -72,6 +73,19 @@ public:
     // The demo answer for a question (also used by tests).
     QString demoAnswer(const QString &question) const;
 
+    // A spoken conversation (QuickAnswer.qml) listens for a follow-up after
+    // each answer. One that only closes it ("thanks", "that's all", "never
+    // mind", "bye") ends it instead of going to the assistant, and so does one
+    // that repeats the end of the reply just read out: that is McFly hearing
+    // itself. Static for the tests; QML calls the two below.
+    static bool isClosingRemark(const QString &heard);
+    static bool soundsLikeReply(const QString &heard, const QString &reply);
+    Q_INVOKABLE bool endsConversation(const QString &heard) const { return isClosingRemark(heard); }
+    Q_INVOKABLE bool echoesReply(const QString &heard, const QString &reply) const
+    {
+        return soundsLikeReply(heard, reply);
+    }
+
 signals:
     void busyChanged();
     void suggestionsChanged();
@@ -79,7 +93,9 @@ signals:
     void providerChanged();
     void replyStarted(const QString &mode);
     // speechId is the Voice.speak() id when the reply is being read out, else "".
-    void replyFinished(const QString &text, const QString &mode, const QString &speechId);
+    // error: the text says what went wrong (or is what arrived before it did),
+    // not an answer, so a conversation shouldn't carry on from it.
+    void replyFinished(const QString &text, const QString &mode, const QString &speechId, bool error);
 
 private:
     void send(const QString &text, const QString &mode);
@@ -87,7 +103,7 @@ private:
     void onEvent(const QString &event, const QJsonObject &data);
     void complete(const QString &reply);
     void fail(const QString &message);
-    void finishReply(const QString &text, bool failed, bool announce);
+    void finishReply(const QString &text, bool failed, bool announce, bool error = false);
     void streamDemo(int generation, const QString &question);
     void streamChunks(int generation, const QStringList &chunks, int next, const QString &answer);
     void setBusy(bool busy);

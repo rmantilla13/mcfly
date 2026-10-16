@@ -165,13 +165,72 @@ private slots:
     {
         startLive();
         m_server.route("/functions/v1/assistant", [](const Request &) { return FakeServer::json("{\"error\":\"no\"}", 403); });
+        QSignalSpy finished(&rig->ai, &Assistant::replyFinished);
         rig->ai.ask("Hi");
         QTRY_VERIFY(!rig->ai.busy());
         QVERIFY2(lastReply().contains("isn't available"), qPrintable(lastReply()));
+        // Said like an answer, but flagged: a conversation stops here.
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished.first().at(3).toBool(), true);
         m_server.route("/functions/v1/assistant", [](const Request &) { return FakeServer::json("{\"error\":\"busy\"}", 503); });
         rig->ai.ask("Hi again");
         QTRY_VERIFY(!rig->ai.busy());
         QVERIFY2(lastReply().contains("busy"), qPrintable(lastReply()));
+        m_server.route("/functions/v1/assistant", [](const Request &) { return okStream("Fine now."); });
+        rig->ai.ask("And now?");
+        QTRY_VERIFY(!rig->ai.busy());
+        QCOMPARE(finished.count(), 3);
+        QCOMPARE(finished.last().at(3).toBool(), false);
+    }
+
+    // ── Spoken conversations: what ends one ──
+
+    void closingRemarks_data()
+    {
+        QTest::addColumn<QString>("heard");
+        QTest::addColumn<bool>("closes");
+        QTest::newRow("thanks") << "Thanks!" << true;
+        QTest::newRow("thank you, name") << "Thank you, McFly." << true;
+        QTest::newRow("okay thanks") << "Okay, thanks." << true;
+        QTest::newRow("no that's all") << "No, that's all." << true;
+        QTest::newRow("that's it for now") << "That's it for now." << true;
+        QTest::newRow("curly apostrophe") << "That’s all, thank you so much" << true;
+        QTest::newRow("never mind") << "Never mind." << true;
+        QTest::newRow("bye") << "Bye bye!" << true;
+        QTest::newRow("whisper silence") << "Thanks for watching!" << true;
+        QTest::newRow("whisper you") << "you" << true;
+        QTest::newRow("thanks then a question") << "Thanks, and what about tomorrow?" << false;
+        QTest::newRow("no alone answers") << "No." << false;
+        QTest::newRow("okay alone answers") << "Okay." << false;
+        QTest::newRow("yes") << "Yes, add it." << false;
+        QTest::newRow("stop something") << "Stop the timer" << false;
+        QTest::newRow("thanks for the update") << "Thank you for the update on Apple" << false;
+        QTest::newRow("question") << "What's next?" << false;
+        QTest::newRow("empty") << "" << false;
+    }
+    void closingRemarks()
+    {
+        QFETCH(QString, heard);
+        QFETCH(bool, closes);
+        QCOMPARE(Assistant::isClosingRemark(heard), closes);
+    }
+
+    void hearingItself_data()
+    {
+        QTest::addColumn<QString>("heard");
+        QTest::addColumn<bool>("echo");
+        QTest::newRow("the tail") << "then lunch with Sam" << true;
+        QTest::newRow("the tail, punctuated") << "Lunch with Sam." << true;
+        QTest::newRow("a follow-up") << "And the day after?" << false;
+        QTest::newRow("one shared word") << "What about lunch?" << false;
+        QTest::newRow("one word") << "Sam" << false;
+    }
+    void hearingItself()
+    {
+        QFETCH(QString, heard);
+        QFETCH(bool, echo);
+        const QString reply = QStringLiteral("Tomorrow starts with standup at nine, then lunch with Sam.");
+        QCOMPARE(Assistant::soundsLikeReply(heard, reply), echo);
     }
 
     void stopKeepsWhatArrived()

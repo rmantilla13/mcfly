@@ -6,6 +6,10 @@ tests.
     button            push-to-talk with nothing said (empty transcript)
     silence           the wake word with nothing said (empty transcript)
     next <words...>   what the next `listen` from a client will hear
+    follow <words...> what the next follow-up hears: a `listen` that comes
+                      within 2 s of a reply being said, the way
+                      the display asks for one. Without it a follow-up hears
+                      nothing, so a conversation ends after one answer
     quit              stop the service
 """
 
@@ -13,8 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import sys
 import threading
+import time
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, TextIO
 
@@ -25,8 +31,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-HELP = ("commands: wake <words...> | button | silence | next <words...> | quit "
-        "(clients can also send listen, speak, ...)")
+HELP = ("commands: wake <words...> | button | silence | next <words...> | "
+        "follow <words...> | quit (clients can also send listen, speak, ...)")
+
+# A client's `listen` this soon after speech ended is a follow-up.
+FOLLOW_UP_WINDOW = 2.0
 
 # A rise and fall, like a short phrase.
 FAKE_LEVELS = (0.18, 0.46, 0.72, 0.58, 0.66, 0.31, 0.12)
@@ -69,9 +78,11 @@ class SimBackend:
         self.transcribe_time = transcribe_time
         self.word_time = word_time
         self.spoken: list[str] = []
+        self.follow_ups: list[str] = []
         self._service: VoiceService | None = None
         self._pending: str | None = None
         self._text = ""
+        self._said_at = -math.inf
 
     async def start(self, service: VoiceService) -> None:
         self._service = service
@@ -81,8 +92,14 @@ class SimBackend:
         pass
 
     def begin_capture(self) -> None:
-        # A stdin command picked the words; a client's `listen` hears next_text.
-        self._text = self._pending if self._pending is not None else self.next_text
+        # A stdin command picked the words; a client's `listen` hears
+        # next_text, or, right after a reply, the next queued follow-up.
+        if self._pending is not None:
+            self._text = self._pending
+        elif time.monotonic() - self._said_at <= FOLLOW_UP_WINDOW:
+            self._text = self.follow_ups.pop(0) if self.follow_ups else ""
+        else:
+            self._text = self.next_text
         self._pending = None
 
     def end_capture(self) -> None:
@@ -103,6 +120,7 @@ class SimBackend:
         log.info("speaking (%d words): %s", words, text)
         self.spoken.append(text)
         await asyncio.sleep(self.word_time * words)
+        self._said_at = time.monotonic()  # said to the end (not cut short)
 
     # stdin
 
@@ -124,6 +142,9 @@ class SimBackend:
         elif cmd == "next":
             self.next_text = rest
             log.info("the next listen will hear: %r", rest)
+        elif cmd == "follow":
+            self.follow_ups.append(rest)
+            log.info("a follow-up will hear: %r", rest)
         elif cmd == "help":
             log.info(HELP)
         else:

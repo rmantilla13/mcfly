@@ -36,6 +36,7 @@ QString wakewordLabelFor(const QString &model)
 VoiceClient::VoiceClient(const QUrl &url, QObject *parent) : QObject(parent), m_url(url)
 {
     m_speakReplies = QSettings().value("voice/speakReplies", true).toBool();
+    m_followUp = QSettings().value("voice/followUp", true).toBool();
 
     m_retry.setSingleShot(true);
     m_retry.setInterval(kRetryMs);
@@ -225,6 +226,15 @@ void VoiceClient::setSpeakReplies(bool on)
     m_speakReplies = on;
     QSettings().setValue("voice/speakReplies", on);
     emit speakRepliesChanged();
+}
+
+void VoiceClient::setFollowUp(bool on)
+{
+    if (on == m_followUp)
+        return;
+    m_followUp = on;
+    QSettings().setValue("voice/followUp", on);
+    emit followUpChanged();
 }
 
 QString VoiceClient::wakewordLabel() const

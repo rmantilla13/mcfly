@@ -41,8 +41,13 @@ class VoiceClient : public QObject
     // settings sheet's chips: [{ id: "hey_mcfly", label: "Hey McFly" }, …].
     Q_PROPERTY(QVariantList wakewords READ wakewords CONSTANT)
     Q_PROPERTY(QString url READ urlString CONSTANT)
-    // Read quick answers out loud (QSettings voice/speakReplies, default on).
+    // Read answers to spoken questions out loud (QSettings voice/speakReplies,
+    // default on).
     Q_PROPERTY(bool speakReplies READ speakReplies WRITE setSpeakReplies NOTIFY speakRepliesChanged)
+    // Once an answer has been read out, listen for a follow-up without the
+    // wake word (QSettings voice/followUp, default on). This display's own
+    // choice: devices.settings doesn't take it, so it isn't synced.
+    Q_PROPERTY(bool followUp READ followUp WRITE setFollowUp NOTIFY followUpChanged)
 
 public:
     explicit VoiceClient(const QUrl &url, QObject *parent = nullptr);
@@ -68,6 +73,8 @@ public:
     QString urlString() const { return m_url.toString(); }
     bool speakReplies() const { return m_speakReplies; }
     void setSpeakReplies(bool on);
+    bool followUp() const { return m_followUp; }
+    void setFollowUp(bool on);
 
     // Push-to-talk: a listening turn without the wake word.
     Q_INVOKABLE void listen();
@@ -88,6 +95,7 @@ signals:
     void infoChanged();
     void transcriptChanged();
     void speakRepliesChanged();
+    void followUpChanged();
 
     // A listening turn started: source is "wakeword" or "button".
     void woke(const QString &source);
@@ -130,5 +138,6 @@ private:
     bool m_stt = false;
     QString m_transcript;
     bool m_speakReplies = true;
+    bool m_followUp = true;
     int m_nextSpeechId = 1;
 };

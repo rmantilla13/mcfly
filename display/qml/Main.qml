@@ -18,8 +18,8 @@ ApplicationWindow {
     readonly property var screenNames: ["home", "briefs", "markets", "news", "projects", "boards", "calendar"]
     property int currentScreen: Math.max(0, screenNames.indexOf(startScreen))
     readonly property real keyboardHeight: keyboard.item ? keyboard.item.visibleHeight : 0
-    // "chat" while push-to-talk is feeding the assistant panel; wake-word
-    // turns go to the quick answer card instead.
+    // "chat" while push-to-talk is feeding the assistant panel; the wake word
+    // and the mic on Home go to the voice card (QuickAnswer) instead.
     property string voiceTarget: ""
     // --screen setup / saver / ask / settings: for pictures and checks.
     readonly property bool forceSetup: startScreen === "setup"
@@ -31,7 +31,23 @@ ApplicationWindow {
         toastAnim.restart()
     }
 
-    // Push-to-talk from the assistant panel or the Home card. A second tap stops it.
+    // The mic on Home: a spoken conversation on the voice card, as with the
+    // wake word. The service answers `listen` with `wake`, which opens it.
+    function talk() {
+        if (!Voice.available) {
+            showToast(qsTr("Voice needs the McFly voice service (see docs/VOICE.md)"))
+            return false
+        }
+        if (!Voice.canTranscribe) {
+            showToast(qsTr("Voice needs a microphone (see docs/VOICE.md)"))
+            return false
+        }
+        dismissKeyboard()
+        Voice.listen()
+        return true
+    }
+
+    // Push-to-talk in the assistant panel. A second tap stops it.
     function pushToTalk() {
         if (!Voice.available) {
             showToast(qsTr("Voice needs the McFly voice service (see docs/VOICE.md)"))
@@ -115,12 +131,18 @@ ApplicationWindow {
         }
     }
 
-    // Voice: wake word -> quick answer card; push-to-talk -> the chat.
+    // Voice: the wake word or the Home mic -> the voice card; push-to-talk in
+    // the panel -> the chat. Either way a spoken question gets a spoken answer.
     Connections {
         target: Voice
         function onWoke(source) {
             if (window.voiceTarget === "chat" || Store.mode === "pairing")
                 return
+            // A follow-up the card asked for itself: it's already listening.
+            if (quick.followingUp && quick.phase === "listening") {
+                Device.wake() // a long conversation keeps the screen up
+                return
+            }
             Device.wake()
             window.dismissKeyboard()
             settings.close()
@@ -132,7 +154,7 @@ ApplicationWindow {
                 pttWatchdog.stop()
                 if (AI.busy)
                     AI.stop()
-                AI.ask(text)
+                AI.askQuick(text) // asked out loud: a short answer, read out
             } else if (quick.phase === "listening") {
                 quick.hear(text)
             }
@@ -202,9 +224,10 @@ ApplicationWindow {
                     else assistant.focusInput()
                 }
                 onPushToTalk: {
-                    assistant.open = true
-                    if (!window.pushToTalk())
-                        assistant.focusInput() // no voice service: type instead
+                    if (window.talk())
+                        return
+                    assistant.open = true // no voice service: type instead
+                    assistant.focusInput()
                 }
             }
         }

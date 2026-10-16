@@ -1,11 +1,13 @@
 # Voice
 
-Say "Hey McFly", ask a question, and the display answers out loud. The
-voice service (`voice/`, the Python package `mcfly_voice`) runs on the Pi
-next to the display. It listens for the wake word, records what you say,
-turns it into text, and speaks the reply. The display does everything else:
-it shows the quick-answer card, sends the text to the assistant, and asks the
-service to speak the answer.
+Say "Hey McFly", ask a question, and the display answers out loud, then
+listens for a follow-up, so you can keep talking without saying the wake
+word again. The voice service (`voice/`, the Python package `mcfly_voice`)
+runs on the Pi next to the display. It listens for the wake word, records
+what you say, turns it into text, and speaks the reply. The display does
+everything else: it shows the voice card, sends the text to the assistant,
+asks the service to speak the answer, and opens the mic again for the next
+question.
 
 ```
  USB mic ──▶ wake word ──▶ end of speech ──▶ Whisper ──┐ transcript   ┌──────────────┐  text  ┌───────────┐
@@ -139,6 +141,11 @@ seconds, so the two can start in any order.
   sheet is saved in `~/.local/share/mcfly-voice/state.json` and survives
   restarts. With it off, the mic is opened but nothing is analysed until
   someone taps the mic button.
+- **Follow-ups listen briefly, and only mid-conversation.** After McFly reads
+  an answer out, it listens for up to 4 s for a follow-up (longer only while
+  someone keeps talking), the same way as after the wake word, and only in a
+  conversation someone started with the wake word or a tap. Settings →
+  Voice → **Follow-up questions** turns that off.
 - **Logs don't contain what was said** at the default `info` level, only
   timings. `debug` logs include transcripts; don't leave it on.
 - The WebSocket listens on localhost only and has no authentication. Don't
@@ -161,6 +168,24 @@ seconds, so the two can start in any order.
    An empty transcript means nothing was heard.
 4. The display asks the assistant and sends `speak` with the reply. The
    service speaks it and answers `spoken`.
+5. 0.7 s after `spoken` (once the room's echo has faded), the display sends
+   `listen` itself: a follow-up, no wake word needed, with the earlier turns
+   sent along as history. Say nothing for 4 s, or just "thanks", "that's
+   all", "never mind" or "bye", and the conversation ends; the display also
+   ignores a follow-up that repeats the end of the answer (McFly hearing
+   itself) and stops after six answers. Tapping the card while McFly is
+   talking cuts it short and listens; tapping it after an answer asks
+   another question.
+
+Every question asked out loud gets a spoken answer: the wake word, the mic
+on Home (which opens the same voice card) and the mic in the assistant
+panel (which asks for the same short, spoken answer, and shows it in the
+chat). Typed questions are answered in the chat only. Two switches in the
+display's settings sheet (gear → Settings → Voice) govern this: **Spoken
+replies** (off: answers only appear on screen, and nothing follows up) and
+**Follow-up questions** (off: one question, one answer, and the card closes
+6 s after it). The second is the display's own choice and isn't synced to
+the console or the other devices.
 
 Ask it to add to your day ("put the dentist on Friday at 3", "remind me to
 call mom at 5", "add milk to my list", "I bought the milk") and the
@@ -379,6 +404,7 @@ protocol, and you drive it by typing on stdin:
 | `wake what's for dinner` | The wake word, then a fake session that hears "what's for dinner" |
 | `button` / `silence` | A session that hears nothing (empty transcript) |
 | `next turn off the lights` | What the next push-to-talk `listen` hears (default "What's for dinner tonight?") |
+| `follow and tomorrow?` | What the next follow-up hears: a `listen` within 2 s of a reply being said, the way the display asks for one. Without it a follow-up hears nothing, so the conversation ends after one answer |
 | `quit` | Stop |
 
 `speak` requests are logged and answered with `spoken` after 0.05 s per

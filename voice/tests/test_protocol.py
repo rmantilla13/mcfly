@@ -80,6 +80,24 @@ async def test_next_sets_what_listen_hears():
         assert got[-1]["text"] == "turn off the lights"
 
 
+async def test_a_follow_up_hears_nothing_unless_one_is_queued():
+    # The display asks for a follow-up by sending `listen` once a reply has
+    # been said. In simulate mode that turn hears nothing (the conversation
+    # ends) unless `follow` queued what it hears.
+    async with running(fast_sim(word_time=0.01)) as (_, backend, url), client(url) as c:
+        backend.command("follow and tomorrow?")
+        await c.send(type="speak", text="Tacos tonight.", id="r1")
+        await c.until({"type": "spoken", "id": "r1"})
+        await c.send(type="listen")
+        got = await c.until({"type": "transcript"})
+        assert got[-1]["text"] == "and tomorrow?"
+        await c.send(type="speak", text="Pizza tomorrow.", id="r2")
+        await c.until({"type": "spoken", "id": "r2"})
+        await c.send(type="listen")
+        got = await c.until({"type": "transcript"})
+        assert got[-1]["text"] == ""
+
+
 async def test_speak_answers_with_spoken_after_the_words_are_said():
     backend = fast_sim(word_time=0.05)
     async with running(backend) as (_, _, url), client(url) as c:

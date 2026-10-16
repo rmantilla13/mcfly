@@ -670,10 +670,25 @@ Popup {
                             SettingRow {
                                 icon: "speaker"
                                 title: qsTr("Spoken replies")
-                                detail: qsTr("Read quick answers out loud")
+                                detail: qsTr("Answer out loud when asked by voice")
                                 Toggle {
                                     checked: Voice.speakReplies
                                     onToggled: on => Voice.speakReplies = on
+                                }
+                            }
+                            Rectangle {
+                                visible: Voice.speakReplies
+                                Layout.fillWidth: true; Layout.leftMargin: 68; height: 1; color: Theme.divider
+                            }
+                            // Only with spoken replies: the mic opens once an answer has been read out.
+                            SettingRow {
+                                visible: Voice.speakReplies
+                                icon: "mic"
+                                title: qsTr("Follow-up questions")
+                                detail: qsTr("Keep listening after an answer, no wake word needed")
+                                Toggle {
+                                    checked: Voice.followUp
+                                    onToggled: on => Voice.followUp = on
                                 }
                             }
                         }

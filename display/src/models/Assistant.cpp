@@ -9,6 +9,7 @@
 #include <QNetworkReply>
 #include <QRandomGenerator>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSettings>
 #include <QTimer>
 
@@ -498,10 +499,10 @@ void Assistant::fail(const QString &message)
     // Keep a partial answer (marked as cut short); otherwise say what happened.
     const ChatModel::Message &m = m_messages.at(m_replyRow);
     const bool partial = !m.text.trimmed().isEmpty();
-    finishReply(partial ? m.text : message, partial, true);
+    finishReply(partial ? m.text : message, partial, true, true);
 }
 
-void Assistant::finishReply(const QString &text, bool failed, bool announce)
+void Assistant::finishReply(const QString &text, bool failed, bool announce, bool error)
 {
     m_reply = nullptr;
     m_messages.finish(m_replyRow, text, {}, failed);
@@ -514,7 +515,109 @@ void Assistant::finishReply(const QString &text, bool failed, bool announce)
     QString speechId;
     if (m_replyMode == "quick" && m_voice && m_voice->speakReplies() && m_voice->canSpeak())
         speechId = m_voice->speak(text);
-    emit replyFinished(text, m_replyMode, speechId);
+    emit replyFinished(text, m_replyMode, speechId, error);
+}
+
+// ───────────────────────────── Conversations ─────────────────────────────
+
+namespace {
+// Lowercase words, apostrophes kept ("that's"), and without the name:
+// Whisper writes "Thanks, McFly." as readily as "thanks".
+QStringList spokenWords(const QString &text)
+{
+    QString t = text.toLower();
+    t.replace(QChar(0x2019), QLatin1Char('\''));
+    static const QRegularExpression nonWord(QStringLiteral("[^a-z0-9']+"));
+    QStringList words;
+    for (QString w : t.split(nonWord, Qt::SkipEmptyParts)) {
+        while (w.startsWith(QLatin1Char('\'')))
+            w.remove(0, 1);
+        while (w.endsWith(QLatin1Char('\'')))
+            w.chop(1);
+        if (!w.isEmpty() && w != QLatin1String("mcfly"))
+            words << w;
+    }
+    return words;
+}
+
+struct Phrase
+{
+    QStringList words;
+    bool closes; // false: a filler, which closes nothing on its own ("okay", "no")
+};
+} // namespace
+
+bool Assistant::isClosingRemark(const QString &heard)
+{
+    // A remark closes the conversation when it is made of these phrases and
+    // nothing else, at least one of them a closing one: "okay, thanks",
+    // "no, that's all for now", "thanks, bye". "Okay", "no" or "yes" alone
+    // may answer something McFly asked, so they go to the assistant.
+    static const QList<Phrase> phrases = [] {
+        const char *const closing[] = {
+            "thanks", "thank you", "thanks so much", "thank you so much", "thanks a lot",
+            "thank you very much", "many thanks", "cheers", "that's all", "that's it",
+            "that is all", "that is it", "that'll be all", "that's everything", "i'm done",
+            "we're done", "done", "i'm good", "all good", "i'm all set", "all set", "never mind",
+            "nevermind", "forget it", "nothing", "nothing else", "no thanks", "no thank you", "stop",
+            "stop talking", "cancel", "enough", "be quiet", "quiet", "shut up", "bye", "bye bye",
+            "goodbye", "good bye", "good night", "goodnight", "see you", "see you later",
+            "talk later", "talk to you later", "later",
+            // What Whisper writes for a moment of noise and nobody speaking.
+            "thanks for watching", "thank you for watching",
+        };
+        const char *const fillers[] = {
+            "ok", "okay", "alright", "all right", "oh", "well", "so", "um", "uh", "hmm", "great",
+            "perfect", "cool", "nice", "awesome", "got it", "no", "nope", "nah", "yes", "yeah", "yep",
+            "i think", "for now", "for today", "then",
+        };
+        QList<Phrase> out;
+        for (const char *p : closing)
+            out.append({QString::fromLatin1(p).split(QLatin1Char(' ')), true});
+        for (const char *p : fillers)
+            out.append({QString::fromLatin1(p).split(QLatin1Char(' ')), false});
+        return out;
+    }();
+
+    const QStringList words = spokenWords(heard);
+    if (words.isEmpty())
+        return false;
+    if (words == QStringList{QStringLiteral("you")})
+        return true; // Whisper's other word for silence
+    // reach[i]: the first i words are covered by phrases, 1 with fillers
+    // only, 2 with a closing phrase among them (0: they aren't).
+    QList<int> reach(words.size() + 1, 0);
+    reach[0] = 1;
+    for (qsizetype i = 0; i < words.size(); ++i) {
+        if (reach[i] == 0)
+            continue;
+        for (const Phrase &p : phrases) {
+            const qsizetype end = i + p.words.size();
+            if (end > words.size())
+                continue;
+            bool match = true;
+            for (qsizetype k = 0; k < p.words.size() && match; ++k)
+                match = words.at(i + k) == p.words.at(k);
+            if (match)
+                reach[end] = qMax(reach[end], p.closes ? 2 : reach[i]);
+        }
+    }
+    return reach.last() == 2;
+}
+
+bool Assistant::soundsLikeReply(const QString &heard, const QString &reply)
+{
+    // Two words or more, nearly all of them from the end of the reply: the
+    // part that was still echoing round the room when the mic opened.
+    const QStringList words = spokenWords(heard);
+    if (words.size() < 2)
+        return false;
+    const QStringList said = spokenWords(reply);
+    const QSet<QString> tail(said.end() - qMin<qsizetype>(said.size(), 15), said.end());
+    qsizetype found = 0;
+    for (const QString &w : words)
+        found += tail.contains(w) ? 1 : 0;
+    return found * 5 >= words.size() * 4;
 }
 
 // ───────────────────────────── Demo replies ─────────────────────────────
