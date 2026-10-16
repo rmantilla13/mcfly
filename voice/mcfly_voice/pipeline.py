@@ -30,6 +30,9 @@ log = logging.getLogger(__name__)
 
 MIC_RETRY_SECONDS = 10
 MIC_TIMEOUT_SECONDS = 2.0
+# A mic that was sending audio and stopped is reopened this soon: closing and
+# opening it again is what brings a stalled USB mic back.
+MIC_REOPEN_SECONDS = 0.5
 
 
 class AudioBackend:
@@ -43,6 +46,7 @@ class AudioBackend:
         self._speaker: Speaker | None = None
         self._mic_ok = False
         self.mic_name = ""  # the open microphone, for the screen
+        self._frames = 0  # read from mics so far: a stall, or a mic that never sent any?
         self._capture: asyncio.Queue[bytes] | None = None
         self._mic_task: asyncio.Task[None] | None = None
         v = cfg.vad
@@ -173,37 +177,54 @@ class AudioBackend:
                 self._service.capabilities_changed()
 
     async def _run_microphone(self) -> None:
-        """Keep a microphone open, reopening it if it's unplugged."""
+        """Keep a microphone open, reopening it if it stalls or is unplugged.
+
+        PortAudio opens and closes the mic on a worker thread: on a mic that
+        has gone quiet that can block, and the event loop (the display's
+        connection) mustn't block with it."""
         loop = asyncio.get_running_loop()
-        warned = False
+        said = ""  # the last warning while retrying, so each is logged once
         # PortAudio lists devices once; later attempts re-scan for a mic plugged in since.
         rescan = False
         while True:
             mic = Microphone(self.cfg.audio.input_device, self.cfg.audio.input_channel)
             try:
-                mic.start(loop, rescan=rescan)
+                await asyncio.to_thread(mic.start, loop, rescan=rescan)
             except Exception as e:  # AudioError, or PortAudio failing outright
-                if not warned:
-                    log.warning("%s; trying again every %d s", e, MIC_RETRY_SECONDS)
-                    warned = True
+                message = f"{e}; trying again every {MIC_RETRY_SECONDS} s"
+                if message != said:
+                    log.warning("%s", message)
+                    said = message
                 await asyncio.sleep(MIC_RETRY_SECONDS)
                 continue
             finally:
                 rescan = True
-            warned = False
             self.mic_name = mic.name
             self._set_mic_ok(True)
+            frames = self._frames
+            stalled = ""
             try:
                 await self._pump(mic)
             except AudioError as e:
-                log.warning("%s", e)
+                stalled = str(e)
             except Exception:
                 log.exception("audio loop failed; restarting it")
             finally:
-                mic.close()
                 self.mic_name = ""
                 self._set_mic_ok(False)
-            await asyncio.sleep(2)
+                await asyncio.to_thread(mic.close)
+            if stalled and self._frames == frames:
+                # It opened but never sent anything: reopening at once won't help.
+                message = f"the microphone sent no audio; trying again every {MIC_RETRY_SECONDS} s"
+                if message != said:
+                    log.warning("%s", message)
+                    said = message
+                await asyncio.sleep(MIC_RETRY_SECONDS)
+                continue
+            said = ""
+            if stalled:
+                log.warning("%s; reopening it", stalled)
+            await asyncio.sleep(MIC_REOPEN_SECONDS if stalled else 2)
 
     async def _pump(self, mic: Microphone) -> None:
         """Route each frame: to the current session if there is one, else to
@@ -214,6 +235,7 @@ class AudioBackend:
         threshold = self.cfg.wakeword.threshold
         while True:
             frame = await mic.read(MIC_TIMEOUT_SECONDS)
+            self._frames += 1
             if self._capture is not None:
                 self._capture.put_nowait(frame)
                 continue

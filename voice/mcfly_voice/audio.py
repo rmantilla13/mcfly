@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,6 +19,15 @@ from .pcm import FRAME_SAMPLES, SAMPLE_RATE, pick_channel
 log = logging.getLogger(__name__)
 
 FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE
+# Room for 320 ms of audio in the capture buffer. Left to itself PortAudio
+# gives a USB mic opened directly (hw:N,0) two 80 ms periods, and the Pi 5
+# wakes the reader only about every second period: the buffer overflowed
+# about once a second, each overflow restarted the capture, and now and then
+# the mic never came back from a restart. Three frames is the most that keeps
+# 80 ms periods; PortAudio (19.6, ALSA) then makes the buffer four of them.
+MIC_LATENCY_SECONDS = 3 * FRAME_SECONDS
+# Lost audio (an input overflow) is logged at most this often.
+OVERFLOW_REPORT_SECONDS = 60
 
 # Held while our PortAudio output stream is open, which a re-scan would close.
 portaudio_in_use = threading.Lock()
@@ -120,6 +130,9 @@ class Microphone:
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=max_frames)
         self._stream: Any = None
         self._dropped = 0
+        self._overflows = 0  # counted on PortAudio's thread, reported from the loop
+        self._overflows_reported = 0
+        self._overflow_reported_at: float | None = None
 
     def start(self, loop: asyncio.AbstractEventLoop, *, rescan: bool = False) -> None:
         sd = load_sounddevice()
@@ -159,6 +172,8 @@ class Microphone:
 
         def callback(indata: Any, frames: int, time_info: Any, status: Any) -> None:
             if status:
+                if status.input_overflow:
+                    self._overflows += 1
                 log.debug("microphone: %s", status)
             data = bytes(indata)
             if channels > 1:
@@ -173,6 +188,7 @@ class Microphone:
             channels=channels,
             dtype="int16",
             blocksize=round(rate * FRAME_SECONDS),
+            latency=MIC_LATENCY_SECONDS,
             callback=callback,
         )
         stream.start()
@@ -181,6 +197,8 @@ class Microphone:
         log.info("microphone: %s (%d Hz, %d ch)", self.name, rate, channels)
 
     def _push(self, frame: bytes) -> None:
+        if self._overflows != self._overflows_reported:
+            self._report_overflows()
         if self._queue.full():
             # We fell behind (a slow model on a busy CPU): drop the oldest audio.
             self._queue.get_nowait()
@@ -189,6 +207,18 @@ class Microphone:
                 log.warning("microphone: dropped %d frames (CPU too busy?)", self._dropped)
         self._queue.put_nowait(frame)
 
+    def _report_overflows(self) -> None:
+        """PortAudio read the mic too late and audio was lost."""
+        now = time.monotonic()
+        last = self._overflow_reported_at
+        if last is not None and now - last < OVERFLOW_REPORT_SECONDS:
+            return
+        lost = self._overflows - self._overflows_reported
+        self._overflows_reported += lost
+        self._overflow_reported_at = now
+        log.warning("microphone: input overflowed %s; audio was lost",
+                    "once" if lost == 1 else f"{lost} times")
+
     async def read(self, timeout: float = 2.0) -> bytes:
         try:
             return await asyncio.wait_for(self._queue.get(), timeout)
@@ -196,10 +226,15 @@ class Microphone:
             raise AudioError("the microphone stopped sending audio") from None
 
     def close(self) -> None:
+        """Blocks until PortAudio lets go of the device; call it off the loop."""
         stream, self._stream = self._stream, None
         if stream is not None:
             try:
-                stream.stop()
+                # Abort, never stop: stopping waits for PortAudio's callback
+                # thread, which on a mic that went quiet is polling it and only
+                # gives up after 2048 empty polls of a period each (166 s with
+                # 80 ms periods). Aborting cancels that thread within a period.
+                stream.abort()
                 stream.close()
             except Exception as e:
                 log.debug("closing microphone: %s", e)

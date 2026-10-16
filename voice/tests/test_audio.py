@@ -141,9 +141,102 @@ class FakePortAudio:
     def check_input_settings(self, **kwargs) -> None:
         pass
 
-    def RawInputStream(self, *, device: int, **kwargs) -> SimpleNamespace:
+    def RawInputStream(self, *, device: int, **kwargs) -> FakeStream:
         self.opened.append(device)
-        return SimpleNamespace(start=lambda: None, stop=lambda: None, close=lambda: None)
+        self.stream = FakeStream(device=device, **kwargs)
+        return self.stream
+
+
+class FakeStream:
+    """A PortAudio input stream on a mic that went quiet: stop() waits for a
+    callback thread that is still polling the mic (166 s on the Pi)."""
+
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+        self.calls: list[str] = []
+
+    def start(self) -> None:
+        self.calls.append("start")
+
+    def stop(self) -> None:
+        self.calls.append("stop")
+        threading.Event().wait(5)
+
+    def abort(self) -> None:
+        self.calls.append("abort")
+
+    def close(self) -> None:
+        self.calls.append("close")
+
+
+class Flags(SimpleNamespace):
+    """sounddevice's CallbackFlags: true when any flag is set."""
+
+    def __bool__(self) -> bool:
+        return any(vars(self).values())
+
+
+def open_mic(monkeypatch) -> tuple[FakePortAudio, Microphone, asyncio.AbstractEventLoop]:
+    sd = FakePortAudio()
+    sd.plug_in_usb_mic()
+    sd._initialize()
+    monkeypatch.setattr(audio, "load_sounddevice", lambda: sd)
+    loop = asyncio.new_event_loop()
+    mic = Microphone()
+    mic.start(loop)
+    return sd, mic, loop
+
+
+def test_mic_buffer_has_room_for_four_frames(monkeypatch):
+    # PortAudio's own choice was two 80 ms periods, which the Pi overran
+    # about once a second (docs/VOICE.md).
+    sd, mic, loop = open_mic(monkeypatch)
+    try:
+        assert sd.stream.kwargs["blocksize"] == pcm.FRAME_SAMPLES  # 80 ms at 16 kHz
+        assert sd.stream.kwargs["latency"] == pytest.approx(3 * audio.FRAME_SECONDS)
+    finally:
+        mic.close()
+        loop.close()
+
+
+def test_a_quiet_mic_is_aborted_not_stopped(monkeypatch):
+    sd, mic, loop = open_mic(monkeypatch)
+    try:
+        started = time.monotonic()
+        mic.close()
+        assert time.monotonic() - started < 1
+        assert sd.stream.calls == ["start", "abort", "close"]
+        mic.close()  # twice is fine
+        assert sd.stream.calls == ["start", "abort", "close"]
+    finally:
+        loop.close()
+
+
+def test_lost_audio_is_logged_at_most_once_a_minute(monkeypatch, caplog):
+    monkeypatch.setattr(audio, "OVERFLOW_REPORT_SECONDS", 0.2)
+    sd, mic, loop = open_mic(monkeypatch)
+    callback = sd.stream.kwargs["callback"]
+
+    def deliver(overflow: bool) -> None:
+        callback(bytes(pcm.FRAME_BYTES), pcm.FRAME_SAMPLES, None, Flags(input_overflow=overflow))
+        loop.run_until_complete(asyncio.sleep(0))  # the frame reaches the queue
+
+    try:
+        deliver(False)
+        deliver(True)
+        deliver(True)
+        deliver(True)
+        deliver(False)
+        time.sleep(0.25)
+        deliver(False)
+        deliver(False)
+        lost = [r.getMessage() for r in caplog.records if "overflowed" in r.getMessage()]
+        assert lost == ["microphone: input overflowed once; audio was lost",
+                        "microphone: input overflowed 2 times; audio was lost"]
+        assert mic._queue.qsize() == 7
+    finally:
+        mic.close()
+        loop.close()
 
 
 def test_a_mic_plugged_in_after_startup_is_found(monkeypatch):

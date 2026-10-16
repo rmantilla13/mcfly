@@ -4,7 +4,10 @@ routing, wake-word suppression, endpointing, Whisper hand-off, speech stop."""
 from __future__ import annotations
 
 import asyncio
+import itertools
 import threading
+import time
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -280,9 +283,91 @@ async def test_microphone_comes_and_goes(monkeypatch):
     assert rig.service.hello()["mic"] == mics[0].name
     mics[0].feed(AudioError("the microphone stopped sending audio"))  # unplugged
     await rig.wait_for({"type": "hello", "stt": False, "mic": ""})
+    await until(lambda: "close" in attempts)
     assert attempts[:3] == ["start", "start", "close"]
     # Every retry asks PortAudio for a fresh device list (a mic plugged in later).
     assert rescans[:2] == [False, True]
+    await rig.stop()
+
+
+async def until(done: Callable[[], bool], timeout: float = 3.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not done():
+            await asyncio.sleep(0.01)
+
+
+async def test_a_stalled_mic_is_back_in_seconds(monkeypatch, caplog):
+    # The Pi's USB mic sometimes goes quiet without going away. PortAudio can
+    # take a while to let go of it, which mustn't hold up the event loop (the
+    # display's connection), and it's reopened at once, not at the retry pace.
+    monkeypatch.setattr(pipeline, "MIC_RETRY_SECONDS", 60)
+    monkeypatch.setattr(pipeline, "MIC_REOPEN_SECONDS", 0.1)
+    calls: list[tuple[str, int]] = []
+    mics: list[FakeMic] = []
+    ticks = 0
+
+    class StallingMicrophone(FakeMic):
+        def __init__(self, device: Any, channel: int) -> None:
+            super().__init__()
+            self.name = "USB PnP Sound Device: Audio (hw:0,0)"
+
+        def start(self, loop: Any, *, rescan: bool = False) -> None:
+            calls.append(("start", ticks))
+            mics.append(self)
+
+        def close(self) -> None:
+            calls.append(("closing", ticks))
+            time.sleep(0.3)
+            calls.append(("closed", ticks))
+
+    async def tick() -> None:
+        nonlocal ticks
+        while True:
+            ticks += 1
+            await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(pipeline, "Microphone", StallingMicrophone)
+    rig = Rig()
+    rig.backend._mic_ok = False
+    ticker = asyncio.get_running_loop().create_task(tick())
+    await rig.backend.start(rig.service)
+    await until(lambda: len(mics) == 1)
+    mics[0].feed(QUIET, QUIET, AudioError("the microphone stopped sending audio"))
+    stalled = time.monotonic()
+    await until(lambda: len(mics) == 2)
+    assert time.monotonic() - stalled < 1.5
+    assert [name for name, _ in calls] == ["start", "closing", "closed", "start"]
+    assert calls[2][1] - calls[1][1] >= 10  # the loop ran on while the mic closed
+    assert [e["stt"] for e in rig.events if e["type"] == "hello"] == [True, False, True]
+    assert "the microphone stopped sending audio; reopening it" in caplog.text
+    ticker.cancel()
+    await rig.stop()
+
+
+async def test_a_mic_that_sends_nothing_is_retried_slowly(monkeypatch, caplog):
+    monkeypatch.setattr(pipeline, "MIC_RETRY_SECONDS", 0.2)
+    monkeypatch.setattr(pipeline, "MIC_REOPEN_SECONDS", 0.01)
+    starts: list[float] = []
+
+    class SilentMicrophone(FakeMic):
+        def __init__(self, device: Any, channel: int) -> None:
+            super().__init__()
+            self.name = "USB PnP Sound Device: Audio (hw:0,0)"
+            self.feed(AudioError("the microphone stopped sending audio"))
+
+        def start(self, loop: Any, *, rescan: bool = False) -> None:
+            starts.append(time.monotonic())
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(pipeline, "Microphone", SilentMicrophone)
+    rig = Rig()
+    await rig.backend.start(rig.service)
+    await until(lambda: len(starts) == 3)
+    assert min(b - a for a, b in itertools.pairwise(starts)) >= 0.2
+    warnings = [r.getMessage() for r in caplog.records if r.name == "mcfly_voice.pipeline"]
+    assert warnings == ["the microphone sent no audio; trying again every 0.2 s"]
     await rig.stop()
 
 

@@ -41,6 +41,9 @@ converts.
   and from fans, dishwashers and range hoods.
 - Plug it in before or after starting; the service looks for a mic every 10
   seconds. With no setting it picks the first USB microphone.
+- If the mic goes quiet without being unplugged, the service closes it and
+  opens it again: listening is back a few seconds after the last audio
+  (see [When the mic goes quiet](#when-the-mic-goes-quiet)).
 - To see which mic it found, tap the gear: **About → Microphone** shows the
   mic's name, or **Not found** in red when the service is running without
   one.
@@ -52,6 +55,37 @@ converts.
   PipeWire it falls back to ALSA card `vc4hdmi0` (HDMI0, next to USB-C
   power), even if a USB mic took card 0 at boot. To play anywhere else
   (HDMI1, a USB speaker), set `audio.output_device`.
+
+### When the mic goes quiet
+
+The service reads the mic through PortAudio in 80 ms blocks, from the USB
+device itself (`hw:N,0`). Left to choose, PortAudio gave it a buffer of two
+blocks, and the Pi 5 wakes the reader only about every second block: the
+buffer overflowed about once a second, and PortAudio restarted the capture
+each time. Now and then the mic (a C-Media "USB PnP Sound Device") stayed
+silent after a restart, without going away. Closing it then waited for
+PortAudio's reader to give up on the silent device, 2048 empty polls of 80 ms
+each, so every stall took 2 minutes 47 seconds. The whole service waited
+with it, the display's connection included.
+
+Now:
+
+- The buffer holds four blocks (320 ms), so the reader has time to spare.
+- When audio is lost anyway, the log says `microphone: input overflowed N
+  times; audio was lost`, at most once a minute.
+- A mic that stops sending audio (`the microphone stopped sending audio;
+  reopening it`) is aborted rather than stopped, on a worker thread, and
+  opened again half a second later.
+- A mic that opens but never sends anything is tried again every 10 seconds,
+  with one warning: `the microphone sent no audio`.
+
+With the service running, the kernel shows whether the capture is still being
+restarted (use the mic's card number from `arecord -l`):
+
+```bash
+cat /proc/asound/card0/pcm0c/sub0/hw_params   # buffer_size is 4 × period_size
+grep trigger /proc/asound/card0/pcm0c/sub0/status   # changes at every restart
+```
 
 ## Install
 
@@ -429,6 +463,9 @@ can open the devices, and start it again afterwards.
 | `no microphone found` in the log | `arecord -l` should list a USB card. If it doesn't, try another USB port or cable; `dmesg -w` shows it being plugged in |
 | It hears nothing / the orb barely moves | Record 5 s and play it back: `arecord -D plughw:2,0 -f S16_LE -r 16000 -c 1 -d 5 /tmp/t.wav && aplay -D default:CARD=vc4hdmi0 /tmp/t.wav` (use the card number from `arecord -l`). If it's quiet, raise the capture gain: `alsamixer -c 2`, F4 |
 | It picks the wrong mic | `/opt/mcfly-voice/bin/python -m mcfly_voice --list-devices`, then set `audio.input_device` to part of the name, e.g. `"USB"` or `"ReSpeaker"` |
+| `the microphone stopped sending audio; reopening it` in the log | The mic went quiet and was reopened ([When the mic goes quiet](#when-the-mic-goes-quiet)). Now and then is fine. If it comes every few minutes, look for `input overflowed` lines too, check `vcgencmd get_throttled` (a hot or underpowered Pi) and try another USB port |
+| `microphone: input overflowed … audio was lost` | The service read the mic too late and lost audio, which can cost a wake word. A few a day are harmless; one a minute means the Pi is too busy (or too hot) to keep up |
+| `the microphone sent no audio` | The mic opens but records nothing. Unplug it and plug it back in, or try another port; the `arecord` test above shows whether it records at all |
 | Replies are silent | In the gear menu, **Screen speakers** off means replies stay quiet on purpose. Turn them on and raise **Volume**, and check the panel's own buttons. Then try `--say` (above). `aplay -l` lists outputs; the panel is `vc4hdmi0` on HDMI0 and `vc4hdmi1` on HDMI1. Test it: `speaker-test -D default:CARD=vc4hdmi0 -c 2 -t wav -l 1`. On HDMI1, set `audio.output_device = "default:CARD=vc4hdmi1"`. `wpctl status` shows the PipeWire output the service uses (see [PI_SETUP.md](PI_SETUP.md)) |
 | `aplay: ... Device or resource busy` | Something else is playing through the same card. `fuser -v /dev/snd/*` shows what; stop it or pick another output |
 | Wakes by itself | Raise `wakeword.threshold`; move the mic away from the speakers and the TV |
