@@ -28,7 +28,8 @@ Item {
     property date now: new Date()
     Timer { interval: 1000; running: home.visible; repeat: true; triggeredOnStart: true; onTriggered: home.now = new Date() }
 
-    readonly property var summary: Glance.summary
+    // Glance.summary (tests give their own).
+    property var summary: Glance.summary
     readonly property var nextEvent: summary.next && summary.next.title ? summary.next : null
     readonly property var blockedProject: summary.blocked && summary.blocked.length > 0 ? summary.blocked[0] : null
     readonly property var marketRows: summary.movers && summary.movers.length > 0 ? summary.movers : Store.quotes.slice(0, 3)
@@ -56,10 +57,30 @@ Item {
     // ---- The card where McFly speaks.
     component SpeakingCard: Rectangle {
         id: card
+        objectName: "speakingCard"
         readonly property bool roomy: !Theme.mini && height > 520
+        readonly property int headlineSize: Theme.mini ? Theme.fontLg : roomy ? (Theme.wide ? 48 : 40) : 32
         radius: Theme.mini ? Theme.radius : 36
         color: "#1B1A1F"
         clip: true
+
+        // The room the summary and the detail share: the column less what has
+        // a size of its own in it (the time, the follow-ups, the talk button)
+        // and the gaps. The summary comes first: at its full size where both
+        // fit, else set smaller (Text.Fit) in what the detail leaves it, but
+        // never so small it would stop at "…" while the detail has lines to
+        // give: then the detail gives them up, a line at a time. So a long
+        // morning never pushes the talk button out of the card.
+        readonly property real _gaps: column.spacing * (detail.visible ? 5 : 4)
+        readonly property real _chipsHeight: Math.max(0, chips.implicitHeight + chips.Layout.topMargin + chips.Layout.bottomMargin)
+        readonly property real _room: column.height - topRow.implicitHeight - _chipsHeight - talkRow.implicitHeight - _gaps
+        // Whole at its smallest size, and as it would like to be (its full
+        // size, its usual lines; taller only when that couldn't hold it whole).
+        readonly property real _headlineNeed: Math.min(smallHeadline.implicitHeight, _room)
+        readonly property real _headlineIdeal: Math.max(fullHeadline.implicitHeight, smallHeadline.implicitHeight)
+        readonly property real _headlineHeight: Math.max(_headlineNeed, Math.min(_headlineIdeal,
+                                                         _room - (detail.visible ? fullDetail.implicitHeight : 0)))
+        readonly property real _detailHeight: Math.max(0, Math.min(fullDetail.implicitHeight, _room - _headlineHeight))
 
         SpectrumGlow {
             anchors.fill: parent
@@ -74,6 +95,7 @@ Item {
         }
 
         ColumnLayout {
+            id: column
             anchors.fill: parent
             anchors.leftMargin: Theme.mini ? 22 : 40
             anchors.rightMargin: Theme.mini ? 22 : 40
@@ -83,6 +105,7 @@ Item {
 
             // The time, and who answers.
             RowLayout {
+                id: topRow
                 Layout.fillWidth: true
                 spacing: 12
                 Label {
@@ -132,23 +155,65 @@ Item {
                 }
             }
 
-            // What matters now.
+            // What matters now: at its size where it fits in its lines, else
+            // smaller (Text.Fit) in the room the card has for it (_room).
             Label {
+                id: headline
+                objectName: "headline"
                 Layout.fillWidth: true
+                Layout.preferredHeight: card._headlineHeight
+                Layout.minimumHeight: card._headlineHeight
+                Layout.maximumHeight: card._headlineHeight
                 text: home.summary.headline || ""
                 color: "white"
-                font.pixelSize: Theme.mini ? Theme.fontLg : card.roomy ? (Theme.wide ? 48 : 40) : 32
+                font.pixelSize: card.headlineSize
+                font.weight: Font.Medium
+                font.letterSpacing: -0.5
+                fontSizeMode: Text.Fit
+                minimumPixelSize: Theme.mini ? 18 : 24
+                lineHeight: 1.16
+                wrapMode: Text.WordWrap
+                maximumLineCount: 8
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignTop
+            }
+            // The summary at its full size in its usual lines, and whole at
+            // its smallest: how tall it would like to be, and must be. Never
+            // shown, so the layout leaves them out.
+            Label {
+                id: fullHeadline
+                visible: false
+                width: headline.width
+                text: headline.text
+                font.pixelSize: card.headlineSize
                 font.weight: Font.Medium
                 font.letterSpacing: -0.5
                 lineHeight: 1.16
                 wrapMode: Text.WordWrap
                 maximumLineCount: Theme.mini ? 3 : 4
-                elide: Text.ElideRight
             }
-            // Where it came from.
             Label {
+                id: smallHeadline
+                visible: false
+                width: headline.width
+                text: headline.text
+                font.pixelSize: headline.minimumPixelSize
+                font.weight: Font.Medium
+                font.letterSpacing: -0.5
+                lineHeight: 1.16
+                wrapMode: Text.WordWrap
+                maximumLineCount: headline.maximumLineCount
+            }
+            // Where it came from: the lines there is room for, and none at all
+            // (it fades out) rather than half of one.
+            Label {
+                id: detail
                 Layout.fillWidth: true
+                Layout.preferredHeight: card._detailHeight
+                Layout.minimumHeight: card._detailHeight
+                Layout.maximumHeight: card._detailHeight
                 visible: text.length > 0
+                opacity: card._detailHeight >= detailMetrics.height * lineHeight - 1 ? 1 : 0
                 text: home.summary.detail || ""
                 color: "#D4D1DB"
                 font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd - 4
@@ -156,10 +221,23 @@ Item {
                 wrapMode: Text.WordWrap
                 maximumLineCount: Theme.mini ? 2 : 3
                 elide: Text.ElideRight
+                verticalAlignment: Text.AlignTop
+                FontMetrics { id: detailMetrics; font: detail.font }
+            }
+            Label {
+                id: fullDetail
+                visible: false
+                width: detail.width
+                text: detail.text
+                font: detail.font
+                lineHeight: 1.4
+                wrapMode: Text.WordWrap
+                maximumLineCount: Theme.mini ? 2 : 3
             }
             // The follow-ups. Each is a touch target's height (the pill is drawn
             // smaller, centred), so rows never share a finger's width of space.
             Flow {
+                id: chips
                 Layout.fillWidth: true
                 Layout.topMargin: -(Theme.touchTarget - chipHeight) / 2
                 Layout.bottomMargin: -(Theme.touchTarget - chipHeight) / 2
@@ -199,9 +277,11 @@ Item {
 
             // The one button: talk (or type, without the voice service).
             RowLayout {
+                id: talkRow
                 Layout.fillWidth: true
                 spacing: 16
                 Rectangle {
+                    objectName: "talkButton"
                     width: Theme.mini ? 64 : 84
                     height: width
                     radius: width / 2

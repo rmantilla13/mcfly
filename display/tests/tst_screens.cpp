@@ -10,6 +10,7 @@
 #include "backend/SupabaseClient.h"
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
+#include "models/HomeGlance.h"
 #include "voice/VoiceClient.h"
 
 // Stands in for DisplayController, with Settings → Animated tiles to turn off.
@@ -55,6 +56,7 @@ class TestScreens : public QObject
     FeedStore *m_store = nullptr;
     VoiceClient *m_voice = nullptr;
     Assistant *m_ai = nullptr;
+    HomeGlance *m_glance = nullptr;
     FakeDevice m_device;
     QDateTime m_fake;
     QQmlEngine *m_engine = nullptr;
@@ -122,11 +124,13 @@ private slots:
         m_store->start(); // demo mode
         m_voice = new VoiceClient(QUrl(QStringLiteral("ws://127.0.0.1:9")), this); // never started: no voice
         m_ai = new Assistant(m_client, m_store, m_voice, this);
+        m_glance = new HomeGlance(m_store, this);
 
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Store", m_store);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "AI", m_ai);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", m_voice);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &m_device);
+        qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", m_glance);
         // One engine for them all: an instance singleton belongs to one.
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_TEST_QML_DIR));
@@ -288,6 +292,61 @@ private slots:
 
     // The 7" panel's left column at its fullest (what stands out, up next
     // with its ring or its bar and a place, blocked) still fits above the bar.
+    // The assistant-first Home on every panel: however much McFly has to
+    // say, its summary shows whole (set smaller to fit) and the talk button
+    // stays inside its card, not cut off at the bottom. The words are the
+    // ones a morning on the 10.1" panel pushed the button out of the card with.
+    void assistantCardKeepsItsButton()
+    {
+        // The morning on the 10.1" panel, and a busier one: longer than any
+        // card fits at its full size, on every panel.
+        const QList<QByteArray> mornings = {
+            "({ headline: 'Good afternoon. Busy is in 4 minutes, Armra J466 BFCM Base Gut Videos and Lace Health"
+            " edits (Asana) are blocked, and RXRX is down 3.2%.',"
+            " detail: 'The news leads with Meta GEM claims 18.9% more conversions. X watch\\'s latest: 5 Conversations"
+            " Dominating X Today.',"
+            " chips: ['What\\'s on after Busy?', 'What\\'s blocking Armra J466 BFCM Base Gut Videos?', 'Why is RXRX down?'] })",
+            "({ headline: 'Good afternoon. Quarterly planning with the leadership team is in 4 minutes, Armra J466 BFCM"
+            " Base Gut Videos, Lace Health edits (Asana) and the Northwind onboarding refresh are blocked, and RXRX is"
+            " down 3.2% while PLTR is up 4.1%.',"
+            " detail: 'The news leads with Meta GEM claims 18.9% more conversions across every campaign it ran this"
+            " quarter. X watch\\'s latest: 5 Conversations Dominating X Today, and two more briefs since noon.',"
+            " chips: ['What\\'s on after Quarterly planning with the leadership team?', 'What\\'s blocking Armra J466"
+            " BFCM Base Gut Videos?', 'Why is RXRX down 3.2% today?'] })",
+        };
+        struct Panel { int w; int h; const char *tier; };
+        // The pages' area on each panel: the window less the rail or the bar.
+        const QList<Panel> panels = {{1180, 800, "compact"}, {1796, 1080, "wide"}, {800, 404, "mini"}, {720, 1196, "tall"}};
+        for (qsizetype m = 0; m < mornings.size(); ++m) {
+            for (const Panel &p : panels) {
+                const QString where = QStringLiteral("%1, morning %2").arg(QLatin1String(p.tier)).arg(m + 1);
+                QVERIFY(show("HomeAssistant { summary: " + mornings.at(m) + " }", p.w, p.h, QString::fromLatin1(p.tier)));
+                QTest::qWait(50);
+                QList<QQuickItem *> cards;
+                collect(m_window->contentItem(), QStringLiteral("speakingCard"), cards);
+                QQuickItem *card = nullptr;
+                for (QQuickItem *c : std::as_const(cards))
+                    if (c->isVisible())
+                        card = c;
+                QVERIFY2(card, qPrintable(where));
+                QList<QQuickItem *> buttons, headlines;
+                collect(card, QStringLiteral("talkButton"), buttons);
+                collect(card, QStringLiteral("headline"), headlines);
+                QCOMPARE(buttons.size(), 1);
+                QCOMPARE(headlines.size(), 1);
+                shoot(QStringLiteral("assistant-%1-%2").arg(QLatin1String(p.tier)).arg(m + 1));
+                const QRectF button = buttons.first()->mapRectToItem(card, QRectF(QPointF(0, 0), buttons.first()->size()));
+                QVERIFY2(button.top() >= 0 && button.bottom() <= card->height() - 8,
+                         qPrintable(QStringLiteral("%1: the button reaches %2 of %3").arg(where).arg(button.bottom()).arg(card->height())));
+                // The summary whole, set smaller where it must be; only the 7"
+                // panel may run out of room for the busier morning.
+                if (m == 0 || qstrcmp(p.tier, "mini") != 0)
+                    QVERIFY2(!headlines.first()->property("truncated").toBool(), qPrintable(where + QStringLiteral(": the summary is cut off")));
+                cleanup();
+            }
+        }
+    }
+
     void homeFitsTheSmallPanel()
     {
         QVERIFY(show("HomeScreen { }", 800, 404, QStringLiteral("mini")));

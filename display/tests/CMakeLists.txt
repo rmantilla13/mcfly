@@ -138,10 +138,11 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     components/HealthStrip.qml components/SuggestionChips.qml components/FocusFlickable.qml
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
     components/MasterDetail.qml components/Tag.qml components/NavRail.qml
-    screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml)
+    screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml)
 qt_add_executable(tst_screens tst_screens.cpp
     ../src/models/FeedStore.h  ../src/models/FeedStore.cpp
     ../src/models/Assistant.h  ../src/models/Assistant.cpp
+    ../src/models/HomeGlance.h ../src/models/HomeGlance.cpp
 )
 target_compile_options(tst_screens PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_screens PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-screens")
