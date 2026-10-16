@@ -117,6 +117,11 @@ qt_add_qml_module(mcfly-display
         qml/components/QrPanel.qml
         qml/components/SuggestionChips.qml
         qml/screens/HomeScreen.qml
+        qml/components/Reveal.qml
+        qml/components/Ring.qml
+        qml/components/StatusDot.qml
+        qml/components/InsightLine.qml
+        qml/components/HealthStrip.qml
         qml/screens/BriefsScreen.qml
         qml/screens/MarketsScreen.qml
         qml/screens/NewsScreen.qml
@@ -161,6 +166,7 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/gradienttile.frag
         shaders/spectrumglow.frag
         shaders/aurora.frag
+        shaders/glow.frag
         shaders/arc.frag
         shaders/ribbons.frag
         shaders/dawn.frag

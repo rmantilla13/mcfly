@@ -195,11 +195,86 @@
       "ChipRow",
       "EmptyState",
       "QrPanel",
-      "SuggestionChips"
+      "SuggestionChips",
+      "Reveal",
+      "Ring",
+      "StatusDot",
+      "InsightLine",
+      "HealthStrip"
     ],
     "changed": [
       "Theme",
-      "NavRail"
+      "NavRail",
+      "Sparkline",
+      "StoryCard"
     ]
+  },
+  "motion": {
+    "reveal": {
+      "durationMs": 600,
+      "itemMs": 320,
+      "rise": 14,
+      "staggerCap": 7,
+      "software": "off",
+      "trigger": "screen isCurrent (picked), not shown: the assistant panel closing replays nothing"
+    },
+    "glideMs": 480,
+    "breathMs": 2200,
+    "valueChangeWindowMs": 3000,
+    "gates": [
+      "screen shown",
+      "not idle",
+      "Settings → Animated tiles"
+    ]
+  },
+  "screens": {
+    "home": {
+      "wide": "moment ≤ 520 (clock, what stands out, up next tile with ring or bar, blocked, questions, ask) · day (ticker tape with lines, TODAY on a thread with now, TOMORROW)",
+      "compact": "same, tape without lines",
+      "mini": "same, no questions or ask bar",
+      "tall": "one feed: clock, what stands out, up next, blocked, ask, tape, the day on its thread, TOMORROW"
+    },
+    "markets": {
+      "wide": "breadth bar; quote grid 3 (line, price, low–high) | pane 440",
+      "compact": "breadth bar; quote grid 2 | pane 380",
+      "mini": "breadth in the subtitle; grid 3 × 112, no low–high → push",
+      "tall": "breadth bar; grid 2 × 150, featured mover large under it when 300 px are left → push"
+    },
+    "metrics": {
+      "wide": "grid 4, coloured by good, 'usually …', an edge on an anomaly",
+      "compact": "grid 3, same",
+      "mini": "grid 2, no 'usually'",
+      "tall": "grid 2"
+    },
+    "boards": {
+      "wide": "Store.boardLayout(board, 6): hero 2×2, health strip across (6 a row, wraps a row taller), charts 4×2",
+      "compact": "Store.boardLayout(board, 4): health 4 a row",
+      "mini": "Store.boardLayout(board, 2): no hero, charts 2×2, health 3 a row",
+      "tall": "Store.boardLayout(board, 2): as mini"
+    },
+    "projects": {
+      "wide": "cards 3 with a ring | pane 460: gradient header, ring 132, updates thread",
+      "compact": "cards 2 | pane 400, ring 108",
+      "mini": "cards 2 × 124, ring 50 → push, ring 84",
+      "tall": "cards 2 × 170, one line of summary → push"
+    },
+    "briefs": {
+      "wide": "list 520, outline glides to the pick, a dot on the last hour's | reader: the body's blocks in order, points on dots",
+      "compact": "list 440 | reader, same",
+      "mini": "one-line rows → push reader",
+      "tall": "rows → push reader"
+    },
+    "news": {
+      "wide": "hero 360, picture drifting (Ken Burns); sections settle in one after another",
+      "compact": "hero 300, same",
+      "mini": "lead row, no picture, no drift",
+      "tall": "hero 240, same as wide"
+    },
+    "calendar": {
+      "wide": "day tile 420: now line glides down on each minute",
+      "compact": "day tile 360, same",
+      "mini": "agenda only",
+      "tall": "tile 230 (two rows), no day view"
+    }
   }
 }

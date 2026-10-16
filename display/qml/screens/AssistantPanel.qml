@@ -12,6 +12,9 @@ Rectangle {
     property real keyboardHeight: 0
     // Push-to-talk is feeding this conversation (set by Main).
     property bool listening: false
+    // The screen it opened over (a Main.qml screen name, or "metrics"): that
+    // screen's own question leads the suggestions.
+    property string context: ""
     signal closeRequested()
     signal pushToTalk()
 
@@ -223,7 +226,11 @@ Rectangle {
                 // Centred under the heading, row by row.
                 SuggestionChips {
                     width: parent.width
-                    items: AI.suggestions
+                    // suggestionsFor doesn't notify; reading AI.suggestions does.
+                    items: {
+                        const all = AI.suggestions
+                        return panel.context ? AI.suggestionsFor(panel.context) : all
+                    }
                     onPicked: text => panel.send(text)
                 }
             }

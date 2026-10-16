@@ -44,6 +44,15 @@ class FeedStore : public QObject
     // Calendar subscriptions and their health: { name, color, enabled,
     // syncedLabel, error, eventCount }. Managed on the web.
     Q_PROPERTY(QVariantList calendarSources READ calendarSources NOTIFY dataChanged)
+    // Briefs carry `paragraphs` and `bullets` (the body's "- " points), and
+    // `blocks`, the two in the body's order for a reader:
+    // [{ kind: "paragraph", text } | { kind: "points", items }]. Quotes
+    // and metrics carry their range over the history (low, high, lowLabel,
+    // highLabel, rangePos 0..1), `fresh` (pushed in the last 15 min) and
+    // changedMs / changedUp (when this display saw the value move; 0 until it
+    // does). Quotes add `heat` (−1..1, ±3% at the ends), `swingPct` and
+    // `bigMove`; metrics add goodDirection, trend, good, anomaly and
+    // usualLabel. Board widgets carry `known`: QML skips a type it can't draw.
     Q_PROPERTY(QVariantList briefs READ briefs NOTIFY dataChanged)     // newest first
     Q_PROPERTY(QVariantMap latestBrief READ latestBrief NOTIFY dataChanged)
     Q_PROPERTY(QVariantList quotes READ quotes NOTIFY dataChanged)     // in display order, hidden ones left out
@@ -72,6 +81,17 @@ class FeedStore : public QObject
     // Tomorrow's weekday ("Friday"), for that preview's heading.
     Q_PROPERTY(QString tomorrowLabel READ tomorrowLabel NOTIFY todayChanged)
     Q_PROPERTY(QString assistantProvider READ assistantProvider NOTIFY dataChanged) // platform_settings: claude | grok
+    // What stands out right now, at most five, ranked the way the console's
+    // lib/insights.ts ranks them (a board's status going down slots in second):
+    // { id, kind, icon, title, detail, color, tone, screen, segment, itemId,
+    // question, ... }. Time-relative ("starts in 12 min"), so it is checked
+    // again each minute, apart from dataChanged.
+    Q_PROPERTY(QVariantList highlights READ highlights NOTIFY highlightsChanged)
+    // How the quotes moved today: { up, down, flat, total, label }.
+    Q_PROPERTY(QVariantMap marketBreadth READ marketBreadth NOTIFY dataChanged)
+    // Where now sits on a 24-hour dial: degrees clockwise from midnight at the
+    // top (noon at the bottom), like the timeline's startAngle. Each minute.
+    Q_PROPERTY(double nowAngle READ nowAngle NOTIFY nowAngleChanged)
 
 public:
     FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent = nullptr);
@@ -113,6 +133,24 @@ public:
     QVariantList timeline() const { return m_timeline; }
     QVariantList tomorrow() const { return m_tomorrow; }
     QString tomorrowLabel() const;
+    QVariantList highlights() const { return m_highlights; }
+    QVariantMap marketBreadth() const { return m_marketBreadth; }
+    double nowAngle() const;
+    // The store's clock (local time): the wall clock, or the tests' stand-in.
+    // The assistant's suggestions use it too, so both agree on "now".
+    QDateTime now() const { return m_clock ? m_clock() : QDateTime::currentDateTime(); }
+
+    // A board (an index into `dashboards`) laid out as a bento for a grid of
+    // `columns`: [{ index, indexes, col, row, colSpan, rowSpan, kind }], in
+    // reading order, with no holes. The first metric is a 2×2 hero from four
+    // columns up; two or more status widgets in a row become one full-width
+    // "health" strip ({ kind: "health", indexes, state, stateColor, summary,
+    // perRow }), one row tall for each row of `perRow` statuses it wraps to
+    // (at most one a column, three on two columns, rows evened out);
+    // a chart is 4×2 on six columns and full width on four or fewer; lists and
+    // notes are 2×1; the rest 1×1. Unknown widget types get no cell. It reads
+    // `dashboards`, so a binding should too to follow a sync.
+    Q_INVOKABLE QVariantList boardLayout(int board, int columns) const;
 
     // Syncs now (live), or asks for a pairing code again now if the last try
     // failed (e.g. Wi-Fi was just joined). Also re-checks the date.
@@ -148,6 +186,9 @@ signals:
     void pairingChanged();
     void todayChanged();
     void dataChanged();
+    void highlightsChanged();
+    // Once a minute, on the minute (and nothing else changes with it).
+    void nowAngleChanged();
     void notify(const QString &message);
     // A reminder's time has come, once per reminder while this display runs
     // (or within a few minutes of it, at start): { id, title, notes, timeLabel }.
@@ -169,7 +210,11 @@ private:
     void rebuildTimeline(const QHash<QString, QVariantMap> &agentById);
     void armReminders();
     void fireReminders();
-    QDateTime now() const { return m_clock ? m_clock() : QDateTime::currentDateTime(); }
+    void rebuildHighlights();
+    void onMinute();
+    // Stamps a quote or metric row with when its value last changed, as this
+    // display saw it (0 until it does): { changedMs, changedUp }.
+    void markChange(QVariantMap &row, const QString &key, double value);
     bool updateToday();
     bool rollDay();
     QString dayLabel(const QDate &day) const;
@@ -202,6 +247,7 @@ private:
     std::function<QDateTime()> m_clock; // tests only; empty means the real clock
     QDate m_today;
     QTimer m_dayTimer; // fires just after local midnight
+    QTimer m_minuteTimer; // fires just after each minute: nowAngle, highlights
     QTimer m_reminderTimer;     // fires at the next reminder's time
     QSet<QString> m_reminded;   // reminders already announced, by id
 
@@ -224,4 +270,20 @@ private:
     QVariantList m_projects, m_metrics, m_metricGroups, m_dashboards, m_events, m_eventDays, m_upcoming;
     QVariantList m_timeline, m_tomorrow;
     QVariantMap m_latestBrief, m_news, m_portfolio;
+    QVariantList m_highlights;
+    QVariantMap m_marketBreadth;
+    // Ranked once per rebuild, for the highlights: the metrics far off their
+    // usual and the big movers, strongest first.
+    QVariantList m_anomalies, m_movers;
+
+    // The last value seen per quote ("q:SYM") and metric ("m:key"), across
+    // rebuilds: QML animates a change from changedMs without needing its
+    // delegate to survive the rebuild.
+    struct Seen
+    {
+        double value = 0;
+        qint64 changedMs = 0;
+        bool up = true;
+    };
+    QHash<QString, Seen> m_seen;
 };

@@ -7,10 +7,17 @@ import McFly.Core
 // Calendar: the next days as an agenda, with the week along the top. Events
 // come from the calendar agents, colored by calendar. The picked day sits
 // large beside the agenda on the wide tiers, over it on Tall; the 7" panel
-// has the strip and the agenda alone.
+// has the strip and the agenda alone. The day view's now line glides down
+// on each minute; the agenda settles in as the page shows.
 Item {
     id: calendar
     property bool shown: true
+    // The page picked, under the assistant panel too: it settles in as
+    // this turns true, not again when the panel goes.
+    property bool isCurrent: true
+    // Loops and glides run only while someone can see them.
+    readonly property bool moving: shown && !Device.idle && Device.animatedTiles
+    Reveal { id: rv; shown: calendar.isCurrent }
     property string pickedDay: Store.today
     readonly property var dayEvents: (Store.eventDays.find(d => d.day === pickedDay) || ({})).events || []
     function closeDetail() { md.closeDetail() }
@@ -115,9 +122,9 @@ Item {
             return out
         }
 
-        property real nowMs: Date.now()
+        // On the minute: Store.nowAngle moves then.
+        readonly property real nowMs: Store.nowAngle >= 0 ? Date.now() : 0
         readonly property bool isToday: day === Store.today
-        Timer { interval: 60000; repeat: true; running: grid.visible && grid.isToday; onTriggered: grid.nowMs = Date.now() }
 
         // The hours.
         Repeater {
@@ -185,12 +192,16 @@ Item {
             }
         }
 
-        // Now, on today.
+        // Now, on today: it glides down to each new minute.
         Rectangle {
             readonly property real hour: grid.hourOf(grid.nowMs)
             visible: grid.isToday && hour >= grid.firstHour && hour <= grid.lastHour
             x: grid.gutter - 5
             y: grid.yOf(hour) - 1
+            Behavior on y {
+                enabled: calendar.moving
+                NumberAnimation { duration: Theme.glide * 2; easing.type: Easing.InOutSine }
+            }
             width: grid.width - grid.gutter + 5
             height: 2
             color: Theme.danger
@@ -358,6 +369,8 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.mini ? 6 : 8
+                opacity: rv.at(0)
+                transform: Translate { y: rv.rise(0) }
                 Repeater {
                     model: Theme.dayColumns
                     delegate: Rectangle {
@@ -402,6 +415,8 @@ Item {
                 roomy: false
                 Layout.fillWidth: true
                 Layout.preferredHeight: 230
+                opacity: rv.at(1)
+                transform: Translate { y: rv.rise(1) }
             }
             // The agenda from the picked day on.
             ListView {
@@ -424,12 +439,15 @@ Item {
                     font.letterSpacing: 1.2
                 }
                 delegate: Rectangle {
+                    id: agendaRow
                     required property var modelData
+                    required property int index
                     width: ListView.view.width
                     height: Theme.mini ? 64 : 78
                     radius: Theme.radiusSm
                     color: modelData.now ? Theme.accentSoft : Theme.surface
-                    opacity: modelData.past ? 0.6 : 1
+                    opacity: (modelData.past ? 0.6 : 1) * rv.at(index + 2)
+                    transform: Translate { y: rv.rise(agendaRow.index + 2) }
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: Theme.mini ? 14 : 18

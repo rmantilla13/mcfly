@@ -95,14 +95,14 @@ offline pill moves to the top centre so it never covers a header's controls.
 
 | screen | Wide | Compact | Mini | Tall |
 |---|---|---|---|---|
-| Home | [greeting, clock 112, date; up next; blocked; quick questions, 2 rows; ask 88] ≤ 520 · [markets strip 5; TODAY; the day list, kept at now, resting on a whole row; under its last row, TOMORROW and its events as a preview]. Nothing up next or blocked: the clock grows to 176 and sits mid-column | same, clock 88 (144), 4 tickers | same, clock 64 (104), 3 tickers, no questions or ask bar | feed: clock, up next, blocked, ask, markets 4, every row of the day, then TOMORROW |
-| Briefs | list 520 \| reader | list 440 \| reader | one-line rows → push reader | rows → push reader |
-| Markets | grid 3 \| pane 440 | grid 2 \| pane 380 | grid 3 × 112 → push | grid 2 × 150 → push |
-| Metrics | grid 4 | grid 3 | grid 2 | grid 2 |
-| News | hero 360; cards 4 × 280 | hero 300; cards 3 × 250 | lead row (no picture); rows 2 × 88 → story without a picture | hero 240; cards 2 × 290 → picture on top |
-| Projects | board 3 \| pane 460 | board 2 \| pane 400 | board 2 × 124 → push | board 2 × 170 → push |
-| Boards | grid 6 | grid 4 | grid 2, chips scroll | grid 2 |
-| Calendar | 14 days \| agenda \| day tile 420: the day's hours with its events, then its calendars | 10 days \| agenda \| tile 360, same | 7 days; agenda | 7 days; tile 230 (two rows); agenda |
+| Home | [greeting, clock 112, date; what stands out (one line, turning); up next on a gradient tile, a ring counting down its last hour, a bar while it's on; blocked; quick questions, 2 rows; ask 88] ≤ 520 · [the ticker tape, every symbol, each with its line; TODAY; the day list, kept at now, resting on a whole row, a thread down its gutter with now on it; under its last row, TOMORROW and its events as a preview]. Nothing up next or blocked: the clock grows to 176 and sits mid-column | same, clock 88 (144), tape without lines | same, clock 64 (104), what stands out 58, no questions or ask bar | feed: clock, what stands out, up next, blocked, ask, tape, every row of the day on the thread, then TOMORROW |
+| Briefs | list 520 \| reader: the body in order, its points on dots (`blocks`) | list 440 \| reader, same | one-line rows → push reader | rows → push reader |
+| Markets | breadth bar; grid 3 (line, price, low–high bar) \| pane 440 | breadth bar; grid 2, same \| pane 380 | breadth in the subtitle; grid 3 × 112, no low–high bar → push | breadth bar; grid 2 × 150, then the biggest mover large in the room under it (from 300 px) → push |
+| Metrics | grid 4, coloured by good, "usually …" | grid 3, same | grid 2, no "usually" | grid 2 |
+| News | hero 360, its picture drifting (Ken Burns); cards 4 × 280 | hero 300, same; cards 3 × 250 | lead row (no picture); rows 2 × 88 → story without a picture | hero 240, same; cards 2 × 290 → picture on top |
+| Projects | board 3, a progress ring per card \| pane 460: tile with a ring 132, then next and the updates as a thread | board 2 \| pane 400, ring 108 | board 2 × 124, ring 50 → push, ring 84 | board 2 × 170, one line of summary → push |
+| Boards | bento of 6: first metric a 2×2 hero tile, statuses in a row one health strip (up to 6 a row, then it wraps a row taller), charts 4×2, progress a ring | bento of 4, same (4 a row) | bento of 2: no hero, charts 2×2, 3 statuses a row; chips scroll | bento of 2, same |
+| Calendar | 14 days \| agenda \| day tile 420: the day's hours with its events, now gliding down them, then its calendars | 10 days \| agenda \| tile 360, same | 7 days; agenda | 7 days; tile 230 (two rows); agenda |
 | Assistant | as today | as today | subtitle dropped; bubbles 85 % | bubbles 85 % |
 | QuickAnswer | 880 wide | 760 | page − 32, orb 120×88, 4 lines | 680, 6 lines |
 | Setup | card ≤ 1240, 2 columns | ≤ 1120, 2 columns | page − 32, 2 columns, digits 56×76, QR 120 | page − 40, 1 column, scrolls |
@@ -117,10 +117,11 @@ offline pill moves to the top centre so it never covers a header's controls.
 +--------------------------------------------------+
 | (M) Good morning   DEMO | SPY +0.3  AAPL +1.1 …   |
 | 9:41 AM                 | TODAY ───────── 11 things|
-| Thu, Oct 15 · 2 min     |  9:30 [Standup      ] dim|
-| [UP NEXT · IN 18 MIN  ] |  9:31 [GROK · Hourly…  ]|
-| [Pulse review 3:30    ] |  3:30 [Pulse review  in]|
-| [! Onyx is blocked    ] |  7:00 [Dinner with Lina]|
+| Thu, Oct 15 · 2 min     |  9:30 │[Standup     ] dim|
+| [⚡ Search is down     ⋮]|  9:31 │[GROK · Hourly… ]|
+| [UP NEXT · IN 18 MIN (18)]|       ● now          |
+| [Pulse review 3:30    ] |  3:30 │[Pulse review in]|
+| [! Onyx is blocked    ] |  7:00 │[Dinner with Lina]|
 +--------------------------------------------------+
 |[Home ⌂][≡][↗][▤][◫][▦][▣]  ·  [*][⚙][☾]        |
 +--------------------------------------------------+
@@ -133,13 +134,15 @@ offline pill moves to the top centre so it never covers a header's controls.
 | (M) Good morning             DEMO  |
 | 9:41 AM                            |
 | Thursday, October 15 · 2 min ago   |
-| -- Up next (accent) -------------+ |
+| -- What stands out (turns) ---- ⋮ + |
+| -- Up next (gradient tile, ring) + |
 | -- Onyx is blocked --------------+ |
 | -- Ask 84 -----------------------+ |
-| -- Markets strip (4) ------------+ |
+| -- Ticker tape ------------------+ |
 | TODAY ──────────────── 11 things   |
-|  7:55 [Daily Pulse · hero …    ]   |
-|  9:30 [Standup                 ]   |
+|  7:55 │[Daily Pulse · hero …    ]  |
+|       ● now                        |
+|  9:30 │[Standup                 ]  |
 |  …                                 |
 | TOMORROW ───── Friday · 2 things   |
 | 11:00 [Investor call           ]   |
@@ -160,6 +163,39 @@ offline pill moves to the top centre so it never covers a header's controls.
 | [Brief   ] [Markets ] [Needs you] [Daily Pulse]  |
 +--------------------------------------------------+
 ```
+
+## Motion
+
+One grammar for movement, the same on every panel (`Theme.qml` tokens):
+
+- **Arriving.** A screen's contents settle in each time it is picked
+  (`Reveal.qml`, `Theme.revealDuration`, 600 ms; the screen's `isCurrent`,
+  so closing the assistant panel over it plays nothing): each region or row fades
+  up 14 px over `Theme.enter`, a beat after the one before, the seventh and
+  later together, so everything is in place well inside a second. Rows a
+  sync makes again (every minute) bind to the same value and are simply
+  there: nothing arrives from a delegate's `onCompleted`. Rings sweep in and
+  lines draw on (a clip) with it.
+- **Moving.** Things that change place glide (`Theme.glide`, 480 ms,
+  `Theme.standard`): a board's tiles when the board or the tier changes, the
+  "now" dot on Home's thread, the Briefs outline on a tap, the calendar's now
+  line on each minute (twice as long). A value this display saw change in
+  the last 3 s (`changedMs`) slides in from the way it moved.
+- **Breathing.** The only loops: a status that needs a look, a blocked
+  project's edge and the now dot breathe (`Theme.breath`, 2.2 s each way); a
+  price pushed in the last 15 min sends a ring out from its newest point; the
+  News hero's picture drifts over most of a minute; the Ask button turns a
+  ring while an answer is on its way and the panel is shut. Nothing blinks.
+- **Gating.** Loops run only while their screen is shown and the screen is
+  not idle, and everything (arrivals included) is off with Settings →
+  Animated tiles. Animators (opacity, scale, rotation) where they can be;
+  never `Layout.*` or a font size. A stopped loop leaves nothing half-way:
+  its halo is hidden, not frozen.
+- **Software.** Without a GPU (the fallback, and the offscreen pictures in
+  `screenshots.sh`) there are no arrivals or sweeps: the pages are simply
+  there. Qt's software renderer also draws a Shape (a ring, a line) past a
+  scrolling view's clip, so a tile cut by the bottom edge can show its ring
+  over the nav bar in those pictures; the GPU clips it.
 
 ## Common behaviour
 

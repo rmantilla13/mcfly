@@ -168,6 +168,8 @@ ApplicationWindow {
         width: window.navBar ? window.width : Theme.navWidth
         height: window.navBar ? Theme.navHeight : window.height
         currentIndex: window.currentScreen
+        // McFly is working on an answer nobody is watching (the panel is shut).
+        thinking: AI.busy && !assistant.open
         onSelected: index => {
             assistant.open = false
             window.dismissKeyboard()
@@ -192,6 +194,7 @@ ApplicationWindow {
             HomeScreen {
                 anchors.fill: parent
                 shown: window.currentScreen === 0 && !assistant.open
+                isCurrent: window.currentScreen === 0
                 onOpenScreen: index => window.currentScreen = index
                 onOpenAssistant: question => {
                     assistant.open = true
@@ -205,20 +208,29 @@ ApplicationWindow {
                 }
             }
         }
-        Page { anchors.fill: parent; index: 1; current: window.currentScreen; BriefsScreen { id: briefs; anchors.fill: parent } }
+        Page {
+            anchors.fill: parent; index: 1; current: window.currentScreen
+            BriefsScreen { id: briefs; anchors.fill: parent; shown: window.currentScreen === 1 && !assistant.open; isCurrent: window.currentScreen === 1 }
+        }
         Page {
             anchors.fill: parent; index: 2; current: window.currentScreen
-            MarketsScreen { id: markets; anchors.fill: parent; shown: window.currentScreen === 2 && !assistant.open }
+            MarketsScreen { id: markets; anchors.fill: parent; shown: window.currentScreen === 2 && !assistant.open; isCurrent: window.currentScreen === 2 }
         }
         Page {
             anchors.fill: parent; index: 3; current: window.currentScreen
-            NewsScreen { id: news; anchors.fill: parent }
+            NewsScreen { id: news; anchors.fill: parent; shown: window.currentScreen === 3 && !assistant.open; isCurrent: window.currentScreen === 3 }
         }
-        Page { anchors.fill: parent; index: 4; current: window.currentScreen; ProjectsScreen { id: projects; anchors.fill: parent } }
-        Page { anchors.fill: parent; index: 5; current: window.currentScreen; DashboardsScreen { anchors.fill: parent } }
+        Page {
+            anchors.fill: parent; index: 4; current: window.currentScreen
+            ProjectsScreen { id: projects; anchors.fill: parent; shown: window.currentScreen === 4 && !assistant.open; isCurrent: window.currentScreen === 4 }
+        }
+        Page {
+            anchors.fill: parent; index: 5; current: window.currentScreen
+            DashboardsScreen { anchors.fill: parent; shown: window.currentScreen === 5 && !assistant.open; isCurrent: window.currentScreen === 5 }
+        }
         Page {
             anchors.fill: parent; index: 6; current: window.currentScreen
-            CalendarScreen { id: calendar; anchors.fill: parent; shown: window.currentScreen === 6 && !assistant.open }
+            CalendarScreen { id: calendar; anchors.fill: parent; shown: window.currentScreen === 6 && !assistant.open; isCurrent: window.currentScreen === 6 }
         }
     }
 
@@ -230,6 +242,9 @@ ApplicationWindow {
         // The keyboard rises over the bar: only what shows above it counts.
         keyboardHeight: Math.max(0, window.keyboardHeight - Theme.navHeight)
         listening: window.voiceTarget === "chat"
+        // The screen behind it: its own question comes first among the chips.
+        context: window.currentScreen === 2 && markets.segment === "metrics" ? "metrics"
+                                                                            : window.screenNames[window.currentScreen]
         onCloseRequested: {
             window.dismissKeyboard()
             if (window.voiceTarget === "chat") window.pushToTalk() // stop listening
@@ -316,7 +331,15 @@ ApplicationWindow {
         visible: opacity > 0
         opacity: Device.idle && !window.inSetup
                  && (!Device.screenOff || (window.saverUnderSleep && !sleepCover.covering)) ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Theme.smooth; easing.type: Easing.InOutQuad } }
+        // It drifts in when the screen goes idle, and gets out of the way at
+        // once when someone touches it.
+        Behavior on opacity {
+            id: saverFade
+            NumberAnimation {
+                duration: saverFade.targetValue > 0.5 ? Theme.ambientFade : Theme.smooth
+                easing.type: Easing.InOutSine
+            }
+        }
         ScreenSaver { anchors.fill: parent }
     }
 

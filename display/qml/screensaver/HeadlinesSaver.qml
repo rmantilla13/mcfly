@@ -31,6 +31,7 @@ Item {
     Repeater {
         model: 2
         delegate: Item {
+            id: slot
             required property int modelData
             readonly property bool current: headlines.index % 2 === modelData
             // Each slot shows the story it was given when it became current.
@@ -42,13 +43,19 @@ Item {
             Behavior on opacity { NumberAnimation { duration: 1400; easing.type: Easing.InOutQuad } }
             visible: opacity > 0
 
+            // The colour field behind a story without a picture; a picture
+            // covers it, so then it isn't drawn at all.
             GradientTile {
                 anchors.fill: parent
+                visible: picture.status !== Image.Ready
                 radius: 0
                 baseColor: shown.sectionColor || Theme.accent
-                active: current
+                active: slot.opacity > 0
                 dark: true
                 seed: modelData * 1.9
+                whileIdle: true
+                maxFps: Theme.saverFps
+                period: Theme.saverDrift
             }
             Image {
                 id: picture
@@ -60,9 +67,11 @@ Item {
                 visible: status === Image.Ready
                 transformOrigin: Item.Center
                 scale: 1
-                // Ken Burns: a slow push in while this story is up.
+                // Ken Burns: a slow push in while this story is up, and on
+                // through its fade out (12 s up + 1.4 s out), so it never
+                // stops mid-move.
                 SequentialAnimation on scale {
-                    running: current && picture.visible && Device.animatedTiles
+                    running: (current || slot.opacity > 0) && picture.visible && Device.animatedTiles
                     NumberAnimation { from: 1.0; to: 1.08; duration: 14000; easing.type: Easing.InOutSine }
                 }
             }

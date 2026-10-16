@@ -108,6 +108,51 @@ target_link_libraries(tst_dialogs PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
 add_test(NAME tst_dialogs COMMAND tst_dialogs)
 set_tests_properties(tst_dialogs PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# Motion: the palette's fade lengths, GradientTile's drift and SpectrumGlow's
+# idle cap, against a stand-in DisplayController.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-motion
+    Theme.qml components/GradientTile.qml components/SpectrumGlow.qml)
+qt_add_executable(tst_motion tst_motion.cpp)
+target_compile_options(tst_motion PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_motion PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-motion")
+target_link_libraries(tst_motion PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_shaders(tst_motion "motion_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag)
+add_test(NAME tst_motion COMMAND tst_motion)
+set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+# The screens' motion and layouts (Home, Boards, Briefs) against the real
+# store at a fixed time of day: the reveal, the insight line, Home's
+# countdown and now marker, board tiles from boardLayout, the Briefs outline,
+# the nav's thinking ring.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
+    Theme.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
+    components/SpectrumGlow.qml components/GradientTile.qml components/Sparkline.qml
+    components/Ring.qml components/StatusDot.qml components/Reveal.qml components/InsightLine.qml
+    components/HealthStrip.qml components/SuggestionChips.qml components/FocusFlickable.qml
+    components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
+    components/MasterDetail.qml components/Tag.qml components/NavRail.qml
+    screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml)
+qt_add_executable(tst_screens tst_screens.cpp
+    ../src/models/FeedStore.h  ../src/models/FeedStore.cpp
+    ../src/models/Assistant.h  ../src/models/Assistant.cpp
+)
+target_compile_options(tst_screens PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_screens PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-screens")
+target_link_libraries(tst_screens PRIVATE mcfly-core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_resources(tst_screens "demo_data_screens"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/resources/demo/feed.json)
+qt_add_shaders(tst_screens "screens_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag)
+add_test(NAME tst_screens COMMAND tst_screens)
+set_tests_properties(tst_screens PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # A sky backdrop (Backdrop.qml): what its shader is fed through the dusk,
 # against a stand-in DisplayController.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop

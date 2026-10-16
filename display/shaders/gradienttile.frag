@@ -4,12 +4,17 @@
 // static film grain, and an antialiased rounded-corner mask. One pass, no
 // textures, no loops. Built into a .qsb by qt_add_shaders.
 //
+// Where the rings and colour fields are comes in as points: GradientTile.qml
+// works out their drift once per update, so nothing here depends on time.
+// The colour fields blend in OKLCh (lightness, chroma, hue), so two hues meet
+// through the hues between them at full strength instead of greying out.
+//
 // `soft` blurs the rings into the gradient: the lens edge, the frost, the rim
 // and its halo fade over a fraction of the ring's radius instead of over a
 // pixel, so the blur reads the same on every panel. All of it is analytic:
 // no blur pass, nothing sampled twice. The tile's own corners stay 1 px sharp.
 //
-// Per pixel: 8 exp, ~5 smoothstep/clamp, 4 length, 2 hash.
+// Per pixel: 8 exp, 1 sin + 1 cos, 3 pow, ~5 smoothstep/clamp, 4 length, 2 hash.
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -20,19 +25,22 @@ layout(std140, binding = 0) uniform buf {
     vec2 size;        // tile size, logical px
     float radius;     // corner radius, logical px
     float dpr;        // device pixel ratio: one physical px = 1/dpr logical px
-    float phase;      // loop clock, 0..2pi (all motion uses whole multiples of it)
-    float seed;       // per-tile variation: layout flip + phase offsets
-    float motion;     // drift amplitude, 1 = default, 0 = frozen layout
     float rings;      // 0, 1 or 2 glass rings
-    float ringScale;  // ring size multiplier
-    float ringBias;   // 0..1, horizontal home of the rings
+    float r1;         // ring 1's radius, logical px (ring 2 is 0.72 of it)
     float glass;      // glass strength: rims x glass, frost x glass^2 (dimmed at night)
     float grain;      // film-grain amplitude (0.035: most pixels within +-4/255)
     float soft;       // ring softness: 0 = crisp glass edges, 1 = blurred into the gradient
-    vec4 c0;          // palette: main hue
-    vec4 c1;          // analogous, warmer/cooler
-    vec4 c2;          // analogous, the other way
-    vec4 c3;          // soft highlight
+    vec2 r1c;         // ring centres, logical px
+    vec2 r2c;
+    vec2 b0;          // colour-field centres, logical px: main hue,
+    vec2 b1;          //   analogous one way,
+    vec2 b2;          //   analogous the other way,
+    vec2 b3;          //   the soft highlight
+    vec4 lch0;        // the three colour fields in OKLCh: L, C, hue in radians,
+    vec4 lch1;        //   unwrapped from one to the next so a blend goes the short way
+    vec4 lch2;
+    vec4 tint;        // field 2 in OKLab, tinting where the rings overlap
+    vec4 hilite;      // the soft highlight in OKLab
     vec4 rimColor;    // rim + frost colour, alpha = rim strength (arrives premultiplied)
 };
 
@@ -47,6 +55,19 @@ float blob(vec2 p, vec2 c, float inv)
 {
     vec2 d = p - c;
     return exp(-dot(d, d) * inv);
+}
+
+vec3 oklabToSrgb(vec3 c)
+{
+    vec3 lms = vec3(c.x + 0.3963377774 * c.y + 0.2158037573 * c.z,
+                    c.x - 0.1055613458 * c.y - 0.0638541728 * c.z,
+                    c.x - 0.0894841775 * c.y - 1.2914855480 * c.z);
+    lms = lms * lms * lms;
+    vec3 rgb = vec3( 4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
+                    -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
+                    -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
+    rgb = clamp(rgb, 0.0, 1.0);
+    return mix(12.92 * rgb, 1.055 * pow(rgb, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, rgb));
 }
 
 void main()
@@ -64,20 +85,9 @@ void main()
         return;
     }
 
-    float t = phase;
-    float s = seed;
-    float flip = step(0.5, fract(s * 0.618034));   // mirror the layout on half the seeds
-
     // ---- Glass rings (geometry first: they bend the gradient behind them).
-    float R1 = ringScale * min(0.40 * size.x, 1.05 * size.y);
+    float R1 = r1;
     float R2 = 0.72 * R1;
-    float bias = mix(ringBias, 1.0 - ringBias, flip);
-    vec2 home = vec2(size.x * bias, size.y * 0.42);
-    float side = mix(-1.0, 1.0, flip);                // ring 2 sits toward the tile centre
-    float ax = 0.30 * R1 + 0.05 * size.x;            // drift reach
-    vec2 r1c = home + motion * vec2(ax * sin(t + s * 2.1), 0.22 * R1 * sin(2.0 * t + s * 3.7));
-    vec2 r2c = home + vec2(0.55 * side * R1, 0.62 * R1)
-             + motion * vec2(ax * cos(t + s * 1.3 + 1.9), 0.26 * R1 * sin(t + s * 0.9 + 0.6));
 
     vec2 d1 = p - r1c;
     vec2 d2 = p - r2c;
@@ -98,23 +108,18 @@ void main()
     vec2 ps = p - lens * in1 * (0.14 * d1 + vec2(0.07, -0.05) * R1)
                 - lens * in2 * (0.14 * d2 + vec2(-0.05, 0.07) * R2);
 
-    // ---- Mesh gradient: three drifting colour fields + a soft highlight.
+    // ---- Mesh gradient: three drifting colour fields + a soft highlight,
+    // blended in OKLCh and OKLab, then into sRGB once.
     float S = sqrt(size.x * size.y);
     float inv = 1.0 / (0.34 * S * S);
-    vec2 a0 = vec2(mix(0.10, 0.90, flip), 0.10);
-    vec2 a1 = vec2(mix(0.90, 0.10, flip), 0.30);
-    vec2 a2 = vec2(0.45, 1.00);
-    vec2 a3 = vec2(mix(0.62, 0.38, flip), 0.62);
-    vec2 b0 = size * (a0 + motion * vec2(0.10 * sin(t + s), 0.18 * cos(t + s * 1.7)));
-    vec2 b1 = size * (a1 + motion * vec2(0.12 * cos(2.0 * t + s * 2.3), 0.20 * sin(t + s * 0.7)));
-    vec2 b2 = size * (a2 + motion * vec2(0.18 * sin(-t + s * 1.1), 0.15 * cos(2.0 * t + s * 2.9)));
-    vec2 b3 = size * (a3 + motion * vec2(0.20 * cos(t + s * 3.1), 0.22 * sin(-2.0 * t + s * 1.9)));
-
     float w0 = blob(ps, b0, inv) + 0.02;
     float w1 = blob(ps, b1, inv);
     float w2 = blob(ps, b2, inv * 1.2);
-    vec3 col = (c0.rgb * w0 + c1.rgb * w1 + c2.rgb * w2) / (w0 + w1 + w2);
-    col = mix(col, c3.rgb, 0.62 * blob(ps, b3, inv * 2.4));
+    vec3 lch = (lch0.xyz * w0 + lch1.xyz * w1 + lch2.xyz * w2) / (w0 + w1 + w2);
+    vec3 lab = vec3(lch.x, lch.y * cos(lch.z), lch.y * sin(lch.z));
+    lab = mix(lab, hilite.xyz, 0.62 * blob(ps, b3, inv * 2.4));
+    lab = mix(lab, tint.xyz, 0.30 * in1 * in2);   // the rings' overlap
+    vec3 col = oklabToSrgb(lab);
 
     // Faint top sheen, like light on a glass sheet.
     col += glass * 0.035 * (1.0 - qt_TexCoord0.y);
@@ -123,12 +128,11 @@ void main()
     vec3 rim = rimColor.rgb / max(rimColor.a, 0.001);
 
     // ---- Frost: a faint fill that brightens toward the rim (less when soft,
-    // or the bright band would still end in a line); tint the overlap.
+    // or the bright band would still end in a line).
     float e1 = min(l1 / max(R1, 1.0), 1.0);
     float e2 = min(l2 / max(R2, 1.0), 1.0);
     float toRim = 0.16 * (1.0 - 0.55 * soft);
     float frost = in1 * (0.07 + toRim * e1 * e1 * e1) + in2 * (0.07 + toRim * e2 * e2 * e2);
-    col = mix(col, c2.rgb, 0.30 * in1 * in2);
     col = mix(col, rim, glass * glass * frost);
 
     // ---- Rims: a ridge across the ring's edge, lit from the top-left, with a

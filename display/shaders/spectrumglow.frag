@@ -6,6 +6,14 @@
 // layered band of light bends up into a wide dome; a thin spectrum line runs
 // along the rounded bottom edge. While a reply is prepared everything gathers
 // into one lit beam that travels side to side. Additive over a dark host.
+//
+// Where the lobes are, their sizes, strengths and colours come in as
+// uniforms (SpectrumGlow.qml works them out once per update), so nothing
+// here depends on time. Bright overlaps roll off through a soft knee instead
+// of clipping, and lit pixels get a level of triangular dither, since the
+// ramps up from the dark host are long.
+//
+// Per pixel: 16 exp, 1 sin, 1 sqrt, ~26 smoothstep, 2 hash.
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -16,37 +24,49 @@ layout(std140, binding = 0) uniform buf {
     vec2 size;        // host size, logical px
     float radius;     // corner radius of the host, logical px
     float dpr;        // device pixel ratio
-    float time;       // seconds
-    float level;      // smoothed voice levels, 0..1
-    float low;
-    float mid;
-    float high;
-    float processing; // 0..1, eased
-    float motion;     // 1 = animate, 0 = still (reduce motion)
-    float kind;       // 0 = the bottom of a voice screen, 1 = an input-sized host
     float intensity;  // overall brightness, 1 = as designed
+    float bandWidth;  // the band's strips, logical px
+    float bandBlur;
+    float lobeBlur;   // the soft top of a lobe, logical px
+    vec4 dome;        // centre x, half width (of the bell), crest height (logical px), energy 0..1
+    vec4 l0;          // per lobe: x, top (logical px), 1/(2 sigma^2) of its width, alpha
+    vec4 l1;
+    vec4 l2;
+    vec4 l3;
+    vec4 l4;
+    vec4 l5;
+    vec4 l6;
+    vec4 k0;          // per lobe: colour (sRGB), weight in the band's colour
+    vec4 k1;
+    vec4 k2;
+    vec4 k3;
+    vec4 k4;
+    vec4 k5;
+    vec4 k6;
 };
 
-// The "colorful" palette, in the order the hue drifts: magenta, violet,
-// blue, teal, green, amber, coral.
-vec3 palette(float position)
+float hash12(vec2 p)
 {
-    float p = mod(position, 7.0);
-    int i = int(floor(p));
-    float f = p - floor(p);
-    vec3 c[8];
-    c[0] = vec3(0.86, 0.28, 0.70); c[1] = vec3(0.56, 0.34, 0.90); c[2] = vec3(0.26, 0.50, 0.96);
-    c[3] = vec3(0.14, 0.76, 0.76); c[4] = vec3(0.30, 0.76, 0.40); c[5] = vec3(0.96, 0.66, 0.24);
-    c[6] = vec3(0.96, 0.38, 0.38); c[7] = c[0];
-    vec3 a = c[0];
-    vec3 b = c[1];
-    if (i == 1) { a = c[1]; b = c[2]; }
-    else if (i == 2) { a = c[2]; b = c[3]; }
-    else if (i == 3) { a = c[3]; b = c[4]; }
-    else if (i == 4) { a = c[4]; b = c[5]; }
-    else if (i == 5) { a = c[5]; b = c[6]; }
-    else if (i == 6) { a = c[6]; b = c[7]; }
-    return mix(a, b, f);
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// One lobe: a soft column from its top down past the bottom edge, Gaussian
+// across, rising smoothly to its brightest about three quarters down. Adds
+// its light to `col` and its colour, by nearness, to the band's colour.
+void lobe(vec4 l, vec4 k, vec2 p, float spread, inout vec3 col, inout vec3 sum, inout float total)
+{
+    float hx = p.x - l.x;
+    float horiz = exp(-hx * hx * l.z);
+    float t = clamp((p.y - l.y) / max(size.y - l.y, 1.0), 0.0, 1.0);
+    float vert = smoothstep(0.0, 0.72, t) * (1.0 - 0.5 * smoothstep(0.72, 1.0, t));
+    float topSoft = smoothstep(l.y - lobeBlur, l.y + lobeBlur, p.y);
+    col += k.rgb * (l.w * horiz * vert * topSoft);
+
+    float cw = exp(-hx * hx * spread) * k.w + 1e-6;
+    sum += k.rgb * cw;
+    total += cw;
 }
 
 void main()
@@ -67,83 +87,38 @@ void main()
         return;
     }
 
-    // Tuning, in units of `u`: the width for a voice screen, the height for an input.
-    bool screen = kind < 0.5;
-    float u = screen ? w : h;
-    float restReach = screen ? 0.10 : 0.22, reach = screen ? 0.56 : 0.55;
-    float restBend = screen ? 0.012 : 0.03, bend = screen ? 0.115 : 0.36;
-    float spread = screen ? 0.5 : 0.36;
-    float lobeWidth = screen ? 0.24 : 0.9, lobeBlur = screen ? 0.04 : 0.1;
-    float bandWidth = u * (screen ? 0.04 : 0.07), bandBlur = u * (screen ? 0.016 : 0.03);
-
-    float drift = time * 0.045 * motion;
-    float process = processing;
-    float beamX = w * (0.5 + 0.3 * sin(time * 1.3) * motion);
-    float energy = max(level, 0.7 * process);
-    float centerX = 0.5 * w + (beamX - 0.5 * w) * process;
-    float halfWidth = w * (spread + (0.17 - spread) * process);
+    float energy = dome.w;
 
     // The host's bottom edge at x, rising around the rounded corners.
     float dx = p.x < r ? r - p.x : (p.x > w - r ? p.x - (w - r) : 0.0);
     float floorY = h - r + sqrt(max(r * r - dx * dx, 0.0));
 
     // The dome's profile at this x: 1 in the middle, falling off toward the corners.
-    float bd = (p.x - centerX) / (halfWidth * 0.47);
+    float bd = (p.x - dome.x) / dome.y;
     float bell = 1.0 / (1.0 + bd * bd);
 
-    float bands[7];
-    bands[0] = low; bands[1] = mid; bands[2] = high; bands[3] = mid; bands[4] = low; bands[5] = high; bands[6] = mid;
-
+    // 1. Lobes: soft columns rising from the band, each following one voice band.
     vec3 col = vec3(0.0);
-    // The lobes' colour at this x, for the band and the edge line.
     vec3 lobeSum = vec3(0.0);
     float lobeTotal = 1e-6;
-
-    // 1. Lobes: soft columns rising from the band, each following one voice band.
-    for (int i = 0; i < 7; i++) {
-        float fi = float(i);
-        float flow = fract(fi / 7.0 + time * 0.05 * motion);
-        float s = (flow * 2.0 - 1.0) * 1.2;
-        float restX = 0.5 * w + s * 0.5 * w;
-        float edgeFade = clamp((1.2 - abs(s)) / 0.35, 0.0, 1.0);
-        float band = bands[i];
-        float breath = 0.025 * sin(time * 0.9 + fi * 2.1) * motion;
-        float rd = (restX - centerX) / (halfWidth * 0.47);
-        float restBell = 1.0 / (1.0 + rd * rd);
-        float voiceHeight = u * (restReach + breath + reach * band) * (0.55 + 0.45 * restBell);
-        float x = restX + (beamX + (fi - 3.0) * w * 0.03 - restX) * process;
-        float height = voiceHeight + (u * reach * 0.8 - voiceHeight) * process;
-        float width = u * lobeWidth * (1.0 - 0.3 * process);
-        float alpha = ((0.16 + 0.55 * max(band, level * 0.6)) * edgeFade * (0.3 + 0.7 * restBell)) * (1.0 - process) + 0.45 * process;
-        float weight = edgeFade + (1.0 - edgeFade) * process;
-        vec3 color = palette(fi + drift);
-
-        // Soft column: a blurred rounded rectangle from (h - height) down past the edge.
-        float blur = u * lobeBlur;
-        float hx = abs(p.x - x);
-        float horiz = 1.0 - smoothstep(0.5 * width - blur, 0.5 * width + blur, hx);
-        float top = h - height;
-        float t = clamp((p.y - top) / max(height, 1.0), 0.0, 1.0);
-        float vert = t < 0.72 ? t / 0.72 : mix(1.0, 0.5, (t - 0.72) / 0.28);
-        float topSoft = smoothstep(top - blur, top + blur, p.y);
-        col += color * (alpha * horiz * vert * topSoft);
-
-        float cd = (p.x - x) / (w * 0.16);
-        float cw = exp(-cd * cd) * weight + 1e-6;
-        lobeSum += color * cw;
-        lobeTotal += cw;
-    }
+    float spread = 1.0 / (0.0256 * w * w);   // how far a lobe colours the band: (0.16 w)^-2
+    lobe(l0, k0, p, spread, col, lobeSum, lobeTotal);
+    lobe(l1, k1, p, spread, col, lobeSum, lobeTotal);
+    lobe(l2, k2, p, spread, col, lobeSum, lobeTotal);
+    lobe(l3, k3, p, spread, col, lobeSum, lobeTotal);
+    lobe(l4, k4, p, spread, col, lobeSum, lobeTotal);
+    lobe(l5, k5, p, spread, col, lobeSum, lobeTotal);
+    lobe(l6, k6, p, spread, col, lobeSum, lobeTotal);
     vec3 lobeColor = lobeSum / lobeTotal;
 
     // 2. The band: strips of light along a curve that follows the bottom edge
     //    and bends up in the middle with the voice.
-    float crest = u * (restBend + bend * energy) * (1.0 - process) + u * bend * 0.85 * process;
-    float yc = floorY - 0.5 * bandWidth - crest * bell;
+    float yc = floorY - 0.5 * bandWidth - dome.z * bell;
     float strength = 0.4 + 0.6 * energy;
     // dome, pale: everything under the centerline
     float domeFade = 0.3 + 0.7 * bell;
-    float dome = smoothstep(yc - bandBlur, yc + bandBlur, p.y);
-    col += mix(lobeColor, vec3(1.0), 0.45) * (0.42 * strength * domeFade * dome);
+    float domeFill = smoothstep(yc - bandBlur, yc + bandBlur, p.y);
+    col += mix(lobeColor, vec3(1.0), 0.45) * (0.42 * strength * domeFade * domeFill);
     // mid
     float fadeMid = 0.1 + 0.9 * bell;
     float midLine = 1.0 - smoothstep(0.5 * bandWidth - bandBlur, 0.5 * bandWidth + bandBlur, abs(p.y - (yc + 0.5 * bandWidth)));
@@ -165,6 +140,19 @@ void main()
     float crisp = 1.0 - smoothstep(0.8 - px, 0.8 + px, edgeD);
     col += lineColor * (lineAlpha * (0.6 * glowLine + crisp));
 
+    // Soft knee: past 0.6 the brightest channel rolls off toward 1, and the
+    // whole colour scales with it, so an overlap keeps its hue instead of
+    // clipping channel by channel.
+    col *= intensity;
+    float m = max(col.r, max(col.g, col.b));
+    float knee = m > 0.6 ? (0.6 + 0.4 * (1.0 - exp(-(m - 0.6) / 0.4))) / m : 1.0;
+    col *= knee;
+
+    // Triangular dither, one level, only where there is light: the host's
+    // own dark stays clean.
+    vec2 f = floor(p * dpr);
+    col += (hash12(f) + hash12(f + 19.19) - 1.0) / 255.0 * step(1.0 / 255.0, m);
+
     // Additive: no alpha, so the host's own colour stays underneath.
-    fragColor = vec4(clamp(col * intensity, 0.0, 1.2) * cover * qt_Opacity, 0.0);
+    fragColor = vec4(max(col, 0.0) * cover * qt_Opacity, 0.0);
 }

@@ -42,6 +42,14 @@ class TestFeedStore : public QObject
     }
 
     static QByteArray rows(const QJsonArray &a) { return QJsonDocument(a).toJson(QJsonDocument::Compact); }
+    // The first sync's settings have arrived (or were there before the spy): watch from here.
+    void settleFirstSync(QSignalSpy &received)
+    {
+        QTRY_VERIFY(!m_server.requests("GET", "/rest/v1/devices").isEmpty());
+        QTRY_COMPARE(m_server.pending(), 0);
+        QTest::qWait(200);
+        received.clear();
+    }
     static QString iso(const QDateTime &dt) { return dt.toUTC().toString(Qt::ISODateWithMs); }
     // "Today" moves at midnight, and the fixtures sit an hour ahead or minutes
     // back from now, so near it they can land on another day.
@@ -656,6 +664,74 @@ private slots:
         QCOMPARE(rig->store.quotes().size(), 2);
     }
 
+    void aVoiceSetElsewhereSurvivesTheDisplaysOwnSave()
+    {
+        // The phone sets the account's voice between two syncs, and the display
+        // saves a change of its own in between. The answer to that save already
+        // holds the phone's voice; the next sync must still bring it to the screen.
+        auto row = std::make_shared<QJsonObject>(QJsonObject{{"screensaver", "ambient"}, {"voice", "af_heart"}});
+        m_server.route("/rest/v1/devices", [row](const Request &r) {
+            if (r.method == "GET")
+                return json(rows(QJsonArray{QJsonObject{{"settings", *row}}}));
+            return json("[]"); // the check-in
+        });
+        m_server.route("/rest/v1/rpc/device_update_settings", [row](const Request &r) {
+            const QJsonObject patch = r.body.value("patch").toObject();
+            for (auto it = patch.begin(); it != patch.end(); ++it)
+                row->insert(it.key(), it.value());
+            return json(QJsonDocument(*row));
+        });
+        startLive();
+        QSignalSpy received(&rig->store, &FeedStore::deviceSettingsReceived);
+        settleFirstSync(received);
+
+        row->insert("voice", "am_fenrir"); // from the phone
+        rig->store.pushDeviceSettings({{"screensaver", "clock"}});
+        QTRY_COMPARE(m_server.requests("POST", "/rest/v1/rpc/device_update_settings").size(), 1);
+        QTest::qWait(100); // its answer handled
+
+        rig->store.refresh();
+        QTRY_COMPARE(received.size(), 1);
+        QCOMPARE(received.first().first().toMap().value("voice").toString(), QStringLiteral("am_fenrir"));
+
+        // Nothing new after that: a sync leaves the screen alone.
+        rig->store.refresh();
+        QTest::qWait(500);
+        QCOMPARE(received.size(), 1);
+    }
+
+    void aKeyTheServerDropsIsNotSentAgainAndAgain()
+    {
+        // An older server drops a newer display's extra key (clean_device_settings).
+        // The display saves once and leaves it at that, rather than every sync.
+        auto row = std::make_shared<QJsonObject>(QJsonObject{{"screensaver", "ambient"}});
+        m_server.route("/rest/v1/devices", [row](const Request &r) {
+            if (r.method == "GET")
+                return json(rows(QJsonArray{QJsonObject{{"settings", *row}}}));
+            return json("[]");
+        });
+        m_server.route("/rest/v1/rpc/device_update_settings", [row](const Request &r) {
+            const QJsonObject patch = r.body.value("patch").toObject();
+            for (auto it = patch.begin(); it != patch.end(); ++it)
+                if (it.key() != QLatin1String("futureKey"))
+                    row->insert(it.key(), it.value());
+            return json(QJsonDocument(*row));
+        });
+        startLive();
+        QSignalSpy received(&rig->store, &FeedStore::deviceSettingsReceived);
+        settleFirstSync(received);
+
+        rig->store.pushDeviceSettings({{"futureKey", 1}, {"screensaver", "clock"}});
+        QTRY_COMPARE(m_server.requests("POST", "/rest/v1/rpc/device_update_settings").size(), 1);
+        QTest::qWait(100);
+        rig->store.refresh();
+        QTest::qWait(500);
+        rig->store.refresh();
+        QTest::qWait(500);
+        QCOMPARE(received.size(), 0);
+        QCOMPARE(m_server.requests("POST", "/rest/v1/rpc/device_update_settings").size(), 1);
+    }
+
     void syncsAgainOnTheInterval()
     {
         startLive(500);
@@ -767,6 +843,28 @@ private slots:
         QVERIFY(m_server.requests().isEmpty());
     }
 
+    void boardMetricsKnowGoodNews()
+    {
+        // A board's falling error rate is good news, as a falling metric is.
+        QSettings().clear();
+        rig = std::make_unique<Rig>(QUrl(), true);
+        rig->store.start();
+        QVariantMap errors, signups;
+        for (const QVariant &d : rig->store.dashboards())
+            for (const QVariant &w : d.toMap().value("widgets").toList()) {
+                const QVariantMap m = w.toMap();
+                if (m.value("label") == QLatin1String("Errors"))
+                    errors = m;
+                if (m.value("label") == QLatin1String("Signups"))
+                    signups = m;
+            }
+        QCOMPARE(errors.value("trend").toString(), QStringLiteral("down"));
+        QVERIFY(errors.value("good").toBool());
+        QVERIFY(!errors.value("up").toBool()); // unchanged: `up` still says which way it went
+        QCOMPARE(signups.value("trend").toString(), QStringLiteral("up"));
+        QVERIFY(signups.value("good").toBool());
+    }
+
     void demoRollsOverAtMidnight()
     {
         QSettings().clear();
@@ -779,6 +877,555 @@ private slots:
         fake = QDateTime(QDate(2026, 10, 15), QTime(0, 0, 0, 200));
         QTRY_COMPARE_WITH_TIMEOUT(newDay.count(), 1, 3000);
         QCOMPARE(rig->store.today(), QStringLiteral("2026-10-15"));
+    }
+
+    // ── What stands out, ranges, changes, bento boards, the day dial ──
+
+    void demoHighlightsRankWhatStandsOut()
+    {
+        // 3:10 pm: the 3:30 Pulse review is 20 minutes out.
+        startDemoAt(QTime(15, 10));
+        const QVariantList highlights = rig->store.highlights();
+        QCOMPARE(highlights.size(), 5);
+        QStringList kinds;
+        for (const QVariant &v : highlights)
+            kinds << v.toMap().value("kind").toString();
+        // Blocked, a board's status, the metrics far off their usual, then the meeting.
+        QCOMPARE(kinds, (QStringList{"blocked", "status", "metric", "metric", "event"}));
+        const QStringList icons = iconNames();
+        QVERIFY(icons.size() > 20);
+        for (const QVariant &v : highlights) {
+            const QVariantMap h = v.toMap();
+            QVERIFY2(icons.contains(h.value("icon").toString()), qPrintable(h.value("icon").toString()));
+            for (const char *field : {"id", "kind", "icon", "title", "detail", "color", "tone", "screen", "segment", "board", "itemId", "question"})
+                QVERIFY2(h.contains(field), field);
+            QVERIFY(!h.contains("strength"));
+        }
+
+        const QVariantMap blocked = highlights.at(0).toMap();
+        QCOMPARE(blocked.value("title").toString(), QStringLiteral("Onyx is blocked"));
+        QCOMPARE(blocked.value("detail").toString(), QStringLiteral("App Review's answer on the FSKit entitlement"));
+        QCOMPARE(blocked.value("screen").toInt(), 4);
+        QCOMPARE(blocked.value("itemId").toString(), QStringLiteral("demo-project-onyx"));
+        QCOMPARE(blocked.value("question").toString(), QStringLiteral("What's blocking Onyx?"));
+        QCOMPARE(blocked.value("tone").toString(), QStringLiteral("warn"));
+
+        // The worst status first (Search is down, Workers only warns).
+        const QVariantMap status = highlights.at(1).toMap();
+        QCOMPARE(status.value("title").toString(), QStringLiteral("Search is down"));
+        QCOMPARE(status.value("detail").toString(), QStringLiteral("Index rebuilding since 3:10 · Ops · +1 more"));
+        QCOMPARE(status.value("tone").toString(), QStringLiteral("bad"));
+        QCOMPARE(status.value("screen").toInt(), 5);
+        QCOMPARE(status.value("board").toInt(), 0);
+        QCOMPARE(status.value("question").toString(), QStringLiteral("Why is Search down?"));
+
+        // Seven points: too few for a z, so the agents' own 10% jumps count,
+        // strongest first. Errors falling is good news.
+        const QVariantMap errors = highlights.at(2).toMap();
+        QCOMPARE(errors.value("title").toString(), QStringLiteral("Error rate is down 30.0%"));
+        QCOMPARE(errors.value("tone").toString(), QStringLiteral("good"));
+        QCOMPARE(errors.value("screen").toInt(), 2);
+        QCOMPARE(errors.value("segment").toString(), QStringLiteral("metrics"));
+        QCOMPARE(errors.value("question").toString(), QStringLiteral("What's behind the drop in Error rate?"));
+        QCOMPARE(highlights.at(3).toMap().value("title").toString(), QStringLiteral("Sales today is up 12.5%"));
+
+        const QVariantMap event = highlights.at(4).toMap();
+        QCOMPARE(event.value("title").toString(), QStringLiteral("Pulse review with the team starts in 20 min"));
+        QVERIFY(event.value("detail").toString().endsWith(QStringLiteral(" · Zoom")));
+        QCOMPARE(event.value("screen").toInt(), 6);
+        QCOMPARE(event.value("tone").toString(), QStringLiteral("neutral"));
+        QCOMPARE(event.value("question").toString(), QStringLiteral("What do I need for Pulse review with the team?"));
+
+        // At noon nothing is about to start: the big mover takes the slot.
+        startDemoAt(QTime(12, 0));
+        const QVariantMap mover = rig->store.highlights().at(4).toMap();
+        QCOMPARE(mover.value("kind").toString(), QStringLiteral("mover"));
+        QCOMPARE(mover.value("title").toString(), QStringLiteral("TSLA is up 4.0%"));
+        QCOMPARE(mover.value("detail").toString(), QStringLiteral("$402.10 · 4.8× its usual daily move"));
+        QCOMPARE(mover.value("icon").toString(), QStringLiteral("arrow-up"));
+        QCOMPARE(mover.value("segment").toString(), QStringLiteral("markets"));
+        QCOMPARE(mover.value("itemId").toString(), QStringLiteral("TSLA"));
+        QCOMPARE(mover.value("question").toString(), QStringLiteral("Why is TSLA up 4.0% today?"));
+    }
+
+    void highlightsMoveWithTheMinute()
+    {
+        // A second before 3:11: the minute tick comes almost at once.
+        startDemoAt(QTime(15, 10, 59, 900));
+        QCOMPARE(rig->store.highlights().at(4).toMap().value("title").toString(), QStringLiteral("Pulse review with the team starts in 19 min"));
+        QCOMPARE(rig->store.nowAngle(), (15 * 60 + 10) * 0.25);
+        QSignalSpy ticked(&rig->store, &FeedStore::nowAngleChanged);
+        QSignalSpy changed(&rig->store, &FeedStore::highlightsChanged);
+        QSignalSpy data(&rig->store, &FeedStore::dataChanged);
+        // (A tenth of a second before the next minute again, so the tick after comes soon too.)
+        m_fake = QDateTime(m_fake.date(), QTime(15, 31, 59, 900));
+        QTRY_VERIFY_WITH_TIMEOUT(ticked.count() >= 1, 3000);
+        QCOMPARE(rig->store.nowAngle(), (15 * 60 + 31) * 0.25);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(data.count(), 0); // nothing else re-binds
+        QCOMPARE(rig->store.highlights().at(4).toMap().value("title").toString(), QStringLiteral("Pulse review with the team has started"));
+        // The same minute again changes nothing.
+        QTRY_VERIFY_WITH_TIMEOUT(ticked.count() >= 2, 3000);
+        QCOMPARE(changed.count(), 1);
+    }
+
+    void liveHighlights()
+    {
+        startLive();
+        QTRY_COMPARE(rig->store.highlights().size(), 5);
+        QTRY_VERIFY(rig->store.highlights().last().toMap().value("kind").toString() == QLatin1String("pulse"));
+        QStringList kinds;
+        for (const QVariant &v : rig->store.highlights())
+            kinds << v.toMap().value("kind").toString();
+        // No meeting within 30 min (the standup is an hour out), no big mover.
+        QCOMPARE(kinds, (QStringList{"blocked", "status", "metric", "brief", "pulse"}));
+        const QVariantMap status = rig->store.highlights().at(1).toMap();
+        QCOMPARE(status.value("title").toString(), QStringLiteral("API has a warning"));
+        QCOMPARE(status.value("detail").toString(), QStringLiteral("slow · Ops"));
+        QCOMPARE(status.value("question").toString(), QStringLiteral("What's wrong with API?"));
+        QCOMPARE(status.value("itemId").toString(), QStringLiteral("d1"));
+        const QVariantMap brief = rig->store.highlights().at(3).toMap();
+        QCOMPARE(brief.value("title").toString(), QStringLiteral("Grok posted “Newest”"));
+        QCOMPARE(brief.value("detail").toString(), QStringLiteral("10 min ago · First paragraph."));
+        QCOMPARE(brief.value("screen").toInt(), 1);
+        QCOMPARE(brief.value("question").toString(), QStringLiteral("What did Grok just say?"));
+        const QVariantMap pulse = rig->store.highlights().at(4).toMap();
+        QCOMPARE(pulse.value("title").toString(), QStringLiteral("Two"));
+        QCOMPARE(pulse.value("detail").toString(), QStringLiteral("Grok · 3 stories"));
+        QCOMPARE(pulse.value("itemId").toString(), QStringLiteral("r2"));
+        QCOMPARE(pulse.value("question").toString(), QStringLiteral("Tell me more about “Two”"));
+    }
+
+    void metricAnomaliesUseARobustZ()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        // Ten readings each: a latency spike far past its usual spread; a flat
+        // count with a 15% jump reported (no spread, so the jump counts); a
+        // varied series whose reported 15% is within its usual (the z wins).
+        auto series = [&now](const QString &key, const QString &unit, const QList<double> &values, const QJsonValue &pct) {
+            QJsonArray out;
+            for (int i = 0; i < values.size(); ++i)
+                out.append(QJsonObject{{"id", key + QString::number(i)}, {"agent_id", "a2"}, {"key", key}, {"label", QJsonValue::Null},
+                                       {"value", values.at(i)}, {"unit", unit}, {"delta", QJsonValue::Null},
+                                       {"delta_pct", i == values.size() - 1 ? pct : QJsonValue::Null}, {"note", QJsonValue::Null},
+                                       {"as_of", iso(now.addSecs(-3600 * (values.size() - 1 - i)))}});
+            return out;
+        };
+        QJsonArray all;
+        for (const QJsonArray &a : {series("api.latency", "ms", {100, 102, 99, 101, 100, 98, 103, 100, 101, 180}, QJsonValue::Null),
+                                    series("orders.open", "", {20, 20, 20, 20, 20, 20, 20, 20, 20, 23}, 15),
+                                    series("signups", "", {10, 30, 12, 28, 15, 25, 11, 29, 14, 24}, 15)})
+            for (const QJsonValue &v : a)
+                all.append(v);
+        m_server.route("/rest/v1/metric_settings", [](const Request &) {
+            return json(R"([{"key":"api.latency","label":"API latency","group_name":"Ops","sort_order":0,"hidden":false},{"key":"orders.open","label":"Open orders","group_name":"Store","sort_order":1,"hidden":false},{"key":"signups","label":"Signups","group_name":"Store","sort_order":2,"hidden":false}])");
+        });
+        m_server.route("/rest/v1/metrics", [all](const Request &) { return json(rows(all)); });
+        startLive();
+        QTRY_COMPARE(rig->store.metrics().size(), 3);
+        const QVariantMap latency = rig->store.metrics().at(0).toMap();
+        QVERIFY(latency.value("anomaly").toBool());
+        QCOMPARE(latency.value("usualLabel").toString(), QStringLiteral("100 ms"));
+        QCOMPARE(latency.value("goodDirection").toString(), QStringLiteral("down"));
+        QCOMPARE(latency.value("trend").toString(), QStringLiteral("up"));
+        QVERIFY(!latency.value("good").toBool());
+        QVERIFY(rig->store.metrics().at(1).toMap().value("anomaly").toBool());
+        QVERIFY(!rig->store.metrics().at(2).toMap().value("anomaly").toBool());
+
+        QTRY_VERIFY(!rig->store.highlights().isEmpty());
+        QVariantList metrics;
+        for (const QVariant &v : rig->store.highlights())
+            if (v.toMap().value("kind").toString() == QLatin1String("metric"))
+                metrics << v;
+        QCOMPARE(metrics.size(), 2);
+        const QVariantMap spike = metrics.at(0).toMap(); // z ≈ 54, stronger than a 15% jump
+        QCOMPARE(spike.value("title").toString(), QStringLiteral("API latency is unusually high"));
+        QCOMPARE(spike.value("detail").toString(), QStringLiteral("180 ms, against a usual 100 ms"));
+        QCOMPARE(spike.value("tone").toString(), QStringLiteral("bad"));
+        QCOMPARE(spike.value("question").toString(), QStringLiteral("What's behind the rise in API latency?"));
+        const QVariantMap jump = metrics.at(1).toMap();
+        QCOMPARE(jump.value("title").toString(), QStringLiteral("Open orders is up 15.0%"));
+        QCOMPARE(jump.value("detail").toString(), QStringLiteral("23"));
+        QCOMPARE(jump.value("tone").toString(), QStringLiteral("good"));
+    }
+
+    void quotesAndMetricsCarryRangesAndChanges()
+    {
+        startLive();
+        QTRY_COMPARE(rig->store.quotes().size(), 2);
+        QTRY_COMPARE(rig->store.metrics().size(), 2);
+        const QVariantMap spy = rig->store.quotes().at(0).toMap();
+        QCOMPARE(spy.value("low").toDouble(), 660.0);
+        QCOMPARE(spy.value("high").toDouble(), 668.42);
+        QCOMPARE(spy.value("lowLabel").toString(), QStringLiteral("$660.00"));
+        QCOMPARE(spy.value("highLabel").toString(), QStringLiteral("$668.42"));
+        QCOMPARE(spy.value("rangePos").toDouble(), 1.0);
+        QVERIFY(spy.value("fresh").toBool());
+        QVERIFY(qAbs(spy.value("heat").toDouble() - 8.42 / 660 * 100 / 3) < 1e-9);
+        QCOMPARE(spy.value("swingPct").toDouble(), 0.0); // two closes: no usual swing yet
+        QVERIFY(!spy.value("bigMove").toBool());
+        QVERIFY(!spy.contains("good")); // quotes keep up/down
+        // First sight: no change to animate.
+        QCOMPARE(rig->store.quote("AAPL").value("changedMs").toLongLong(), 0);
+        QCOMPARE(spy.value("changedMs").toLongLong(), 0);
+        const QVariantMap breadth = rig->store.marketBreadth();
+        QCOMPARE(breadth.value("up").toInt(), 2);
+        QCOMPARE(breadth.value("down").toInt(), 0);
+        QCOMPARE(breadth.value("flat").toInt(), 0);
+        QCOMPARE(breadth.value("total").toInt(), 2);
+        QCOMPARE(breadth.value("label").toString(), QStringLiteral("2 up"));
+
+        const QVariantMap sales = rig->store.metrics().at(0).toMap();
+        QCOMPARE(sales.value("lowLabel").toString(), QStringLiteral("$3,800"));
+        QCOMPARE(sales.value("highLabel").toString(), QStringLiteral("$4,280"));
+        QCOMPARE(sales.value("rangePos").toDouble(), 1.0);
+        QCOMPARE(sales.value("goodDirection").toString(), QStringLiteral("up"));
+        QCOMPARE(sales.value("trend").toString(), QStringLiteral("up")); // from the agent's percentage alone
+        QVERIFY(sales.value("good").toBool());
+        QVERIFY(sales.value("fresh").toBool());
+        QVERIFY(sales.value("anomaly").toBool()); // two points, a 12.5% jump
+        QCOMPARE(sales.value("usualLabel").toString(), QStringLiteral("$3,800"));
+        const QVariantMap p95 = rig->store.metrics().at(1).toMap();
+        QCOMPARE(p95.value("goodDirection").toString(), QStringLiteral("down")); // ms, and a p95
+        QCOMPARE(p95.value("trend").toString(), QStringLiteral("down"));
+        QVERIFY(p95.value("good").toBool()); // latency falling is good news
+        QVERIFY(!p95.value("anomaly").toBool());
+        QCOMPARE(p95.value("changedMs").toLongLong(), 0);
+
+        // Apple moves on the next sync: only its row says so.
+        const QDateTime later = QDateTime::currentDateTime().addSecs(1);
+        m_server.route("/rest/v1/quotes", [later](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", 4}, {"agent_id", "a2"}, {"symbol", "AAPL"}, {"name", "Apple"}, {"price", 250.0}, {"change", 4.88},
+                            {"change_pct", 1.99}, {"currency", "USD"}, {"note", QJsonValue::Null}, {"as_of", iso(later)}},
+                QJsonObject{{"id", 2}, {"agent_id", "a2"}, {"symbol", "AAPL"}, {"name", "Apple"}, {"price", 245.12}, {"change", 1.42},
+                            {"change_pct", 0.58}, {"currency", "USD"}, {"note", QJsonValue::Null}, {"as_of", iso(later.addDays(-1))}},
+                QJsonObject{{"id", 1}, {"agent_id", "a2"}, {"symbol", "SPY"}, {"price", 668.42}, {"change", QJsonValue::Null},
+                            {"change_pct", QJsonValue::Null}, {"currency", "USD"}, {"as_of", iso(later.addSecs(-1))}},
+                QJsonObject{{"id", 0}, {"agent_id", "a2"}, {"symbol", "SPY"}, {"price", 660.0}, {"change", QJsonValue::Null},
+                            {"change_pct", QJsonValue::Null}, {"currency", "USD"}, {"as_of", iso(later.addDays(-1))}},
+            }));
+        });
+        m_server.route("/rest/v1/quotes_latest", [](const Request &) { return json("[]"); }); // matched before the route above
+        const qint64 before = QDateTime::currentMSecsSinceEpoch();
+        rig->store.refresh();
+        QTRY_COMPARE(rig->store.quote("AAPL").value("priceLabel").toString(), QStringLiteral("$250.00"));
+        const QVariantMap aapl = rig->store.quote("AAPL");
+        QVERIFY(aapl.value("changedMs").toLongLong() >= before);
+        QVERIFY(aapl.value("changedMs").toLongLong() <= QDateTime::currentMSecsSinceEpoch());
+        QVERIFY(aapl.value("changedUp").toBool());
+        QCOMPARE(rig->store.quote("SPY").value("changedMs").toLongLong(), 0); // same price
+        QCOMPARE(rig->store.metrics().at(1).toMap().value("changedMs").toLongLong(), 0);
+        // A rebuild with nothing new (another day's report picked) keeps the stamp.
+        const qint64 stamped = aapl.value("changedMs").toLongLong();
+        rig->store.showReport(QStringLiteral("r1"));
+        QCOMPARE(rig->store.quote("AAPL").value("changedMs").toLongLong(), stamped);
+    }
+
+    void briefsSplitPointsFromParagraphs()
+    {
+        startDemoAt(QTime(12, 0));
+        QVariantMap morning;
+        for (const QVariant &v : rig->store.briefs())
+            if (v.toMap().value("title").toString() == QLatin1String("Morning briefing"))
+                morning = v.toMap();
+        QCOMPARE(morning.value("paragraphs").toStringList(), (QStringList{"Three things for today.", "Have a good one."}));
+        QCOMPARE(morning.value("bullets").toStringList().size(), 3);
+        QCOMPARE(morning.value("bullets").toStringList().first(), QStringLiteral("The Fed minutes land at 1 PM CT; markets are pricing a hold."));
+
+        // Live: a point carried onto an indented line, text either side.
+        m_server.route("/rest/v1/briefs", [](const Request &) {
+            return json(rows({QJsonObject{{"id", "b1"}, {"agent_id", "a1"}, {"title", "Points"}, {"kind", "daily"},
+                                          {"body", "Intro line.\n- First point\n  carries on\n- Second point\nOutro.\n\n• Third"},
+                                          {"published_at", iso(QDateTime::currentDateTime().addSecs(-60))}, {"expires_at", QJsonValue::Null}}}));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.briefs().size(), 1);
+        const QVariantMap brief = rig->store.briefs().first().toMap();
+        QCOMPARE(brief.value("paragraphs").toStringList(), (QStringList{"Intro line.", "Outro."}));
+        QCOMPARE(brief.value("bullets").toStringList(), (QStringList{"First point carries on", "Second point", "Third"}));
+    }
+
+    // The reader's blocks follow the body: a heading stays over its own
+    // points, a leading list stays first, a paragraph keeps its line breaks
+    // (Markdown needs them), and a fenced block is left whole.
+    void briefBlocksKeepTheBodysOrder()
+    {
+        auto paragraph = [](const QString &text) { return QVariant(QVariantMap{{"kind", "paragraph"}, {"text", text}}); };
+        auto points = [](const QStringList &items) { return QVariant(QVariantMap{{"kind", "points"}, {"items", items}}); };
+
+        startDemoAt(QTime(12, 0));
+        QVariantMap morning;
+        for (const QVariant &v : rig->store.briefs())
+            if (v.toMap().value("title").toString() == QLatin1String("Morning briefing"))
+                morning = v.toMap();
+        QCOMPARE(morning.value("blocks").toList(),
+                 (QVariantList{paragraph("Three things for today."),
+                               points({"The Fed minutes land at 1 PM CT; markets are pricing a hold.",
+                                       "Apple reports after the close; services is the number to watch.",
+                                       "The Pulse pipeline ran at 8:06 and found 11 sourced stories."}),
+                               paragraph("Have a good one.")}));
+
+        const QList<QPair<QString, QString>> bodies{
+            {"Grouped", "**Markets**\n- SPY flat\n\n**Tech**\n- Apple tonight\n  after the bell"},
+            {"Leading", "- a\n- b\n\nSo what"},
+            {"Heading", "## Heading\nText\n\n- x\n\n1. one\n2. two"},
+            {"Fenced", "Run:\n\n```\n- not a point\n\nstill code\n```\n\n- a point"},
+        };
+        m_server.route("/rest/v1/briefs", [bodies](const Request &) {
+            QJsonArray out;
+            for (const auto &[title, body] : bodies)
+                out.append(QJsonObject{{"id", title}, {"agent_id", "a1"}, {"title", title}, {"kind", "daily"}, {"body", body},
+                                       {"published_at", iso(QDateTime::currentDateTime().addSecs(-60))}, {"expires_at", QJsonValue::Null}});
+            return json(rows(out));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.briefs().size(), 4);
+        QHash<QString, QVariantList> blocks;
+        for (const QVariant &v : rig->store.briefs())
+            blocks.insert(v.toMap().value("title").toString(), v.toMap().value("blocks").toList());
+        QCOMPARE(blocks.value("Grouped"), (QVariantList{paragraph("**Markets**"), points({"SPY flat"}), paragraph("**Tech**"),
+                                                        points({"Apple tonight after the bell"})}));
+        QCOMPARE(blocks.value("Leading"), (QVariantList{points({"a", "b"}), paragraph("So what")}));
+        QCOMPARE(blocks.value("Heading"), (QVariantList{paragraph("## Heading\nText"), points({"x"}), paragraph("1. one\n2. two")}));
+        QCOMPARE(blocks.value("Fenced"), (QVariantList{paragraph(bodies.at(3).second)}));
+    }
+
+    void boardLayoutPacksWithoutHoles()
+    {
+        startDemoAt(QTime(12, 0));
+        QCOMPARE(rig->store.dashboards().size(), 2);
+        for (int board = 0; board < 2; ++board) {
+            for (int columns : {2, 4, 6})
+                checkPacked(rig->store.boardLayout(board, columns), columns, rig->store.dashboards().at(board).toMap().value("widgets").toList());
+        }
+        // Ops on six: the three statuses as one strip, the first metric a 2×2
+        // hero, the chart 4×2.
+        const QVariantList ops = rig->store.boardLayout(0, 6);
+        const QVariantMap health = ops.at(0).toMap();
+        QCOMPARE(health.value("kind").toString(), QStringLiteral("health"));
+        QCOMPARE(health.value("indexes").toList(), (QVariantList{0, 1, 2}));
+        QCOMPARE(health.value("colSpan").toInt(), 6);
+        QCOMPARE(health.value("state").toString(), QStringLiteral("down"));
+        QCOMPARE(health.value("stateColor").toString(), QStringLiteral("#F07F5A"));
+        QCOMPARE(health.value("summary").toString(), QStringLiteral("1 down · 1 warning · 1 OK"));
+        const QVariantMap hero = ops.at(1).toMap();
+        QCOMPARE(hero.value("kind").toString(), QStringLiteral("hero"));
+        QCOMPARE(hero.value("index").toInt(), 3);
+        QCOMPARE(QList<int>({hero.value("row").toInt(), hero.value("col").toInt(), hero.value("colSpan").toInt(), hero.value("rowSpan").toInt()}),
+                 QList<int>({1, 0, 2, 2}));
+        auto entryFor = [](const QVariantList &layout, int index) {
+            for (const QVariant &v : layout)
+                if (v.toMap().value("indexes").toList().contains(index))
+                    return v.toMap();
+            return QVariantMap();
+        };
+        QCOMPARE(entryFor(ops, 7).value("kind").toString(), QStringLiteral("chart"));
+        QCOMPARE(entryFor(ops, 7).value("colSpan").toInt(), 4);
+        QCOMPARE(entryFor(ops, 7).value("rowSpan").toInt(), 2);
+        // Four columns: the chart goes full width; two: no hero.
+        QCOMPARE(entryFor(rig->store.boardLayout(0, 4), 7).value("colSpan").toInt(), 4);
+        QCOMPARE(entryFor(rig->store.boardLayout(0, 2), 3).value("kind").toString(), QStringLiteral("metric"));
+        QCOMPARE(entryFor(rig->store.boardLayout(0, 2), 7).value("colSpan").toInt(), 2);
+        // A lone status stays a tile of its own.
+        QCOMPARE(entryFor(rig->store.boardLayout(1, 6), 5).value("kind").toString(), QStringLiteral("status"));
+        // Reading order.
+        int lastRow = -1, lastCol = -1;
+        for (const QVariant &v : ops) {
+            const int row = v.toMap().value("row").toInt(), col = v.toMap().value("col").toInt();
+            QVERIFY(row > lastRow || (row == lastRow && col > lastCol));
+            lastRow = row;
+            lastCol = col;
+        }
+        QVERIFY(rig->store.boardLayout(2, 6).isEmpty());
+        QVERIFY(rig->store.boardLayout(-1, 6).isEmpty());
+        // The widgets themselves are left as they were, each marked drawable.
+        for (const QVariant &v : rig->store.dashboards().first().toMap().value("widgets").toList())
+            QVERIFY(v.toMap().value("known").toBool());
+    }
+
+    void unknownWidgetsAreMarkedAndSkipped()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        m_server.route("/rest/v1/dashboards", [now](const Request &) {
+            return json(rows({QJsonObject{{"id", "d1"}, {"agent_id", "a2"}, {"key", "ops"}, {"title", "Ops"}, {"sort_order", 0}, {"hidden", false},
+                                          {"updated_at", iso(now)},
+                                          {"widgets", QJsonArray{QJsonObject{{"type", "metric"}, {"label", "Requests"}, {"value", 1}},
+                                                                 QJsonObject{{"type", "gauge"}, {"label", "From a newer agent"}, {"value", 3}},
+                                                                 QJsonObject{{"type", "status"}, {"label", "API"}, {"state", "ok"}},
+                                                                 QJsonObject{{"type", "status"}, {"label", "DB"}, {"state", "ok"}},
+                                                                 QJsonObject{{"type", "list"}, {"title", "On call"}, {"items", QJsonArray{"Ricky"}}}}}}}));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.dashboards().size(), 1);
+        const QVariantList widgets = rig->store.dashboards().first().toMap().value("widgets").toList();
+        QCOMPARE(widgets.size(), 5); // nothing dropped
+        QVERIFY(!widgets.at(1).toMap().value("known").toBool());
+        QCOMPARE(widgets.at(1).toMap().value("label").toString(), QStringLiteral("From a newer agent"));
+        for (int columns : {2, 4, 6}) {
+            const QVariantList layout = rig->store.boardLayout(0, columns);
+            checkPacked(layout, columns, widgets);
+            for (const QVariant &v : layout)
+                QVERIFY(!v.toMap().value("indexes").toList().contains(1));
+        }
+        // On six: the hero, the list grown into the room beside it, the
+        // statuses' strip under both.
+        const QVariantList layout = rig->store.boardLayout(0, 6);
+        QCOMPARE(layout.size(), 3);
+        const QVariantMap health = layout.at(2).toMap();
+        QCOMPARE(health.value("kind").toString(), QStringLiteral("health"));
+        QCOMPARE(health.value("indexes").toList(), (QVariantList{2, 3}));
+        QCOMPARE(health.value("row").toInt(), 2);
+        QCOMPARE(health.value("summary").toString(), QStringLiteral("All OK"));
+        QCOMPARE(health.value("state").toString(), QStringLiteral("ok"));
+    }
+
+    // Many statuses don't squeeze into one row: the strip wraps into rows
+    // of even length, a row for each, and the board still has no holes.
+    void aLongHealthStripWraps()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        m_server.route("/rest/v1/dashboards", [now](const Request &) {
+            QJsonArray widgets{QJsonObject{{"type", "metric"}, {"label", "Requests"}, {"value", 1}}};
+            for (const char *name : {"API", "Web", "DB", "Cache", "Queue", "Search", "Mail"})
+                widgets.append(QJsonObject{{"type", "status"}, {"label", name}, {"state", "ok"}});
+            widgets.append(QJsonObject{{"type", "list"}, {"title", "On call"}, {"items", QJsonArray{"Ricky"}}});
+            return json(rows({QJsonObject{{"id", "d1"}, {"agent_id", "a2"}, {"key", "ops"}, {"title", "Ops"}, {"sort_order", 0}, {"hidden", false},
+                                          {"updated_at", iso(now)}, {"widgets", widgets}}}));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.dashboards().size(), 1);
+        const QVariantList widgets = rig->store.dashboards().first().toMap().value("widgets").toList();
+        // columns → rows of the strip, statuses in each row
+        for (const auto &[columns, lines, perRow] : {std::tuple{2, 3, 3}, std::tuple{4, 2, 4}, std::tuple{6, 2, 4}}) {
+            const QVariantList layout = rig->store.boardLayout(0, columns);
+            checkPacked(layout, columns, widgets);
+            QVariantMap health;
+            for (const QVariant &v : layout)
+                if (v.toMap().value("kind").toString() == QLatin1String("health"))
+                    health = v.toMap();
+            QCOMPARE(health.value("indexes").toList().size(), 7);
+            QCOMPARE(health.value("colSpan").toInt(), columns);
+            QCOMPARE(health.value("rowSpan").toInt(), lines);
+            QCOMPARE(health.value("perRow").toInt(), perRow);
+        }
+
+        // The demo's three fit one row at any width.
+        startDemoAt(QTime(12, 0));
+        for (int columns : {2, 4, 6}) {
+            const QVariantMap health = rig->store.boardLayout(0, columns).at(0).toMap();
+            QCOMPARE(health.value("kind").toString(), QStringLiteral("health"));
+            QCOMPARE(health.value("rowSpan").toInt(), 1);
+            QCOMPARE(health.value("perRow").toInt(), 3);
+        }
+    }
+
+    void timelineSitsOnADayDial()
+    {
+        startDemoAt(QTime(12, 0));
+        QCOMPARE(rig->store.nowAngle(), 180.0);
+        bool sawStandup = false, sawDinner = false, sawNews = false;
+        for (const QVariant &v : rig->store.timeline()) {
+            const QVariantMap item = v.toMap();
+            const QDateTime start = QDateTime::fromMSecsSinceEpoch(item.value("startMs").toLongLong());
+            if (item.value("allDay").toBool())
+                QCOMPARE(item.value("sweep").toDouble(), 360.0);
+            else
+                QCOMPARE(item.value("startAngle").toDouble(), start.time().msecsSinceStartOfDay() / 240000.0);
+            QVERIFY(item.value("sweep").toDouble() >= 0 && item.value("startAngle").toDouble() + item.value("sweep").toDouble() <= 360);
+            const QString title = item.value("title").toString();
+            if (title == QLatin1String("Standup")) {
+                sawStandup = true;
+                QCOMPARE(item.value("startAngle").toDouble(), 142.5); // 9:30
+                QCOMPARE(item.value("sweep").toDouble(), 3.75);       // 15 minutes
+            } else if (title == QLatin1String("Dinner with Lina")) {
+                sawDinner = true;
+                QCOMPARE(item.value("startAngle").toDouble(), 285.0);
+                QCOMPARE(item.value("sweep").toDouble(), 30.0);
+            } else if (item.value("kind").toString() == QLatin1String("news")) {
+                sawNews = true;
+                QCOMPARE(item.value("sweep").toDouble(), 0.0); // a moment
+            }
+        }
+        QVERIFY(sawStandup && sawDinner && sawNews);
+
+        // All day goes round; a late event is cut at midnight.
+        const QDate today = QDate::currentDate();
+        m_server.route("/rest/v1/events", [today](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", "e1"}, {"agent_id", "a1"}, {"calendar", "Home"}, {"title", "Holiday"}, {"location", QJsonValue::Null},
+                            {"starts_at", iso(QDateTime(today, QTime(0, 0)))}, {"ends_at", iso(QDateTime(today, QTime(23, 59, 59)))},
+                            {"all_day", true}, {"color", "#F6B94A"}},
+                QJsonObject{{"id", "e2"}, {"agent_id", "a1"}, {"calendar", "Work"}, {"title", "Late deploy"}, {"location", QJsonValue::Null},
+                            {"starts_at", iso(QDateTime(today, QTime(23, 0)))}, {"ends_at", iso(QDateTime(today.addDays(1), QTime(1, 0)))},
+                            {"all_day", false}, {"color", "#5B7CF5"}},
+            }));
+        });
+        startLive();
+        auto find = [this](const QString &title) {
+            for (const QVariant &v : rig->store.timeline())
+                if (v.toMap().value("title").toString() == title)
+                    return v.toMap();
+            return QVariantMap();
+        };
+        QTRY_VERIFY(!find(QStringLiteral("Late deploy")).isEmpty());
+        QCOMPARE(find(QStringLiteral("Holiday")).value("startAngle").toDouble(), 0.0);
+        QCOMPARE(find(QStringLiteral("Holiday")).value("sweep").toDouble(), 360.0);
+        QCOMPARE(find(QStringLiteral("Late deploy")).value("startAngle").toDouble(), 345.0);
+        QCOMPARE(find(QStringLiteral("Late deploy")).value("sweep").toDouble(), 15.0);
+    }
+
+private:
+    QDateTime m_fake;
+
+    // A demo store on a fixed clock: today at `time`.
+    void startDemoAt(const QTime &time)
+    {
+        QSettings().clear();
+        m_fake = QDateTime(QDate::currentDate(), time);
+        rig = std::make_unique<Rig>(QUrl(), true);
+        rig->store.setClock([this]() { return m_fake; });
+        rig->store.start();
+    }
+
+    // The icons Icon.qml can draw.
+    static QStringList iconNames()
+    {
+        QFile file(QFINDTESTDATA("../qml/components/Icon.qml"));
+        if (!file.open(QIODevice::ReadOnly))
+            return {};
+        static const QRegularExpression name(QStringLiteral("^\\s+\"([a-z-]+)\":\\s+\""), QRegularExpression::MultilineOption);
+        QStringList out;
+        for (auto it = name.globalMatch(QString::fromUtf8(file.readAll())); it.hasNext();)
+            out << it.next().captured(1);
+        return out;
+    }
+
+    // Every cell of the grid, up to its last row, covered by exactly one
+    // entry; every drawable widget in exactly one entry.
+    static void checkPacked(const QVariantList &layout, int columns, const QVariantList &widgets)
+    {
+        int rows = 0;
+        for (const QVariant &v : layout)
+            rows = qMax(rows, v.toMap().value("row").toInt() + v.toMap().value("rowSpan").toInt());
+        QList<int> cover(rows * columns, 0);
+        QList<int> seen(widgets.size(), 0);
+        for (const QVariant &v : layout) {
+            const QVariantMap e = v.toMap();
+            const int row = e.value("row").toInt(), col = e.value("col").toInt();
+            const int colSpan = e.value("colSpan").toInt(), rowSpan = e.value("rowSpan").toInt();
+            QVERIFY(colSpan >= 1 && rowSpan >= 1 && col >= 0 && col + colSpan <= columns);
+            QCOMPARE(e.value("index").toInt(), e.value("indexes").toList().first().toInt());
+            for (int y = row; y < row + rowSpan; ++y)
+                for (int x = col; x < col + colSpan; ++x)
+                    ++cover[y * columns + x];
+            for (const QVariant &i : e.value("indexes").toList())
+                ++seen[i.toInt()];
+        }
+        for (int i = 0; i < cover.size(); ++i)
+            QVERIFY2(cover.at(i) == 1, qPrintable(QStringLiteral("cell %1,%2 covered %3 times at %4 columns").arg(i / columns).arg(i % columns).arg(cover.at(i)).arg(columns)));
+        for (int i = 0; i < widgets.size(); ++i)
+            QCOMPARE(seen.at(i), widgets.at(i).toMap().value("known").toBool() ? 1 : 0);
     }
 };
 

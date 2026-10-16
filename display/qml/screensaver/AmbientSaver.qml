@@ -16,13 +16,33 @@ import McFly.Core
 //
 // Nothing here is tappable: the touch that wakes the screen is swallowed
 // (DisplayController), so there are no hints to tap or swipe. The whole
-// composition drifts a few pixels every minute against burn-in, and the
-// cards dim at night.
+// composition drifts a few pixels every minute against burn-in. Night comes
+// in as one slow dusk: over a minute the backdrop deepens, the cards dim and
+// the aurora rises, together.
 Item {
     id: ambient
     property date now: new Date()
     readonly property real minuteMs: Math.floor(now.getTime() / 60000) * 60000
     readonly property bool night: Device.nightMode || Theme.dark
+
+    // The dusk: 0 by day, 1 at night, eased over a minute. Everything that
+    // changes at night follows `dusk`, which is the same in steps of 1/400, so
+    // the saver changes a few times a second while it falls, not every frame.
+    property real nightness: night ? 1 : 0
+    Behavior on nightness { NumberAnimation { duration: 60000; easing.type: Easing.InOutSine } }
+    readonly property real dusk: Math.round(nightness * 400) / 400
+    // Text turns from dark to light quickly in the middle of it, where the
+    // cards (and the backdrop under the clock) pass mid-grey, so it never sits
+    // grey on grey for long.
+    readonly property real inkNight: {
+        const x = Math.max(0, Math.min(1, (dusk - 0.44) / 0.12))
+        return x * x * (3 - 2 * x)
+    }
+    function tone(day, nightColor, k) {
+        const a = Qt.lighter(day, 1.0), b = Qt.lighter(nightColor, 1.0)   // accepts colours and strings
+        return Qt.rgba(a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k,
+                       a.b + (b.b - a.b) * k, a.a + (b.a - a.a) * k)
+    }
 
     property real shiftX: 0
     property real shiftY: 0
@@ -84,7 +104,7 @@ Item {
     // The backdrop (Settings → Backdrop, Device.backdrop): the mesh is the
     // moving gradient with an aurora hanging over it at night, as on the
     // console's ambient view; the rest are skies of their own (Backdrop),
-    // light or dark with the night. Only the chosen one is built.
+    // light or dark with the dusk. Only the chosen one is built.
     readonly property bool mesh: Device.backdrop === "mesh"
     Loader {
         id: backdrop
@@ -104,21 +124,20 @@ Item {
                 anchors.fill: parent
                 radius: 0
                 colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
-                dark: ambient.night
+                darkness: ambient.dusk
                 whileIdle: true
-                maxFps: 10
-                period: 72000
+                maxFps: Theme.saverFps
+                period: Theme.saverDrift
                 rings: 2
                 ringScale: 1.3
             }
             // At night an aurora in the night glow hangs over the clock. It
-            // fades in and out with the night look; at night the screen saver
-            // is up for hours, so it runs small and slow.
+            // rises with the dusk; at night the screen saver is up for hours,
+            // so it runs small and slow.
             AuroraGlow {
                 anchors.fill: parent
                 visible: opacity > 0
-                opacity: ambient.night ? 0.5 : 0
-                Behavior on opacity { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
+                opacity: 0.5 * ambient.dusk
                 lightMode: false
                 whileIdle: true
                 maxFps: 10
@@ -134,15 +153,16 @@ Item {
         id: skyBackdrop
         Backdrop {
             style: Device.backdrop
-            dark: ambient.night
+            darkness: ambient.dusk
             whileIdle: true
-            maxFps: 10
+            maxFps: Theme.saverFps
         }
     }
 
-    readonly property color cardFill: night ? Qt.rgba(0.08, 0.08, 0.12, 0.55) : Qt.rgba(1, 1, 1, 0.86)
-    readonly property color cardInk: night ? Qt.rgba(1, 1, 1, 0.78) : "#1D1B24"
-    readonly property color cardMuted: night ? Qt.rgba(1, 1, 1, 0.55) : "#4A4555"
+    readonly property color nightFill: Qt.rgba(0.08, 0.08, 0.12, 0.55)
+    readonly property color cardFill: tone(Qt.rgba(1, 1, 1, 0.86), nightFill, dusk)
+    readonly property color cardInk: tone("#1D1B24", Qt.rgba(1, 1, 1, 0.78), inkNight)
+    readonly property color cardMuted: tone("#4A4555", Qt.rgba(1, 1, 1, 0.55), inkNight)
     readonly property int edge: Theme.mini ? 28 : Theme.tall ? 40 : Theme.wide ? 72 : 56
 
     Item {
@@ -229,7 +249,7 @@ Item {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: rail.cardHeight
                     radius: Theme.mini ? 22 : 28
-                    color: modelData === "blocked" && !ambient.night ? "#FFE7DF" : ambient.cardFill
+                    color: modelData === "blocked" ? ambient.tone("#FFE7DF", ambient.nightFill, ambient.dusk) : ambient.cardFill
                     clip: true
                     Loader {
                         anchors.fill: parent
@@ -282,7 +302,7 @@ Item {
             spacing: Theme.mini ? 4 : 8
             Kicker {
                 text: (ambient.brief.agentName + " · " + ambient.brief.whenLabel).toUpperCase()
-                color: ambient.night ? ambient.cardMuted : (ambient.brief.agentColor || Theme.accent)
+                color: ambient.tone(ambient.brief.agentColor || Theme.accent, ambient.cardMuted, ambient.inkNight)
             }
             Title { text: ambient.brief.title || "" }
             Body { text: ambient.brief.summary || "" }
@@ -295,7 +315,7 @@ Item {
             anchors.fill: parent
             anchors.margins: Theme.mini ? 16 : 22
             spacing: Theme.mini ? 6 : 10
-            Kicker { text: qsTr("MARKETS"); color: ambient.night ? ambient.cardMuted : Theme.success }
+            Kicker { text: qsTr("MARKETS"); color: ambient.tone(Theme.success, ambient.cardMuted, ambient.inkNight) }
             Repeater {
                 model: ambient.tickers.slice(0, Theme.mini ? 3 : 4)
                 delegate: RowLayout {
@@ -317,7 +337,7 @@ Item {
                         Layout.preferredWidth: Theme.mini ? -1 : 84
                         horizontalAlignment: Text.AlignRight
                         text: modelData.pctLabel
-                        color: ambient.night ? ambient.cardInk : (modelData.up ? "#1C7A4E" : "#B5432A")
+                        color: ambient.tone(modelData.up ? "#1C7A4E" : "#B5432A", ambient.cardInk, ambient.inkNight)
                         font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd - 3
                         font.weight: Font.DemiBold
                     }
@@ -334,15 +354,15 @@ Item {
             anchors.fill: parent
             anchors.margins: Theme.mini ? 16 : 22
             spacing: Theme.mini ? 4 : 8
-            Kicker { text: qsTr("NEEDS YOU"); color: ambient.night ? "#FF9B8A" : "#B23224" }
+            Kicker { text: qsTr("NEEDS YOU"); color: ambient.tone("#B23224", "#FF9B8A", ambient.inkNight) }
             Title {
                 text: ambient.blocked.length > 1 ? qsTr("%1 and %2 more are blocked").arg(project.name).arg(ambient.blocked.length - 1)
                                                  : qsTr("%1 is blocked").arg(project.name)
-                color: ambient.night ? ambient.cardInk : "#3B1D12"
+                color: ambient.tone("#3B1D12", ambient.cardInk, ambient.inkNight)
             }
             Body {
                 text: [project.next_step || project.summary || "", project.hasProgress ? qsTr("%1% done").arg(project.progress) : ""].filter(s => !!s).join(" · ")
-                color: ambient.night ? ambient.cardMuted : "#5A3426"
+                color: ambient.tone("#5A3426", ambient.cardMuted, ambient.inkNight)
             }
         }
     }
@@ -364,7 +384,7 @@ Item {
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     sourceSize.width: 640
-                    opacity: ambient.night ? 0.7 : 1
+                    opacity: 1 - 0.3 * ambient.dusk
                 }
             }
             ColumnLayout {
@@ -374,7 +394,7 @@ Item {
                 spacing: 4
                 Kicker {
                     text: (Store.news.agentName || qsTr("Daily Pulse")).toUpperCase() + " · " + qsTr("%1 STORIES").arg(Store.news.itemCount || 0)
-                    color: ambient.night ? ambient.cardMuted : (ambient.hero.sectionColor || Theme.accent)
+                    color: ambient.tone(ambient.hero.sectionColor || Theme.accent, ambient.cardMuted, ambient.inkNight)
                 }
                 Title { text: ambient.hero.headline || ""; maximumLineCount: parent.parent.picture ? 2 : 3 }
                 Body { visible: !parent.parent.picture; text: ambient.hero.takeaway || "" }
@@ -389,7 +409,7 @@ Item {
             anchors.fill: parent
             anchors.margins: Theme.mini ? 16 : 22
             spacing: Theme.mini ? 6 : 10
-            Kicker { text: qsTr("LATER TODAY"); color: ambient.night ? ambient.cardMuted : Theme.accent }
+            Kicker { text: qsTr("LATER TODAY"); color: ambient.tone(Theme.accent, ambient.cardMuted, ambient.inkNight) }
             Repeater {
                 model: ambient.todaysEvents.slice(3, Theme.mini ? 5 : 7)
                 delegate: RowLayout {

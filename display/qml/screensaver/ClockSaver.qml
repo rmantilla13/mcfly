@@ -5,10 +5,10 @@ import McFly
 import McFly.Core
 
 // A big clock, the date, the latest brief and a line of the markets on the
-// chosen backdrop (Settings → Backdrop: the soft gradient, or one of
-// Backdrop's skies) in the time-of-day colours (deep and dim at night). The
-// text moves a few pixels every minute, so nothing stays on the same pixels
-// all night.
+// chosen backdrop (Settings → Backdrop: the slowly drifting gradient, or one
+// of Backdrop's skies) in the time-of-day colours (deep and dim at night).
+// The text moves a few pixels every minute, so nothing stays on the same
+// pixels all night.
 Item {
     id: clock
     property date now: new Date()
@@ -45,6 +45,9 @@ Item {
         GradientTile {
             radius: 0
             colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
+            whileIdle: true
+            maxFps: Theme.saverFps
+            period: Theme.saverDrift
         }
     }
     Component {
@@ -52,7 +55,7 @@ Item {
         Backdrop {
             style: Device.backdrop
             whileIdle: true
-            maxFps: 10
+            maxFps: Theme.saverFps
         }
     }
 

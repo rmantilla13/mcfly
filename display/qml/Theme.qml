@@ -6,10 +6,12 @@ import McFly.Core
 //
 // Device.mood picks one of four moods - morning (warm peach/coral), day
 // (clear blue), evening (violet/rose) and night (dark) - and every color
-// eases to the new palette over `moodFade`, a short shift rather than a cut.
+// drifts to the new palette over `moodFade`, a few seconds, blended in OKLab
+// so a fade from amber to blue doesn't pass through grey.
 //
 // Settings → Dark mode (Device.darkMode, remembered) replaces that palette
-// with one warm near-black canvas. The accent stays the day blue.
+// with one warm near-black canvas, over the much shorter `themeFade`: it is
+// a tap, and should answer like one. The accent stays the day blue.
 //
 // Layout comes from two measurements Main.qml makes of the window (see
 // docs/LAYOUTS.md): the tier (where the nav goes, how many columns, whether
@@ -60,44 +62,157 @@ Item {
     readonly property var p: darkMode ? darkPalette : (palettes[mood] || palettes["day"])
 
     // Animated tokens. Everything in the UI binds to these.
-    property color background: p.background
-    property color surface:    p.surface
-    property color surfaceAlt: p.surfaceAlt
-    property color sunken:     p.sunken
-    property color text:       p.text
-    property color textMuted:  p.textMuted
-    property color divider:    p.divider
-    property color accent:     p.accent
-    property color accentSoft: p.accentSoft
-    property color danger:     p.danger      // turned-down chores, problems
-    property color warningInk: p.warningInk  // "waiting" text on an amber tint
-    property color glowBlue:   p.glow[0]
-    property color glowCoral:  p.glow[1]
-    property color glowAmber:  p.glow[2]
-    property color glowCream:  p.glow[3]
+    property color background: _token(0)
+    property color surface:    _token(1)
+    property color surfaceAlt: _token(2)
+    property color sunken:     _token(3)
+    property color text:       _token(4)
+    property color textMuted:  _token(5)
+    property color divider:    _token(6)
+    property color accent:     _token(7)
+    property color accentSoft: _token(8)
+    property color danger:     _token(9)     // turned-down chores, problems
+    property color warningInk: _token(10)    // "waiting" text on an amber tint
+    property color glowBlue:   _token(11)
+    property color glowCoral:  _token(12)
+    property color glowAmber:  _token(13)
+    property color glowCream:  _token(14)
 
     // Motion. Pages, sheets and the screen-saver veil use `smooth`.
     // Small controls and color changes use `quick`. Ambient loops
     // (gradient-tile drift, photo-frame crossfades) stay slow on purpose.
     readonly property int quick: 100
     readonly property int smooth: 160
-    // Palette and dark-mode colors. Same length as a small control fade.
-    readonly property int moodFade: quick
-    Behavior on background { ColorAnimation { duration: theme.moodFade } }
-    Behavior on surface    { ColorAnimation { duration: theme.moodFade } }
-    Behavior on surfaceAlt { ColorAnimation { duration: theme.moodFade } }
-    Behavior on sunken     { ColorAnimation { duration: theme.moodFade } }
-    Behavior on text       { ColorAnimation { duration: theme.moodFade } }
-    Behavior on textMuted  { ColorAnimation { duration: theme.moodFade } }
-    Behavior on divider    { ColorAnimation { duration: theme.moodFade } }
-    Behavior on accent     { ColorAnimation { duration: theme.moodFade } }
-    Behavior on accentSoft { ColorAnimation { duration: theme.moodFade } }
-    Behavior on danger     { ColorAnimation { duration: theme.moodFade } }
-    Behavior on warningInk { ColorAnimation { duration: theme.moodFade } }
-    Behavior on glowBlue   { ColorAnimation { duration: theme.moodFade } }
-    Behavior on glowCoral  { ColorAnimation { duration: theme.moodFade } }
-    Behavior on glowAmber  { ColorAnimation { duration: theme.moodFade } }
-    Behavior on glowCream  { ColorAnimation { duration: theme.moodFade } }
+    // Palette changes: the Dark mode toggle, and the scheduled moods.
+    readonly property int themeFade: 300
+    readonly property int moodFade: 4000
+    // The palette change in progress: themeFade while a Dark mode toggle
+    // fades, moodFade otherwise. For things that ease along with the palette
+    // on their own (GradientTile's night look).
+    property int paletteFade: moodFade
+    // True while the palette fades. Anything with an ease of its own on a
+    // token's colour turns it off meanwhile, or it lags behind the fade.
+    readonly property bool fading: paletteFadeAnim.running
+    // Arriving and leaving: a card, a sheet, a row. Leaving is quicker.
+    readonly property int enter: 320
+    readonly property int exit: 180
+    // A screen's contents settling in, staggered, once it shows.
+    readonly property int revealDuration: 600
+    // Ambient layers coming and going: the screen saver drifting in.
+    readonly property int ambientFade: 1600
+    // Something moving to a new place: a board's tiles, the "now" marker.
+    readonly property int glide: 480
+    // Half of a slow, calm loop (a status that needs a look breathing, a
+    // fresh price's halo): in, then out again over twice this.
+    readonly property int breath: 2200
+    // Curves for `easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.standard`.
+    // `standard` for most movement; `emphasized` for an arrival that should
+    // land with a little life (fast out, long settle).
+    readonly property var standard: [0.2, 0, 0, 1, 1, 1]
+    readonly property var emphasized: [0.05, 0.7, 0.1, 1, 1, 1]
+    // The screen savers' moving backdrop: updates per second while the
+    // screen is idle (docs/ARCHITECTURE.md: 10), and how long one orbit
+    // of its drift takes. Slow enough that an update moves things about a pixel.
+    readonly property int saverFps: 10
+    readonly property int saverDrift: 110000
+
+    // The voice glow's spectrum (SpectrumGlow): the same in every mood.
+    readonly property var spectrum: ["#DB47B3", "#8F57E6", "#4280F5", "#24C2C2", "#4DC266", "#F5A83D", "#F56161"]
+
+    // ---- Colour in OKLab: [L, a, b, alpha]. A blend in it keeps lightness
+    // even and takes hues the short way, where RGB greys out (#F6B94A to
+    // #5B7CF5 passes through #A99BA0).
+    function oklab(c) {
+        const k = Qt.lighter(c, 1.0)   // accepts colour values and strings
+        const lin = x => x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
+        const r = lin(k.r), g = lin(k.g), b = lin(k.b)
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+        const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+        return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+                1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+                k.a]
+    }
+    function fromOklab(v) {
+        const l = v[0] + 0.3963377774 * v[1] + 0.2158037573 * v[2]
+        const m = v[0] - 0.1055613458 * v[1] - 0.0638541728 * v[2]
+        const s = v[0] - 0.0894841775 * v[1] - 1.2914855480 * v[2]
+        const L = l * l * l, M = m * m * m, S = s * s * s
+        const enc = x => {
+            x = Math.max(0, Math.min(1, x))
+            return x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055
+        }
+        return Qt.rgba(enc( 4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S),
+                       enc(-1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S),
+                       enc(-0.0041960863 * L - 0.7034186147 * M + 1.7076147010 * S),
+                       v.length > 3 ? v[3] : 1)
+    }
+    function mixOklab(a, b, t) {
+        const x = oklab(a), y = oklab(b)
+        return fromOklab(x.map((v, i) => v + (y[i] - v) * t))
+    }
+
+    // ---- The palette fade. The tokens move from what they showed to the new
+    // palette along an eased 0..1 (`_fade`), in OKLab. One explicit fade
+    // rather than a Behavior per token: whether Dark mode or the schedule
+    // changed is known here, as the palette changes, so the length is right
+    // from the first frame.
+    readonly property var _keys: ["background", "surface", "surfaceAlt", "sunken", "text", "textMuted",
+                                  "divider", "accent", "accentSoft", "danger", "warningInk"]
+    function _flat(q) { return _keys.map(k => q[k]).concat(q.glow) }
+    property var _to: null        // the palette being faded to, flattened (null until completed)
+    property var _toLab: []
+    property var _fromLab: []
+    property real _fade: 1
+    property bool _lastDark: false
+    // While a new fade is set up the tokens hold what they showed, so none
+    // of them passes through a half-updated state on the way.
+    property var _held: null
+    function _token(i) {
+        if (_to === null)
+            return _flat(p)[i]
+        if (_held !== null)
+            return _held[i]
+        if (_fade >= 1)
+            return _to[i]
+        const a = _fromLab[i], b = _toLab[i], t = _fade
+        return fromOklab([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t,
+                          a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t])
+    }
+    Component.onCompleted: {
+        _lastDark = darkMode
+        _to = _flat(p)
+    }
+    onPChanged: {
+        if (_to === null)
+            return
+        // From what is on screen now, mid-fade or not.
+        const shown = [background, surface, surfaceAlt, sunken, text, textMuted, divider, accent,
+                       accentSoft, danger, warningInk, glowBlue, glowCoral, glowAmber, glowCream]
+        _held = shown
+        paletteFadeAnim.stop()
+        _fromLab = shown.map(c => oklab(c))
+        _toLab = _flat(p).map(c => oklab(c))
+        _to = _flat(p)
+        _fade = 0
+        paletteFade = darkMode !== _lastDark ? themeFade : moodFade
+        _lastDark = darkMode
+        paletteFadeAnim.duration = paletteFade
+        // Started before the tokens are let go, so `fading` is already true
+        // when they first move.
+        paletteFadeAnim.start()
+        _held = null
+    }
+    NumberAnimation {
+        id: paletteFadeAnim
+        target: theme
+        property: "_fade"
+        from: 0
+        to: 1
+        easing.type: Easing.InOutSine
+        onFinished: theme.paletteFade = theme.moodFade
+    }
 
     readonly property color accentInk: "#FFFFFF"
     readonly property color success:   "#3DB37A"

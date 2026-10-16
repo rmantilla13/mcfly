@@ -213,6 +213,164 @@ private slots:
         QCOMPARE(finished.count(), 1);
         QCOMPARE(finished.first().at(1).toString(), QStringLiteral("quick"));
     }
+
+    // ── Suggestions from the feed, per screen, and answers to all of them ──
+
+    void suggestionsFollowTheFeed()
+    {
+        // Noon: Onyx is blocked, TSLA is the big mover, the Pulse has a lead,
+        // Grok's hourly brief is 24 minutes old.
+        startDemoAt(QTime(12, 0));
+        QCOMPARE(rig->ai.suggestions(), (QStringList{"What's blocking Onyx?", "Why is TSLA up 4.0% today?",
+                                                     "More on Google launches Gemini 4 Argon", "What did Grok just say?"}));
+        // 3:10 pm: the 3:30 meeting comes into the window (its title cut to
+        // fit a chip). A tenth of a second before the minute, so the store's
+        // minute tick comes at once.
+        startDemoAt(QTime(15, 10, 59, 900));
+        QCOMPARE(rig->ai.suggestions(), (QStringList{"What's blocking Onyx?", "Why is TSLA up 4.0% today?",
+                                                     "What do I need for Pulse review with the…?", "More on Google launches Gemini 4 Argon"}));
+        for (const QString &s : rig->ai.suggestions())
+            QVERIFY2(s.size() <= 42, qPrintable(s));
+
+        // And they move with the clock, not only with a sync: at 4:01 the meeting has gone.
+        QSignalSpy changed(&rig->ai, &Assistant::suggestionsChanged);
+        m_fake = QDateTime(m_fake.date(), QTime(16, 1, 59, 900));
+        QTRY_VERIFY_WITH_TIMEOUT(changed.count() == 1, 3000);
+        QVERIFY(!rig->ai.suggestions().join("|").contains("Pulse review"));
+        // A tick that changes nothing they show leaves them be.
+        QTest::qWait(400);
+        QCOMPARE(changed.count(), 1);
+
+        // Nothing synced yet: the questions that fit any day.
+        QSettings().clear();
+        rig = std::make_unique<Rig>(m_server.baseUrl(), false); // configured, unpaired, no data
+        QCOMPARE(rig->ai.suggestions(), (QStringList{"Summarize my day", "Anything I should know?"}));
+    }
+
+    void suggestionsForEachScreen()
+    {
+        startDemoAt(QTime(12, 0));
+        const QHash<QString, QString> own{
+            {"home", "Summarize my day"},
+            {"briefs", "What did Grok just say?"},
+            {"markets", "Why is TSLA up 4.0% today?"},
+            {"metrics", "What's behind the drop in Error rate?"},
+            {"news", "More on Google launches Gemini 4 Argon"},
+            {"projects", "What's blocking Onyx?"},
+            {"boards", "Why is Search down?"},
+            {"calendar", "Prep me for Pulse review with the team"},
+        };
+        for (auto it = own.cbegin(); it != own.cend(); ++it) {
+            const QStringList list = rig->ai.suggestionsFor(it.key());
+            QCOMPARE(list.first(), it.value());
+            QVERIFY(list.size() <= 4);
+            QCOMPARE(QSet<QString>(list.cbegin(), list.cend()).size(), list.size());
+            for (const QString &s : list)
+                QVERIFY2(s.size() <= 42, qPrintable(s));
+        }
+        QCOMPARE(rig->ai.suggestionsFor("ask"), rig->ai.suggestions());
+    }
+
+    // A screen's own question follows what stands out even when the general
+    // four don't move: Search recovering takes "Why is Search down?" off the
+    // Boards chips, and the bindings (which follow suggestionsChanged) hear it.
+    void screenChipsFollowTheHighlights()
+    {
+        auto state = std::make_shared<QString>(QStringLiteral("down"));
+        m_server.route("/rest/v1/dashboards", [state](const Request &) {
+            const QJsonObject board{{"id", "d1"}, {"agent_id", "a1"}, {"key", "ops"}, {"title", "Ops"}, {"sort_order", 0}, {"hidden", false},
+                                    {"updated_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+                                    {"widgets", QJsonArray{QJsonObject{{"type", "status"}, {"label", "Search"}, {"state", *state}, {"detail", "Index rebuilding"}}}}};
+            return FakeServer::json(QJsonDocument(QJsonArray{board}));
+        });
+        startLive();
+        QTRY_COMPARE(rig->ai.suggestionsFor("boards").value(0), QStringLiteral("Why is Search down?"));
+        QTRY_COMPARE(m_server.pending(), 0);
+        const QStringList general = rig->ai.suggestions();
+        QSignalSpy changed(&rig->ai, &Assistant::suggestionsChanged);
+        *state = QStringLiteral("ok");
+        rig->store.refresh();
+        QTRY_COMPARE(rig->ai.suggestionsFor("boards").value(0), QStringLiteral("How's Ops looking?"));
+        QCOMPARE(rig->ai.suggestions(), general);
+        QCOMPARE(changed.count(), 1);
+    }
+
+    void demoAnswersWhatItOffers()
+    {
+        // Every question the display offers (chips, each screen's, the
+        // highlights') gets a real answer, morning to evening.
+        for (const QTime &time : {QTime(9, 20), QTime(12, 0), QTime(15, 10), QTime(20, 30)}) {
+            startDemoAt(time);
+            QStringList questions = rig->ai.suggestions();
+            for (const QString &screen : {"home", "briefs", "markets", "metrics", "news", "projects", "boards", "calendar"})
+                questions << rig->ai.suggestionsFor(screen);
+            for (const QVariant &v : rig->store.highlights())
+                questions << v.toMap().value("question").toString();
+            questions.removeDuplicates();
+            for (const QString &q : std::as_const(questions)) {
+                const QString answer = rig->ai.demoAnswer(q);
+                QVERIFY2(!answer.isEmpty() && !answer.contains("demo mode"), qPrintable(time.toString() + " " + q + " → " + answer));
+            }
+        }
+
+        startDemoAt(QTime(12, 0));
+        auto answer = [this](const char *q) { return rig->ai.demoAnswer(QString::fromUtf8(q)); };
+        // (The update is 20 hours back: its hour moves on a DST day, so only up to the day.)
+        const QString onyx = answer("What's blocking Onyx?");
+        QVERIFY2(onyx.startsWith("Onyx is blocked. What it needs next: App Review's answer on the FSKit entitlement. The last update, yesterday")
+                     && onyx.endsWith(": App Review: waiting on the FSKit entitlement."),
+                 qPrintable(onyx));
+        const QString tsla = answer("Why is TSLA up 4.0% today?");
+        QVERIFY2(tsla.startsWith("Tesla is up 3.96% today, at $402.10. Deliveries ahead of consensus. That's 4.8× its usual daily move.")
+                     && tsla.contains("top of its recent range ($368.40–$402.10)"),
+                 qPrintable(tsla));
+        const QString prep = answer("Prep me for Pulse review with the team");
+        QVERIFY2(prep.startsWith("Pulse review with the team is today, ") && prep.contains(", at Zoom. It's on your Work calendar.")
+                     && prep.contains("Daily Pulse pipeline is active; next: Push to McFly after each run.")
+                     && prep.endsWith("From Grok's Morning briefing: The Pulse pipeline ran at 8:06 and found 11 sourced stories."),
+                 qPrintable(prep));
+        // A chip's cut-short title still finds the event.
+        QVERIFY(answer("What do I need for Pulse review with the…?").startsWith("Pulse review with the team is today"));
+        const QString day = answer("Summarize my day");
+        QVERIFY2(day.startsWith("2 more things on the calendar today; next is Pulse review with the team at ")
+                     && day.contains("Standing out: Onyx is blocked; Search is down; Error rate is down 30.0%.")
+                     && day.contains("Markets: 4 up · 2 down.") && day.endsWith("Latest from Grok: Hourly check-in."),
+                 qPrintable(day));
+        QCOMPARE(answer("Why is Search down?"), QStringLiteral("Search is down on the Ops board: Index rebuilding since 3:10."));
+        QCOMPARE(answer("What's wrong with Workers?"), QStringLiteral("Workers has a warning on the Ops board: 1 of 4 behind."));
+        QVERIFY(answer("How's Ops looking?").startsWith("Ops: API is OK, Workers has a warning, Search is down; Requests 1.2M (+4.2%)"));
+        QCOMPARE(answer("What's behind the drop in Error rate?"),
+                 QStringLiteral("Error rate is 0.12%, −30.0% since the last reading. That's well off its usual of about 0.18%. "
+                                "That's the good direction for it."));
+        QCOMPARE(answer("How's Steps?"), QStringLiteral("Steps is 6,420, −8.0% since the last reading. Its usual is about 7,450. "
+                                                        "That's the wrong direction for it."));
+        QVERIFY(answer("More on Google launches Gemini 4 Argon").startsWith("Google launches Gemini 4 Argon. A stronger model in Search"));
+        QVERIFY(answer("Tell me more about “Google launches Gemini 4 Argon”").startsWith("Google launches Gemini 4 Argon."));
+        QVERIFY(answer("What did Grok just say?").startsWith("From Grok at"));
+        QVERIFY(answer("What did Market desk just say?").contains("TSLA up 4% on deliveries"));
+        QVERIFY(answer("Anything I should know?").startsWith("Here's what stands out: Onyx is blocked; Search is down;"));
+        QVERIFY(answer("What's next on my calendar?").startsWith("Next: Pulse review with the team, today at "));
+        QVERIFY(answer("How are my metrics looking?").startsWith("Your metrics: Sales today $4,280 (+12.5%);"));
+        QVERIFY(answer("What's next for McFly?").startsWith("McFly is active, 62% done. Next: Ship the dashboards screen."));
+        QVERIFY(answer("How are my projects going?").startsWith("Your projects: Onyx (blocked, 80%);"));
+        // The topics still answer as before.
+        QVERIFY(answer("what's apple doing?").startsWith("Apple is at $247.90"));
+        QVERIFY(answer("what's in the news").startsWith("Top of today's Pulse"));
+        QVERIFY(answer("tell me a joke").contains("demo mode"));
+    }
+
+private:
+    QDateTime m_fake;
+
+    // A demo store and assistant on a fixed clock: today at `time`.
+    void startDemoAt(const QTime &time)
+    {
+        QSettings().clear();
+        m_fake = QDateTime(QDate::currentDate(), time);
+        rig = std::make_unique<Rig>(QUrl(), true);
+        rig->store.setClock([this]() { return m_fake; });
+        rig->store.start();
+    }
 };
 
 QTEST_GUILESS_MAIN(TestAssistant)

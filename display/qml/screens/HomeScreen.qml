@@ -16,6 +16,13 @@ import McFly.Core
 // Mini keeps both columns but drops the ask bar (the nav's sparkle does its
 // job); Tall stacks everything into a feed (docs/LAYOUTS.md). Both
 // carry the markets as a ticker tape that scrolls every symbol.
+//
+// Under the date, what stands out (Store.highlights) turns over one at a
+// time; a tap asks McFly about it. Up next is a gradient tile in the
+// event's colour, counting down its last hour on a ring, or showing how far
+// a meeting on now has run. A thread runs down the day list's gutter with
+// now on it, gliding along as the minutes pass. Everything settles in,
+// staggered, as Home shows (Reveal).
 Item {
     id: home
     signal openScreen(int index)
@@ -25,6 +32,13 @@ Item {
     // On screen and not covered (set by Main.qml); the ask bar's glow only
     // animates while it is.
     property bool shown: true
+    // The page picked, under the assistant panel too: it settles in as
+    // this turns true, not again when the panel goes.
+    property bool isCurrent: true
+    // Loops and glides run only while someone can see them.
+    readonly property bool moving: shown && !Device.idle && Device.animatedTiles
+
+    Reveal { id: rv; shown: home.isCurrent }
 
     property date now: new Date()
     // Past / now / next move once a minute, not every second.
@@ -62,7 +76,7 @@ Item {
         return -1
     }
 
-    Timer { interval: 1000; running: home.visible; repeat: true; triggeredOnStart: true; onTriggered: home.now = new Date() }
+    Timer { objectName: "clockTick"; interval: 1000; running: home.visible; repeat: true; triggeredOnStart: true; onTriggered: home.now = new Date() }
 
     function greeting() {
         const h = now.getHours()
@@ -94,6 +108,34 @@ Item {
         case "reminder": return "clock"
         default: return "calendar"
         }
+    }
+    // Where now falls among the day's rows (y in the rows' own space): inside
+    // the event on now, as far in as it has run; else halfway across the gap
+    // after the last thing that started, or before the first if nothing has.
+    // NaN while that row isn't made. All-day rows and to-dos sit apart.
+    function nowPlace(rowAt, gap) {
+        const t = minuteMs
+        let last = -1, first = -1
+        for (let i = 0; i < timeline.length; ++i) {
+            if (timeline[i].allDay)
+                continue
+            if (timeline[i].startMs <= t)
+                last = i
+            else {
+                first = i
+                break
+            }
+        }
+        if (last < 0) {
+            const next = first >= 0 ? rowAt(first) : null
+            return next ? next.y - gap / 2 : NaN
+        }
+        const row = rowAt(last), item = timeline[last]
+        if (!row)
+            return NaN
+        if (item.kind === "event" && item.endMs > t && item.endMs > item.startMs)
+            return row.y + row.height * (t - item.startMs) / (item.endMs - item.startMs)
+        return row.y + row.height + gap / 2
     }
 
     // ---- The regions.
@@ -159,43 +201,117 @@ Item {
         }
     }
 
-    // Up next (or on now), on the accent.
-    component NextCard: Rectangle {
-        visible: !!home.nextEvent
-        implicitHeight: nextCol.implicitHeight + (Theme.mini ? 24 : 36)
+    // Up next (or on now), on a gradient tile in the event's colour. In its
+    // last hour a ring beside it empties as the start nears; on now, a bar
+    // under it fills as the meeting runs. Both move once a minute.
+    component NextCard: GradientTile {
+        id: nextTile
+        readonly property var event: home.nextEvent
+        readonly property bool onNow: !!event && event.startMs <= home.minuteMs
+        readonly property int minutesTo: event ? home.minutesUntil(event.startMs) : 0
+        readonly property bool countdown: !!event && !onNow && event.day === Store.today && minutesTo <= 60
+        readonly property real elapsed: onNow && event.endMs > event.startMs
+                                        ? Math.min(1, (home.minuteMs - event.startMs) / (event.endMs - event.startMs)) : 0
+        readonly property int ringSize: Theme.mini ? 52 : Theme.compact ? 68 : 76
+        // Its place in Home's reveal.
+        property int order: 2
+        visible: !!event
+        // On now, a little more room under the words for the bar (none on Mini, which has none to spare).
+        implicitHeight: Math.max(nextCol.implicitHeight, countdown ? ringSize : 0) + (Theme.mini ? 24 : 36)
+                        + (onNow && !Theme.mini ? 10 : 0)
         radius: Theme.radius
-        color: home.nextEvent && home.nextEvent.color ? home.nextEvent.color : Theme.accent
-        ColumnLayout {
-            id: nextCol
+        baseColor: event && event.color ? event.color : Theme.accent
+        active: home.shown
+        seed: 2.4
+        rings: 1
+        ringBias: 0.9
+        RowLayout {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: nextTile.onNow && !Theme.mini ? -5 : 0
             anchors.margins: Theme.mini ? 14 : 22
-            spacing: 2
-            Label {
+            spacing: Theme.mini ? 12 : 18
+            ColumnLayout {
+                id: nextCol
                 Layout.fillWidth: true
-                text: home.nextHeading()
-                color: Qt.rgba(1, 1, 1, 0.88)
-                font.pixelSize: Theme.fontXs - (Theme.mini ? 1 : 0)
-                font.weight: Font.Bold
-                font.letterSpacing: 1.3
-                elide: Text.ElideRight
+                spacing: 2
+                Label {
+                    Layout.fillWidth: true
+                    text: home.nextHeading()
+                    color: nextTile.inkMuted
+                    font.pixelSize: Theme.fontXs - (Theme.mini ? 1 : 0)
+                    font.weight: Font.Bold
+                    font.letterSpacing: 1.3
+                    elide: Text.ElideRight
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: nextTile.event ? nextTile.event.title : ""
+                    color: nextTile.ink
+                    font.pixelSize: Theme.mini ? Theme.fontMd : Theme.fontLg
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: !Theme.mini || !!(nextTile.event && nextTile.event.location)
+                    text: nextTile.event ? [nextTile.event.timeLabel, nextTile.event.location || nextTile.event.calendar].filter(s => !!s).join(" · ") : ""
+                    color: nextTile.inkMuted
+                    font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
+                    elide: Text.ElideRight
+                }
             }
-            Label {
-                Layout.fillWidth: true
-                text: home.nextEvent ? home.nextEvent.title : ""
-                color: "white"
-                font.pixelSize: Theme.mini ? Theme.fontMd : Theme.fontLg
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
+            // The last hour: what's left of it, and the minutes in the middle.
+            Ring {
+                objectName: "countdown"
+                visible: nextTile.countdown
+                Layout.preferredWidth: nextTile.ringSize
+                Layout.preferredHeight: nextTile.ringSize
+                Layout.alignment: Qt.AlignVCenter
+                value: nextTile.minutesTo / 60
+                shown: rv.at(nextTile.order)
+                color: nextTile.ink
+                track: Qt.rgba(nextTile.ink.r, nextTile.ink.g, nextTile.ink.b, 0.16)
+                lineWidth: Theme.mini ? 4 : 5
+                Column {
+                    anchors.centerIn: parent
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: nextTile.minutesTo
+                        color: nextTile.ink
+                        font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd
+                        font.weight: Font.DemiBold
+                        font.features: ({ "tnum": 1 })
+                    }
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: qsTr("min")
+                        color: nextTile.inkMuted
+                        font.pixelSize: Theme.fontXs - 3
+                    }
+                }
             }
-            Label {
-                Layout.fillWidth: true
-                visible: !Theme.mini || !!(home.nextEvent && home.nextEvent.location)
-                text: home.nextEvent ? [home.nextEvent.timeLabel, home.nextEvent.location || home.nextEvent.calendar].filter(s => !!s).join(" · ") : ""
-                color: Qt.rgba(1, 1, 1, 0.9)
-                font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
-                elide: Text.ElideRight
+        }
+        // On now: how far it has run, along the bottom edge inside the padding.
+        Item {
+            objectName: "elapsed"
+            visible: nextTile.onNow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: Theme.mini ? 14 : 22
+            anchors.rightMargin: Theme.mini ? 14 : 22
+            anchors.bottomMargin: Theme.mini ? 6 : 14
+            height: Theme.mini ? 4 : 6
+            Rectangle { anchors.fill: parent; radius: height / 2; color: nextTile.ink; opacity: 0.16 }
+            Rectangle {
+                width: parent.width
+                height: parent.height
+                radius: height / 2
+                color: nextTile.ink
+                // Scaled, not resized: the reveal sweeps it in for free.
+                transform: Scale { xScale: Math.max(0.02, nextTile.elapsed) * rv.at(nextTile.order) }
             }
         }
         TapHandler { onTapped: home.openScreen(6) }
@@ -261,6 +377,8 @@ Item {
             intensity: 0.8
             active: home.shown && askBar.live
             processing: AI.busy
+            // Beside the up-next tile (30 fps), on the same frames as it.
+            maxFps: home.nextEvent ? 30 : 20
         }
         RowLayout {
             anchors.fill: parent
@@ -287,7 +405,8 @@ Item {
     }
 
     // One copy of the ticker tape: the holdings summed (when an agent sends
-    // them), then symbol, price, move, for every quote.
+    // them), then symbol, price, move, for every quote; on a wall, the
+    // symbol's recent line too.
     component TickerTape: Row {
         property real gap: 40
         spacing: gap
@@ -315,6 +434,15 @@ Item {
                 spacing: Theme.mini ? 8 : 10
                 Label { text: modelData.symbol; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.Bold }
                 Label { text: modelData.priceLabel; color: Theme.textMuted; font.pixelSize: Theme.fontSm; font.features: ({ "tnum": 1 }) }
+                Sparkline {
+                    visible: Theme.wide && (modelData.history || []).length > 1
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 64
+                    height: 26
+                    points: modelData.history || []
+                    color: parent.tone
+                    lineWidth: 2
+                }
                 Label {
                     text: (modelData.flat ? "" : modelData.up ? "\u25B2 " : "\u25BC ") + modelData.pctLabel
                     color: parent.tone
@@ -394,6 +522,8 @@ Item {
         required property int index
         // A row of tomorrow's preview: never past, on now or next, whatever its index.
         property bool preview: false
+        // Its place in Home's reveal (rows on screen first, in order).
+        property int order: 7
         readonly property bool isEvent: modelData.kind === "event"
         readonly property bool isNow: !preview && isEvent && !modelData.allDay && modelData.startMs <= home.minuteMs && modelData.endMs > home.minuteMs
         readonly property bool isNext: !preview && index === home.nextIndex
@@ -401,7 +531,8 @@ Item {
         readonly property bool hasPicture: Theme.pictures && !Theme.mini && modelData.kind === "news" && !!modelData.imageUrl
         width: ListView.view ? ListView.view.width : implicitWidth
         spacing: Theme.mini ? 10 : 16
-        opacity: isPast ? 0.5 : 1
+        opacity: (isPast ? 0.5 : 1) * rv.at(order)
+        transform: Translate { y: rv.rise(row.order) }
 
         // The time, right-aligned against the card.
         ColumnLayout {
@@ -539,6 +670,80 @@ Item {
         }
     }
 
+    // The day's thread, down the gutter between the times and the cards,
+    // with now on it (home.nowPlace): the part already lived is tinted, and
+    // the dot glides to its new place as the minutes pass. It lives among
+    // the rows (`rowAt` finds them), so it scrolls with them.
+    component NowRail: Item {
+        id: nowRail
+        // The row at an index, or null where it isn't made.
+        property var rowAt: i => null
+        property real gap: 10
+        property real railTop: 0
+        property real railBottom: 0
+        // Read to ask again where now is when the rows may have moved.
+        property var watch
+        readonly property real nowY: {
+            nowRail.watch
+            nowRail._remade
+            return home.nowPlace(nowRail.rowAt, nowRail.gap)
+        }
+        // A sync makes the rows again, a moment after the day changes: ask
+        // again once they're there.
+        property int _remade: 0
+        Timer { id: remade; interval: 120; onTriggered: nowRail._remade++ }
+        Connections {
+            target: home
+            function onTimelineChanged() { remade.restart() }
+        }
+        readonly property bool placed: !isNaN(nowY) && nowY >= railTop - 1 && nowY <= railBottom + gap
+        x: (Theme.mini ? 50 : 64) + (Theme.mini ? 10 : 16) / 2 - width / 2
+        y: railTop
+        width: 14
+        height: Math.max(0, railBottom - railTop)
+        visible: height > 0 && home.timeline.some(r => !r.allDay)
+        opacity: rv.at(3)
+        Rectangle {
+            x: (nowRail.width - width) / 2
+            width: 2
+            height: parent.height
+            radius: 1
+            color: Theme.divider
+        }
+        // Lived: from the top to the dot.
+        Rectangle {
+            visible: nowRail.placed
+            x: (nowRail.width - width) / 2
+            width: 2
+            height: parent.height
+            radius: 1
+            color: Theme.accent
+            opacity: 0.55
+            transform: Scale { yScale: nowRail.height > 0 ? Math.max(0, Math.min(1, (dot.y + dot.height / 2) / nowRail.height)) : 0 }
+        }
+        Item {
+            id: dot
+            visible: nowRail.placed
+            x: (nowRail.width - width) / 2
+            y: (nowRail.placed ? nowRail.nowY - nowRail.railTop : 0) - height / 2
+            width: Theme.mini ? 10 : 12
+            height: width
+            Behavior on y {
+                enabled: home.moving
+                NumberAnimation { duration: Theme.glide; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.standard }
+            }
+            // A ring of the canvas around it, so it sits on the thread.
+            Rectangle { anchors.centerIn: parent; width: parent.width + 6; height: width; radius: width / 2; color: Theme.background }
+            StatusDot {
+                anchors.centerIn: parent
+                size: dot.width
+                color: Theme.accent
+                breathing: true
+                running: home.moving
+            }
+        }
+    }
+
     component TodayHeading: RowLayout {
         Label {
             text: qsTr("TODAY")
@@ -585,6 +790,20 @@ Item {
             model: home.tomorrow
             delegate: TimelineRow { width: parent.width; height: implicitHeight; preview: true }
         }
+    }
+
+    // What stands out, under the date: a tap asks about the one showing.
+    // Not what the cards under it already say (the blocked project, the
+    // event up next).
+    component Insights: InsightLine {
+        id: insights
+        property int order: 1
+        items: Store.highlights.filter(h => !(h.kind === "blocked" && home.blocked.length > 0)
+                                            && !(h.kind === "event" && !!home.nextEvent && h.itemId === home.nextEvent.id))
+        running: home.shown
+        opacity: rv.at(insights.order)
+        transform: Translate { y: rv.rise(insights.order) }
+        onPicked: item => home.openAssistant(item.question)
     }
 
     // A day with nothing in it yet, as on a new account: what lands here,
@@ -640,6 +859,7 @@ Item {
         spacing: Theme.spacing + (Theme.wide ? 8 : 0)
 
         ColumnLayout {
+            objectName: "moment"
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.preferredWidth: Theme.mini ? 5 : 4
@@ -648,20 +868,31 @@ Item {
             // Quiet, the clock grows and sits in the middle of the room above
             // the questions, as the Ambient saver's does with no cards.
             Item { Layout.fillHeight: true; visible: home.quiet }
-            Clock { Layout.fillWidth: true; big: home.quiet }
-            NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
-            BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            Clock { Layout.fillWidth: true; big: home.quiet; opacity: rv.at(0); transform: Translate { y: rv.rise(0) } }
+            Insights { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; opacity: rv.at(2); transform: Translate { y: rv.rise(2) } }
+            BlockedCard { objectName: "blockedCard"; Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; opacity: rv.at(3); transform: Translate { y: rv.rise(3) } }
             Item { Layout.fillHeight: true }
-            // Questions to ask in one tap, over the bar that asks anything.
+            // Questions to ask in one tap, over the bar that asks anything:
+            // Home's own ("Summarize my day") first, then what the feed raises.
             SuggestionChips {
                 Layout.fillWidth: true
                 visible: !Theme.mini
-                items: AI.suggestions
+                // suggestionsFor doesn't notify; reading AI.suggestions does.
+                items: {
+                    const all = AI.suggestions
+                    return all.length > 0 ? AI.suggestionsFor("home") : all
+                }
                 centred: false
                 maxRows: 2
+                opacity: rv.at(4)
+                transform: Translate { y: rv.rise(4) }
                 onPicked: text => home.openAssistant(text)
             }
-            AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; visible: !Theme.mini; live: !Theme.tall }
+            AskBar {
+                Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; visible: !Theme.mini; live: !Theme.tall
+                opacity: rv.at(5); transform: Translate { y: rv.rise(5) }
+            }
         }
 
         ColumnLayout {
@@ -669,8 +900,8 @@ Item {
             Layout.fillWidth: true
             Layout.preferredWidth: Theme.mini ? 6 : 6
             spacing: Theme.mini ? 10 : 14
-            MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
-            TodayHeading { Layout.fillWidth: true }
+            MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; opacity: rv.at(1); transform: Translate { y: rv.rise(1) } }
+            TodayHeading { Layout.fillWidth: true; opacity: rv.at(2) }
             // Filling the column keeps TODAY at the top; scrolls where it's short.
             FocusFlickable {
                 Layout.fillWidth: true
@@ -682,6 +913,7 @@ Item {
             }
             ListView {
                 id: dayList
+                objectName: "dayList"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: home.timeline.length > 0 || home.tomorrow.length > 0
@@ -689,7 +921,22 @@ Item {
                 spacing: Theme.mini ? 8 : 10
                 model: home.timeline
                 boundsBehavior: Flickable.StopAtBounds
-                delegate: TimelineRow {}
+                // The rows on screen settle in from the top, whatever row the list rests on.
+                delegate: TimelineRow { order: 3 + Math.max(0, index - dayList.topIndex) }
+                readonly property int topIndex: Math.max(0, indexAt(width / 2, contentY + spacing + 1))
+                // Every row of a day is made, so the thread always finds now.
+                cacheBuffer: 2400
+
+                NowRail {
+                    objectName: "nowRail"
+                    // Among the rows, so it scrolls with them.
+                    parent: dayList.contentItem
+                    rowAt: i => dayList.itemAtIndex(i)
+                    gap: dayList.spacing
+                    railTop: dayList.originY
+                    railBottom: dayList.footerItem ? dayList.footerItem.y : dayList.originY + dayList.contentHeight
+                    watch: [dayList.contentHeight, dayList.count, dayList.contentY, home.minuteMs]
+                }
 
                 // Keep "now" in view: one row of what came before, then the rest.
                 property bool touched: false
@@ -794,18 +1041,36 @@ Item {
             y: Theme.pageMargin
             width: parent.width - 2 * Theme.pageMargin
             spacing: Theme.spacing
-            Clock { Layout.fillWidth: true }
-            NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
-            BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
-            AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; live: Theme.tall }
-            MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
-            TodayHeading { Layout.fillWidth: true }
+            Clock { Layout.fillWidth: true; opacity: rv.at(0); transform: Translate { y: rv.rise(0) } }
+            Insights { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+            NextCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; opacity: rv.at(2); transform: Translate { y: rv.rise(2) } }
+            BlockedCard { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; opacity: rv.at(3); transform: Translate { y: rv.rise(3) } }
+            AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; live: Theme.tall; opacity: rv.at(4); transform: Translate { y: rv.rise(4) } }
+            MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; opacity: rv.at(5); transform: Translate { y: rv.rise(5) } }
+            TodayHeading { Layout.fillWidth: true; opacity: rv.at(6) }
             EmptyDay { Layout.fillWidth: true; visible: home.timeline.length === 0 && home.tomorrow.length === 0 }
             Repeater {
+                id: feedRows
                 model: home.timeline
                 delegate: TimelineRow { Layout.fillWidth: true }
             }
             TomorrowPreview { Layout.fillWidth: true }
+        }
+        // The thread, over the feed's rows, in their own space.
+        Item {
+            x: feed.x
+            y: feed.y
+            width: feed.width
+            height: feed.height
+            NowRail {
+                readonly property Item first: feedRows.count > 0 ? feedRows.itemAt(0) : null
+                readonly property Item last: feedRows.count > 0 ? feedRows.itemAt(feedRows.count - 1) : null
+                rowAt: i => feedRows.itemAt(i)
+                gap: feed.spacing
+                railTop: first ? first.y : 0
+                railBottom: last ? last.y + last.height : 0
+                watch: [feed.height, feedRows.count, home.minuteMs, first ? first.y : 0]
+            }
         }
     }
 }

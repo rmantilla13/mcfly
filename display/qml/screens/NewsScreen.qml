@@ -8,9 +8,18 @@ import McFly.Core
 // opens large, with its takeaway, its source and a QR code so the article
 // can be read on a phone. On the 7" panel the page carries no pictures: the
 // hero is a lead row and the stories are rows with the section's initial.
+// The hero's picture drifts slowly closer and back (Ken Burns); the sections
+// settle in one after another as the page shows.
 Item {
     id: news
+    property bool shown: true
+    // The page picked, under the assistant panel too: it settles in as
+    // this turns true, not again when the panel goes.
+    property bool isCurrent: true
     property var story: ({})
+    // Loops run only while someone can see them.
+    readonly property bool moving: shown && !Device.idle && Device.animatedTiles
+    Reveal { id: rv; shown: news.isCurrent }
     readonly property bool storyOpen: !!story.headline
     readonly property int reportIndex: Math.max(0, Store.newsReports.findIndex(r => r.id === Store.news.id))
     readonly property var hero: Store.news.hero || ({})
@@ -81,6 +90,9 @@ Item {
                     visible: Theme.pictures && !!news.hero.headline
                     story: news.hero
                     large: true
+                    kenBurns: news.moving && !news.storyOpen
+                    opacity: rv.at(0)
+                    transform: Translate { y: rv.rise(0) }
                     onOpened: s => news.story = s
                 }
                 // ...or, with no room for pictures, a lead row.
@@ -90,6 +102,8 @@ Item {
                     visible: !Theme.pictures && !!news.hero.headline
                     radius: Theme.radiusSm
                     color: Theme.surface
+                    opacity: rv.at(0)
+                    transform: Translate { y: rv.rise(0) }
                     Rectangle { width: 8; height: parent.height; radius: 4; color: news.hero.sectionColor || Theme.accent }
                     ColumnLayout {
                         id: leadCol
@@ -122,9 +136,13 @@ Item {
                 Repeater {
                     model: Store.news.sections || []
                     delegate: ColumnLayout {
+                        id: section
                         required property var modelData
+                        required property int index
                         Layout.fillWidth: true
                         spacing: Theme.mini ? 8 : 12
+                        opacity: rv.at(index + 1)
+                        transform: Translate { y: rv.rise(section.index + 1) }
                         RowLayout {
                             spacing: 10
                             Rectangle { width: 12; height: 12; radius: 6; color: modelData.color }

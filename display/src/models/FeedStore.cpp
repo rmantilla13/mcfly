@@ -12,11 +12,14 @@
 #include <QJsonObject>
 #include <QLocale>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QTimeZone>
 #include <QSet>
 #include <cmath>
 #include <algorithm>
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace {
 
@@ -277,6 +280,158 @@ QString kindLabel(const QString &kind)
     return QObject::tr("Update");
 }
 
+// ── What stands out: the console's lib/insights.ts and lib/series.ts, ported ──
+
+constexpr qint64 kMinuteMs = 60 * 1000;
+constexpr qint64 kHourMs = 60 * kMinuteMs;
+constexpr qint64 kFreshMs = 15 * kMinuteMs;       // a quote or metric this new is live
+constexpr int kMaxHighlights = 5;
+constexpr int kMinHistory = 8;                     // fewer earlier points and a z says more about the sample
+constexpr double kAnomalyZ = 3;
+constexpr double kShortHistoryPct = 10;            // a metric's jump that counts when z can't be had
+constexpr double kBigMovePct = 2;
+constexpr double kSwingRatio = 2.5;
+constexpr double kSwingFloorPct = 1;               // a 0.4% day is never news, however calm the stock
+constexpr qint64 kEventSoonMs = 30 * kMinuteMs;
+constexpr qint64 kBriefFreshMs = kHourMs;
+constexpr qint64 kQuoteFreshMs = 36 * kHourMs;     // Friday's move isn't "today" on Sunday
+const QString kGood = QStringLiteral("#3DB37A");
+const QString kBad = QStringLiteral("#F07F5A");
+
+std::optional<double> median(QList<double> values)
+{
+    if (values.isEmpty())
+        return std::nullopt;
+    std::sort(values.begin(), values.end());
+    const qsizetype mid = values.size() / 2;
+    return values.size() % 2 ? values.at(mid) : (values.at(mid - 1) + values.at(mid)) / 2;
+}
+
+// How unusual the last value is against the ones before it: (last − median)
+// / (1.4826 · MAD), with the mean absolute deviation standing in when over
+// half the history is one value. None with too little history or no spread.
+std::optional<double> robustZ(const QList<double> &values)
+{
+    if (values.size() - 1 < kMinHistory)
+        return std::nullopt;
+    const QList<double> earlier = values.mid(0, values.size() - 1);
+    const double mid = *median(earlier);
+    QList<double> deviations;
+    double sum = 0;
+    for (double v : earlier) {
+        deviations << qAbs(v - mid);
+        sum += qAbs(v - mid);
+    }
+    double scale = 1.4826 * *median(deviations);
+    if (!(scale > 0))
+        scale = 1.2533 * (sum / deviations.size());
+    if (!(scale > 0))
+        return std::nullopt;
+    const double z = (values.last() - mid) / scale;
+    return std::isfinite(z) ? std::optional<double>(z) : std::nullopt;
+}
+
+// The usual day-to-day move in percent: the standard deviation of the daily
+// changes, leaving out the last one (today's, the move being judged).
+std::optional<double> usualSwing(const QList<double> &closes, int minChanges = 5)
+{
+    QList<double> changes;
+    for (qsizetype i = 1; i < closes.size() - 1; ++i)
+        if (closes.at(i - 1) != 0)
+            changes << (closes.at(i) - closes.at(i - 1)) / qAbs(closes.at(i - 1)) * 100;
+    if (changes.size() < minChanges)
+        return std::nullopt;
+    double mean = 0;
+    for (double c : changes)
+        mean += c;
+    mean /= changes.size();
+    double variance = 0;
+    for (double c : changes)
+        variance += (c - mean) * (c - mean);
+    const double sd = std::sqrt(variance / (changes.size() - 1));
+    return std::isfinite(sd) && sd > 0 ? std::optional<double>(sd) : std::nullopt;
+}
+
+// Whether up is good news for a metric. Latency, error rates, cost, churn,
+// queues and the like should fall; everything else should rise. From the
+// unit and the key only, since that is all an agent's push says.
+bool upIsGood(const QString &unit, const QString &key)
+{
+    static const QStringList downPrefixes{
+        "latenc", "error", "fail", "crash", "incident", "outage", "downtime", "churn", "cost", "spend",
+        "expens", "refund", "backlog", "queue", "bounce", "ttfb", "cancel", "complaint", "defect", "bug"};
+    static const QSet<QString> downWords{"lag", "lags", "delay", "delays", "wait", "waits", "debt", "burn", "err", "errs",
+                                         "p50", "p75", "p90", "p95", "p99", "p999"};
+    static const QSet<QString> downUnits{QStringLiteral("ms"), QStringLiteral("µs"), QStringLiteral("us"), QStringLiteral("ns")};
+    static const QRegularExpression split(QStringLiteral("[^a-z0-9]+"));
+    static const QRegularExpression percentile(QStringLiteral("^p\\d{2,3}$"));
+    if (downUnits.contains(unit.trimmed().toLower()))
+        return false;
+    for (const QString &word : key.toLower().split(split, Qt::SkipEmptyParts)) {
+        if (downWords.contains(word) || percentile.match(word).hasMatch())
+            return false;
+        for (const QString &prefix : downPrefixes)
+            if (word.startsWith(prefix))
+                return false;
+    }
+    return true;
+}
+
+QString clip(const QString &text, int max)
+{
+    const QString t = text.simplified();
+    return t.size() <= max ? t : t.left(max - 1).trimmed() + QStringLiteral("…");
+}
+
+QString agoLabel(qint64 ms, qint64 nowMs)
+{
+    const qint64 m = qRound64(double(nowMs - ms) / kMinuteMs);
+    if (m < 1)
+        return QObject::tr("just now");
+    if (m < 60)
+        return QObject::tr("%1 min ago").arg(m);
+    const qint64 h = qRound64(m / 60.0);
+    return h < 48 ? QObject::tr("%1 h ago").arg(h) : QObject::tr("%1 d ago").arg(qRound64(h / 24.0));
+}
+
+QString pct1(double value) { return QLocale().toString(qAbs(value), 'f', 1); }
+
+// A time of day on the 24-hour dial: degrees clockwise from midnight.
+double dialAngle(const QTime &time) { return time.msecsSinceStartOfDay() / 240000.0; }
+
+// Until just after the next minute on the clock.
+int untilNextMinute(const QDateTime &now)
+{
+    return int(kMinuteMs - now.time().msecsSinceStartOfDay() % kMinuteMs + 50);
+}
+
+// A row's low and high over its history (oldest first, ending on the current
+// value), labelled, and where the current value sits between them: 0 at the
+// low, 1 at the high, the middle when it never moved.
+void addRange(QVariantMap &row, const QVariantList &history, const std::function<QString(double)> &label)
+{
+    if (history.isEmpty())
+        return;
+    double low = history.first().toDouble(), high = low;
+    for (const QVariant &v : history) {
+        low = qMin(low, v.toDouble());
+        high = qMax(high, v.toDouble());
+    }
+    const double last = history.last().toDouble();
+    row.insert("low", low);
+    row.insert("high", high);
+    row.insert("lowLabel", label(low));
+    row.insert("highLabel", label(high));
+    row.insert("rangePos", high > low ? (last - low) / (high - low) : 0.5);
+}
+
+// Pushed in the last 15 minutes (a clock a little ahead is forgiven).
+bool isFresh(const QDateTime &asOf, const QDateTime &now)
+{
+    const qint64 age = asOf.msecsTo(now);
+    return asOf.isValid() && age <= kFreshMs && age >= -5 * kMinuteMs;
+}
+
 } // namespace
 
 FeedStore::FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent)
@@ -296,6 +451,9 @@ FeedStore::FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent)
     m_today = QDate::currentDate();
     m_dayTimer.setSingleShot(true);
     connect(&m_dayTimer, &QTimer::timeout, this, &FeedStore::rollDay);
+    m_minuteTimer.setSingleShot(true);
+    m_minuteTimer.setTimerType(Qt::PreciseTimer); // on the minute, not up to 3 s before it
+    connect(&m_minuteTimer, &QTimer::timeout, this, &FeedStore::onMinute);
     m_reminderTimer.setSingleShot(true);
     connect(&m_reminderTimer, &QTimer::timeout, this, &FeedStore::fireReminders);
 
@@ -328,6 +486,7 @@ void FeedStore::setSyncIntervalMs(int ms)
 void FeedStore::start()
 {
     updateToday(); // the clock may have been swapped since construction (tests)
+    m_minuteTimer.start(untilNextMinute(now()));
     if (m_forceDemo || !m_client->isConfigured()) {
         setMode("demo");
         loadDemo();
@@ -892,6 +1051,7 @@ void FeedStore::unpair()
     m_rawDashboards.clear();
     m_rawEvents.clear();
     m_rawTodos.clear();
+    m_seen.clear(); // the next account's values are new, not changes
     m_lastSync = QDateTime();
     rebuild();
 
@@ -1034,6 +1194,62 @@ void FeedStore::rebuild()
         const QString body = b.value("body").toString().trimmed();
         const int cut = body.indexOf(QStringLiteral("\n\n"));
         b.insert("summary", (cut > 0 ? body.left(cut) : body).simplified());
+        // The body for a reader: its "- " points apart from its paragraphs
+        // (an indented line under a point carries on that point). `blocks`
+        // keeps them in the body's order, as BriefText.swift does: a
+        // paragraph's own line breaks stay (a "## " heading over its text, a
+        // numbered list), and a run of points is one block.
+        QStringList paragraphs, bullets, text, lines, items;
+        QVariantList blocks;
+        auto endParagraph = [&]() {
+            if (!lines.isEmpty())
+                blocks << QVariantMap{{"kind", QStringLiteral("paragraph")}, {"text", lines.join(QLatin1Char('\n'))}};
+            lines.clear();
+        };
+        auto endPoints = [&]() {
+            if (!items.isEmpty())
+                blocks << QVariantMap{{"kind", QStringLiteral("points")}, {"items", items}};
+            items.clear();
+        };
+        static const QRegularExpression blankLine(QStringLiteral("\\n\\s*\\n"));
+        static const QRegularExpression bullet(QStringLiteral("^[-•*]\\s+"));
+        for (const QString &block : body.split(blankLine, Qt::SkipEmptyParts)) {
+            bool inBullet = false;
+            for (const QString &raw : block.split(QLatin1Char('\n'))) {
+                const QString line = raw.trimmed();
+                if (line.isEmpty())
+                    continue;
+                const auto point = bullet.match(line);
+                if (point.hasMatch()) {
+                    if (!text.isEmpty())
+                        paragraphs << text.join(QLatin1Char(' '));
+                    text.clear();
+                    endParagraph();
+                    bullets << line.mid(point.capturedLength());
+                    items << bullets.last();
+                    inBullet = true;
+                } else if (inBullet && raw.at(0).isSpace()) {
+                    bullets.last() += QLatin1Char(' ') + line;
+                    items.last() = bullets.last();
+                } else {
+                    text << line;
+                    endPoints();
+                    lines << line;
+                    inBullet = false;
+                }
+            }
+            if (!text.isEmpty())
+                paragraphs << text.join(QLatin1Char(' '));
+            text.clear();
+            endParagraph();
+            endPoints();
+        }
+        // A fenced code block can hold "- " lines and blank ones: kept whole.
+        if (body.contains(QLatin1String("```")) || body.contains(QLatin1String("~~~")))
+            blocks = {QVariantMap{{"kind", QStringLiteral("paragraph")}, {"text", body}}};
+        b.insert("paragraphs", paragraphs);
+        b.insert("bullets", bullets);
+        b.insert("blocks", blocks);
         m_briefs << b;
     }
     std::stable_sort(m_briefs.begin(), m_briefs.end(), [](const QVariant &a, const QVariant &b) {
@@ -1113,6 +1329,22 @@ void FeedStore::rebuild()
         q.insert("asOfLabel", asOf.isValid() ? (asOf.date() == m_today ? timeLabel(asOf) : dayLabel(asOf.date())) : QString());
         q.insert("agentName", agentName(q.value("agent_id").toString()));
         q.insert("agentColor", agentColor(q.value("agent_id").toString()));
+        // Its range, how hot today is (±3% is the scale's end), whether it's
+        // live, when its price last moved here, and its usual daily swing,
+        // from daily closes: each local day's newest row (rows are newest first).
+        addRange(q, history, [&currency](double v) { return money(v, currency); });
+        q.insert("heat", qBound(-1.0, pct / 3, 1.0));
+        q.insert("fresh", isFresh(asOf, nowDt));
+        markChange(q, QStringLiteral("q:") + q.value("symbol").toString(), price);
+        QList<double> closes;
+        QDate closeDay;
+        for (const QVariant &rv : std::as_const(rows)) {
+            const QDate day = parseTimestamp(rv.toMap().value("as_of").toString()).date();
+            if (closes.isEmpty() || day != closeDay)
+                closes.prepend(rv.toMap().value("price").toDouble());
+            closeDay = day;
+        }
+        q.insert("swingPct", usualSwing(closes).value_or(0));
 
         // What the agent added: a holding, signals, the day's numbers.
         QVariantMap data = q.value("data").toMap();
@@ -1184,6 +1416,54 @@ void FeedStore::rebuild()
                 m_portfolio.insert("totalPctLabel", signedNumber(heldTotal / costBase * 100, 1, QStringLiteral("%")));
         }
     }
+
+    // How the market moved, and its big movers: 2% or more, or 2.5× the
+    // usual daily swing (and 1% at least), on a quote from the last 36 h.
+    int ups = 0, downs = 0, flats = 0;
+    m_movers.clear();
+    for (QVariant &v : m_quotes) {
+        QVariantMap q = v.toMap();
+        const double pct = q.value("change_pct").toDouble();
+        if (q.value("flat").toBool())
+            ++flats;
+        else if (q.value("change").toDouble() > 0)
+            ++ups;
+        else
+            ++downs;
+        const QDateTime asOf = parseTimestamp(q.value("as_of").toString());
+        const double swing = q.value("swingPct").toDouble();
+        const double ratio = swing > 0 ? qAbs(pct) / swing : -1;
+        const bool big = qAbs(pct) >= kBigMovePct;
+        const bool unusual = ratio >= kSwingRatio && qAbs(pct) >= kSwingFloorPct;
+        const bool moved = std::isfinite(pct) && pct != 0 && (!asOf.isValid() || asOf.msecsTo(nowDt) <= kQuoteFreshMs) && (big || unusual);
+        q.insert("bigMove", moved);
+        v = q;
+        if (!moved)
+            continue;
+        const QString symbol = q.value("symbol").toString();
+        const QString dir = pct > 0 ? tr("up") : tr("down");
+        QStringList detail{q.value("priceLabel").toString()};
+        if (ratio >= 1.5)
+            detail << tr("%1× its usual daily move").arg(QLocale().toString(ratio, 'f', 1));
+        m_movers << QVariantMap{{"id", QStringLiteral("mover:") + symbol}, {"kind", "mover"}, {"icon", pct > 0 ? "arrow-up" : "arrow-down"},
+                                {"tone", pct > 0 ? "good" : "bad"}, {"color", pct > 0 ? kGood : kBad},
+                                {"title", tr("%1 is %2 %3%").arg(symbol, dir, pct1(pct))}, {"detail", detail.join(QStringLiteral(" · "))},
+                                {"screen", 2}, {"segment", "markets"}, {"itemId", symbol},
+                                {"question", tr("Why is %1 %2 %3% today?").arg(symbol, dir, pct1(pct))},
+                                {"strength", qMax(qAbs(pct) / kBigMovePct, ratio / kSwingRatio)}};
+    }
+    std::stable_sort(m_movers.begin(), m_movers.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value("strength").toDouble() > b.toMap().value("strength").toDouble();
+    });
+    QStringList breadth;
+    if (ups)
+        breadth << tr("%1 up").arg(ups);
+    if (downs)
+        breadth << tr("%1 down").arg(downs);
+    if (flats)
+        breadth << tr("%1 flat").arg(flats);
+    m_marketBreadth = QVariantMap{{"up", ups}, {"down", downs}, {"flat", flats}, {"total", int(m_quotes.size())},
+                                  {"label", breadth.join(QStringLiteral(" · "))}};
 
     // News: the sources, every report for the picker, and the shown one in full.
     m_newsSources.clear();
@@ -1278,6 +1558,7 @@ void FeedStore::rebuild()
     }
     rebuildProductivity(agentById);
     rebuildTimeline(agentById);
+    rebuildHighlights();
     m_calendarSources.clear();
     for (const QVariant &v : std::as_const(m_rawCalendarSources)) {
         QVariantMap c = v.toMap();
@@ -1407,6 +1688,7 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
         rowsByKey[v.toMap().value("key").toString()] << v;
     m_metrics.clear();
     m_metricGroups.clear();
+    m_anomalies.clear();
     QHash<QString, int> groupIndex;
     for (const QVariant &sv : std::as_const(m_rawMetricSettings)) {
         const QVariantMap setting = sv.toMap();
@@ -1450,6 +1732,53 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
         m.insert("history", history);
         m.insert("asOfLabel", asOf.isValid() ? (asOf.date() == m_today ? timeLabel(asOf) : dayLabel(asOf.date())) : QString());
         m.insert("agentName", agentName(m.value("agent_id").toString()));
+        // Which way is good news for it and which way it went (`up` counts a
+        // percentage-only change as 0), its range, whether it's live and when
+        // its value last moved here.
+        const QString key = m.value("key").toString();
+        const bool upGood = upIsGood(unit, key);
+        const double move = rowHasDelta || !rowHasPct ? delta : pct;
+        m.insert("goodDirection", upGood ? "up" : "down");
+        m.insert("trend", move > 0 ? "up" : move < 0 ? "down" : "flat");
+        m.insert("good", move == 0 || (move > 0) == upGood);
+        addRange(m, history, [&unit](double v) { return metricLabel(v, unit); });
+        m.insert("fresh", isFresh(asOf, nowDt));
+        markChange(m, QStringLiteral("m:") + key, value);
+        // Far off its usual: a robust z over the history, or, with too little
+        // history (or none that varies) for one, a 10% jump the agent reported.
+        QList<double> points;
+        for (const QVariant &h : std::as_const(history))
+            points << h.toDouble();
+        const std::optional<double> usual = median(points.mid(0, points.size() - 1));
+        m.insert("usualLabel", usual ? metricLabel(*usual, unit) : QString());
+        int dir = 0;
+        double strength = 0;
+        bool unusual = false;
+        if (const std::optional<double> z = robustZ(points)) {
+            if (qAbs(*z) >= kAnomalyZ) {
+                dir = *z > 0 ? 1 : -1;
+                strength = qAbs(*z);
+                unusual = true;
+            }
+        } else if (rowHasPct && qAbs(pct) >= kShortHistoryPct) {
+            dir = pct > 0 ? 1 : -1;
+            strength = qAbs(pct) / kShortHistoryPct * kAnomalyZ;
+        }
+        m.insert("anomaly", dir != 0);
+        if (dir != 0) {
+            const QString name = m.value("label").toString();
+            const bool good = (dir > 0) == upGood;
+            m_anomalies << QVariantMap{
+                {"id", QStringLiteral("metric:") + key}, {"kind", "metric"}, {"icon", "chart"},
+                {"tone", good ? "good" : "bad"}, {"color", good ? kGood : kBad},
+                {"title", unusual ? tr("%1 is unusually %2").arg(name, dir > 0 ? tr("high") : tr("low"))
+                                  : tr("%1 is %2 %3%").arg(name, dir > 0 ? tr("up") : tr("down"), pct1(pct))},
+                {"detail", unusual && usual ? tr("%1, against a usual %2").arg(m.value("valueLabel").toString(), metricLabel(*usual, unit))
+                                            : m.value("valueLabel").toString()},
+                {"screen", 2}, {"segment", "metrics"}, {"itemId", key},
+                {"question", tr("What's behind the %1 in %2?").arg(dir > 0 ? tr("rise") : tr("drop"), name)},
+                {"strength", strength}};
+        }
         m_metrics << m;
         const QString group = m.value("group").toString().isEmpty() ? tr("Metrics") : m.value("group").toString();
         if (!groupIndex.contains(group)) {
@@ -1462,6 +1791,9 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
         g.insert("metrics", list);
         m_metricGroups[groupIndex.value(group)] = g;
     }
+    std::stable_sort(m_anomalies.begin(), m_anomalies.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value("strength").toDouble() > b.toMap().value("strength").toDouble();
+    });
 
     // Dashboards: each widget gets display labels so QML needs no math.
     m_dashboards.clear();
@@ -1482,6 +1814,12 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
                 w.insert("deltaLabel", hasPct ? signedNumber(w.value("delta_pct").toDouble(), 1, QStringLiteral("%"))
                                               : hasDelta ? signedNumber(w.value("delta").toDouble(), 0) : QString());
                 w.insert("up", hasPct ? w.value("delta_pct").toDouble() >= 0 : w.value("delta").toDouble() >= 0);
+                // As for metrics: which way is good news, so a falling error
+                // rate reads as good. The label stands in for the key.
+                const double move = hasPct ? w.value("delta_pct").toDouble() : w.value("delta").toDouble();
+                const bool upGood = upIsGood(unit, w.value("label").toString());
+                w.insert("trend", move > 0 ? "up" : move < 0 ? "down" : "flat");
+                w.insert("good", move == 0 || (move > 0) == upGood);
             } else if (type == QLatin1String("progress")) {
                 const double max = w.value("max").toDouble() > 0 ? w.value("max").toDouble() : 100;
                 const double value = w.value("value").toDouble();
@@ -1506,6 +1844,10 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
                 w.insert("items", items);
             }
             w.insert("wide", type == QLatin1String("chart") || type == QLatin1String("list") || type == QLatin1String("text"));
+            // A type this display can't draw yet (a newer agent's) stays in the
+            // list, so indexes hold, and QML skips it.
+            static const QSet<QString> knownTypes{"metric", "status", "progress", "chart", "list", "text"};
+            w.insert("known", knownTypes.contains(type));
             widgets << w;
         }
         d.insert("widgets", widgets);
@@ -1665,8 +2007,8 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         const QString c = agentById.value(id).value("color").toString();
         return c.isEmpty() ? QStringLiteral("#5B7CF5") : c;
     };
-    // A row, shaped for Home: today's stream, or tomorrow's preview.
-    auto row = [&](QVariantMap item, const QDateTime &start, const QDateTime &end) {
+    // A row, shaped for the day it sits on: today's stream, or tomorrow's preview.
+    auto row = [&](QVariantMap item, const QDateTime &start, const QDateTime &end, const QDate &day) {
         item.insert("startMs", start.toMSecsSinceEpoch());
         item.insert("endMs", (end.isValid() ? end : start).toMSecsSinceEpoch());
         // "3:30" over "pm": the clock face splits them, 12-hour like the rest of the display.
@@ -1674,10 +2016,17 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         const bool allDay = item.value("allDay").toBool();
         item.insert("timeLabel", allDay ? tr("All day") : parts.value(0));
         item.insert("ampm", allDay ? QString() : parts.value(1));
+        // On a 24-hour dial (degrees clockwise from midnight at the top): where
+        // it starts and how far it runs, cut at midnight. A moment has no
+        // sweep; an all-day event goes all the way round.
+        const double startAngle = allDay || start.date() < day ? 0 : dialAngle(start.time());
+        const double endAngle = !end.isValid() ? startAngle : end.date() > day ? 360 : dialAngle(end.time());
+        item.insert("startAngle", startAngle);
+        item.insert("sweep", allDay ? 360.0 : qBound(0.0, endAngle - startAngle, 360.0 - startAngle));
         return item;
     };
     auto add = [&](QVariantMap item, const QDateTime &start, const QDateTime &end) {
-        m_timeline << row(std::move(item), start, end);
+        m_timeline << row(std::move(item), start, end, m_today);
     };
 
     // Today's news reports, every source (not just the one News is showing):
@@ -1767,7 +2116,7 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         if (day == todayKey)
             add(item, start, end);
         else
-            m_tomorrow << row(item, start, end);
+            m_tomorrow << row(item, start, end, m_today.addDays(1));
     }
 
     // Todos and reminders. A reminder sits at its time today; a todo due at a
@@ -1876,13 +2225,389 @@ void FeedStore::pushDeviceSettings(const QVariantMap &patch)
         return;
     withSession([this, patch]() {
         m_client->rpc("device_update_settings", QJsonObject{{"patch", QJsonObject::fromVariantMap(patch)}},
-                      [this](const QJsonDocument &doc, const QString &error) {
+                      [this, patch](const QJsonDocument &doc, const QString &error) {
                           if (!error.isEmpty()) {
                               qWarning() << "saving display settings failed:" << error;
                               return;
                           }
-                          // What the server now has, so the next sync doesn't re-apply it.
-                          m_deviceSettings = doc.object().toVariantMap();
+                          // What the server kept of this patch, so the next sync doesn't
+                          // re-apply it. Only those keys: the rest of the row it answered
+                          // may hold a change made elsewhere since the last sync (the
+                          // voice, from the phone), which the next sync must still bring.
+                          // A key it dropped (one an older server doesn't know) stays out.
+                          const QVariantMap row = doc.object().toVariantMap();
+                          for (auto it = patch.cbegin(); it != patch.cend(); ++it)
+                              if (row.contains(it.key()))
+                                  m_deviceSettings.insert(it.key(), row.value(it.key()));
                       });
     });
+}
+
+// ───────────────────────────── What stands out ─────────────────────────────
+
+double FeedStore::nowAngle() const
+{
+    const QTime t = now().time();
+    return (t.hour() * 60 + t.minute()) * 0.25; // 1440 minutes round the dial
+}
+
+void FeedStore::onMinute()
+{
+    // Highlights first, so a listener to both (the assistant's chips) sees
+    // the new minute whole on the first signal.
+    rebuildHighlights(); // "starts in 12 min", a brief turning an hour old
+    emit nowAngleChanged();
+    m_minuteTimer.start(untilNextMinute(now()));
+}
+
+void FeedStore::markChange(QVariantMap &row, const QString &key, double value)
+{
+    auto seen = m_seen.find(key);
+    if (seen == m_seen.end()) {
+        // First sight: 0, no change to show, so the first sync (or the demo,
+        // whose rows are stamped "now") animates nothing.
+        seen = m_seen.insert(key, Seen{value, 0, true});
+    } else if (seen->value != value) {
+        seen->changedMs = now().toMSecsSinceEpoch();
+        seen->up = value > seen->value;
+        seen->value = value;
+    }
+    row.insert("changedMs", seen->changedMs);
+    row.insert("changedUp", seen->up);
+}
+
+// What stands out right now, ranked as the console's lib/insights.ts ranks
+// it, with a board's status going down after a blocked project. Each points
+// at its screen (Main.qml's nav indices: Briefs 1, Markets 2, News 3,
+// Projects 4, Boards 5, Calendar 6) and asks a question the assistant can
+// answer from the display. Checked after each rebuild and each minute.
+void FeedStore::rebuildHighlights()
+{
+    const qint64 nowMs = now().toMSecsSinceEpoch();
+    QVariantList out;
+    auto item = [](const QString &id, const QString &kind, const QString &icon, const QString &tone, const QVariant &color,
+                   const QString &title, const QString &detail, int screen, const QVariant &itemId, const QString &question) {
+        return QVariantMap{{"id", id}, {"kind", kind}, {"icon", icon}, {"tone", tone}, {"color", color},
+                           {"title", title}, {"detail", detail}, {"screen", screen}, {"segment", QString()},
+                           {"board", -1}, {"itemId", itemId}, {"question", question}};
+    };
+    // The metrics and movers ranked in rebuild(), the strongest two of each.
+    auto strongest = [&out](const QVariantList &ranked) {
+        for (int i = 0; i < qMin(2, int(ranked.size())); ++i) {
+            QVariantMap m = ranked.at(i).toMap();
+            m.remove("strength");
+            m.insert("board", -1);
+            out << m;
+        }
+    };
+
+    // 1. A blocked project: the one thing only you can unstick.
+    QVariantList blocked;
+    for (const QVariant &v : std::as_const(m_projects))
+        if (v.toMap().value("status").toString() == QLatin1String("blocked"))
+            blocked << v;
+    if (!blocked.isEmpty()) {
+        const QVariantMap p = blocked.first().toMap();
+        const QString name = p.value("name").toString();
+        out << item(QStringLiteral("blocked:") + p.value("id").toString(), "blocked", "info", "warn", p.value("color"),
+                    blocked.size() > 1 ? tr("%1 and %2 more are blocked").arg(name, QString::number(blocked.size() - 1)) : tr("%1 is blocked").arg(name),
+                    p.value("next_step").toString(), 4, p.value("id"), tr("What's blocking %1?").arg(name));
+    }
+
+    // 2. A board's status that is down (or warning): the worst, and how many more.
+    struct Status
+    {
+        QVariantMap widget, board;
+        int index;
+    };
+    QList<Status> statuses;
+    for (int b = 0; b < m_dashboards.size(); ++b) {
+        const QVariantMap d = m_dashboards.at(b).toMap();
+        for (const QVariant &wv : d.value("widgets").toList()) {
+            const QVariantMap w = wv.toMap();
+            const QString state = w.value("state").toString();
+            if (w.value("type").toString() == QLatin1String("status") && (state == QLatin1String("down") || state == QLatin1String("warn")))
+                statuses << Status{w, d, b};
+        }
+    }
+    std::stable_sort(statuses.begin(), statuses.end(), [](const Status &a, const Status &b) {
+        return a.widget.value("state").toString() == QLatin1String("down") && b.widget.value("state").toString() != QLatin1String("down");
+    });
+    if (!statuses.isEmpty()) {
+        const Status &s = statuses.first();
+        const QString label = s.widget.value("label").toString();
+        const bool down = s.widget.value("state").toString() == QLatin1String("down");
+        QStringList detail;
+        if (!s.widget.value("detail").toString().isEmpty())
+            detail << s.widget.value("detail").toString();
+        detail << s.board.value("title").toString();
+        if (statuses.size() > 1)
+            detail << tr("+%1 more").arg(statuses.size() - 1);
+        QVariantMap status = item(QStringLiteral("status:%1:%2").arg(s.board.value("id").toString(), label), "status", "bolt",
+                                  down ? "bad" : "warn", s.widget.value("stateColor"),
+                                  down ? tr("%1 is down").arg(label) : tr("%1 has a warning").arg(label), detail.join(QStringLiteral(" · ")),
+                                  5, s.board.value("id"), down ? tr("Why is %1 down?").arg(label) : tr("What's wrong with %1?").arg(label));
+        status.insert("board", s.index);
+        out << status;
+    }
+
+    // 3. Metrics far from their usual.
+    strongest(m_anomalies);
+
+    // 4. A meeting about to start (or that just did). Events are in time order.
+    for (const QVariant &v : std::as_const(m_events)) {
+        const QVariantMap e = v.toMap();
+        const qint64 start = e.value("startMs").toLongLong();
+        if (e.value("all_day").toBool() || start - nowMs > kEventSoonMs || nowMs - start > 5 * kMinuteMs)
+            continue;
+        const qint64 minutes = qRound64(double(start - nowMs) / kMinuteMs);
+        const QString title = e.value("title").toString();
+        const QString place = e.value("location").toString();
+        out << item(QStringLiteral("event:") + e.value("id").toString(), "event", "calendar", minutes <= 10 ? "warn" : "neutral", e.value("color"),
+                    start <= nowMs ? tr("%1 has started").arg(title)
+                    : minutes < 1  ? tr("%1 starts now").arg(title)
+                                   : tr("%1 starts in %2 min").arg(title, QString::number(minutes)),
+                    place.isEmpty() ? e.value("timeLabel").toString() : e.value("timeLabel").toString() + QStringLiteral(" · ") + place,
+                    6, e.value("id"), tr("What do I need for %1?").arg(title));
+        break;
+    }
+
+    // 5. Big movers.
+    strongest(m_movers);
+
+    // 6. A brief from the last hour.
+    if (!m_latestBrief.isEmpty()) {
+        const qint64 at = m_latestBrief.value("publishedMs").toLongLong();
+        if (nowMs - at < kBriefFreshMs && at - nowMs < 5 * kMinuteMs) {
+            const QString agent = m_latestBrief.value("agentName").toString();
+            const QString title = clip(m_latestBrief.value("title").toString(), 60);
+            const QString summary = m_latestBrief.value("summary").toString();
+            const QString ago = agoLabel(at, nowMs);
+            out << item(QStringLiteral("brief:") + m_latestBrief.value("id").toString(), "brief", "brief",
+                        m_latestBrief.value("kind").toString() == QLatin1String("alert") ? "warn" : "neutral", m_latestBrief.value("agentColor"),
+                        agent.isEmpty() ? tr("New brief: “%1”").arg(title) : tr("%1 posted “%2”").arg(agent, title),
+                        summary.isEmpty() ? ago : ago + QStringLiteral(" · ") + clip(summary, 120), 1, m_latestBrief.value("id"),
+                        agent.isEmpty() ? tr("What's the latest brief?") : tr("What did %1 just say?").arg(agent));
+        }
+    }
+
+    // 7. Today's Pulse, led by its hero story: the newest report today.
+    QVariantMap pulse;
+    for (const QVariant &v : std::as_const(m_timeline)) {
+        const QVariantMap t = v.toMap();
+        if (t.value("kind").toString() == QLatin1String("news")
+            && (pulse.isEmpty() || t.value("startMs").toLongLong() > pulse.value("startMs").toLongLong()))
+            pulse = t;
+    }
+    if (!pulse.isEmpty()) {
+        const QString headline = pulse.value("title").toString();
+        out << item(QStringLiteral("pulse:") + pulse.value("id").toString(), "pulse", "news", "neutral", pulse.value("color"), headline,
+                    pulse.value("label").toString(), 3, pulse.value("id"), tr("Tell me more about “%1”").arg(clip(headline, 70)));
+    }
+
+    while (out.size() > kMaxHighlights)
+        out.removeLast();
+    if (out == m_highlights)
+        return;
+    m_highlights = out;
+    emit highlightsChanged();
+}
+
+QVariantList FeedStore::boardLayout(int board, int columns) const
+{
+    if (board < 0 || board >= m_dashboards.size())
+        return {};
+    const QVariantList widgets = m_dashboards.at(board).toMap().value("widgets").toList();
+    const int cols = qMax(1, columns);
+    auto typeAt = [&widgets](qsizetype i) { return widgets.at(i).toMap().value("type").toString(); };
+
+    // Each tile's kind and size, in the board's order.
+    struct Tile
+    {
+        QVariantMap entry;
+        int row = 0, col = 0, colSpan = 1, rowSpan = 1;
+    };
+    QList<Tile> tiles;
+    bool heroTaken = false;
+    for (qsizetype i = 0; i < widgets.size();) {
+        if (!widgets.at(i).toMap().value("known").toBool()) {
+            ++i;
+            continue;
+        }
+        const QString type = typeAt(i);
+        Tile t;
+        QString kind = type;
+        qsizetype next = i + 1;
+        if (type == QLatin1String("status")) {
+            while (next < widgets.size() && typeAt(next) == QLatin1String("status"))
+                ++next;
+            if (next - i < 2)
+                next = i + 1; // one on its own stays a tile
+        }
+        QVariantList indexes;
+        for (qsizetype j = i; j < next; ++j)
+            indexes << int(j);
+        if (next - i >= 2) {
+            // A run of statuses: one strip across, its worst state first.
+            // A long run wraps (a row a status for each column, three on
+            // the small panels) into rows of even length: 7 → 4 + 3.
+            kind = QStringLiteral("health");
+            t.colSpan = cols;
+            const int count = int(next - i), most = cols <= 2 ? 3 : cols;
+            t.rowSpan = (count + most - 1) / most;
+            t.entry.insert("perRow", (count + t.rowSpan - 1) / t.rowSpan);
+            auto rank = [](const QString &s) { return s == QLatin1String("down") ? 3 : s == QLatin1String("warn") ? 2 : s == QLatin1String("ok") ? 0 : 1; };
+            QVariantMap worst;
+            int down = 0, warn = 0, ok = 0, unknown = 0;
+            for (qsizetype j = i; j < next; ++j) {
+                const QVariantMap w = widgets.at(j).toMap();
+                const QString state = w.value("state").toString();
+                if (state == QLatin1String("down"))
+                    ++down;
+                else if (state == QLatin1String("warn"))
+                    ++warn;
+                else if (state == QLatin1String("ok"))
+                    ++ok;
+                else
+                    ++unknown;
+                if (worst.isEmpty() || rank(state) > rank(worst.value("state").toString()))
+                    worst = w;
+            }
+            QStringList summary;
+            if (down)
+                summary << tr("%1 down").arg(down);
+            if (warn)
+                summary << (warn == 1 ? tr("1 warning") : tr("%1 warnings").arg(warn));
+            if (unknown)
+                summary << tr("%1 unknown").arg(unknown);
+            if (ok)
+                summary << tr("%1 OK").arg(ok);
+            t.entry.insert("state", worst.value("state").toString().isEmpty() ? QStringLiteral("unknown") : worst.value("state").toString());
+            t.entry.insert("stateColor", worst.value("stateColor"));
+            t.entry.insert("summary", down + warn + unknown == 0 ? tr("All OK") : summary.join(QStringLiteral(" · ")));
+        } else if (type == QLatin1String("metric") && !heroTaken) {
+            heroTaken = true;
+            if (cols >= 4) {
+                kind = QStringLiteral("hero");
+                t.colSpan = 2;
+                t.rowSpan = 2;
+            }
+        } else if (type == QLatin1String("chart")) {
+            t.colSpan = qMin(4, cols);
+            t.rowSpan = 2;
+        } else if (type == QLatin1String("list") || type == QLatin1String("text")) {
+            t.colSpan = qMin(2, cols);
+        }
+        t.entry.insert("index", int(i));
+        t.entry.insert("indexes", indexes);
+        t.entry.insert("kind", kind);
+        tiles << t;
+        i = next;
+    }
+
+    // First fit: each tile in order at the first place, in reading order, it fits.
+    std::vector<std::vector<int>> grid; // [row][col]: the tile there, or -1
+    auto at = [&](int r, int c) { return r < int(grid.size()) ? grid[r][c] : -1; };
+    auto take = [&](int n, int r, int c) {
+        while (int(grid.size()) <= r)
+            grid.emplace_back(cols, -1);
+        grid[r][c] = n;
+    };
+    for (int n = 0; n < tiles.size(); ++n) {
+        Tile &t = tiles[n];
+        bool placed = false;
+        for (int r = 0; !placed; ++r) {
+            for (int c = 0; c + t.colSpan <= cols && !placed; ++c) {
+                bool free = true;
+                for (int y = r; y < r + t.rowSpan && free; ++y)
+                    for (int x = c; x < c + t.colSpan && free; ++x)
+                        free = at(y, x) < 0;
+                if (!free)
+                    continue;
+                t.row = r;
+                t.col = c;
+                for (int y = r; y < r + t.rowSpan; ++y)
+                    for (int x = c; x < c + t.colSpan; ++x)
+                        take(n, y, x);
+                placed = true;
+            }
+        }
+    }
+
+    // Then no holes: a tile beside or above a gap grows into it (right, down,
+    // left, up) when the gap runs its whole edge. Until nothing grows.
+    const int rows = int(grid.size());
+    auto empty = [&](int r0, int r1, int c0, int c1) {
+        for (int y = r0; y < r1; ++y)
+            for (int x = c0; x < c1; ++x)
+                if (grid[y][x] >= 0)
+                    return false;
+        return true;
+    };
+    auto fill = [&](int n) {
+        const Tile &t = tiles[n];
+        for (int y = t.row; y < t.row + t.rowSpan; ++y)
+            for (int x = t.col; x < t.col + t.colSpan; ++x)
+                grid[y][x] = n;
+    };
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                if (grid[r][c] >= 0)
+                    continue;
+                if (const int n = c > 0 ? grid[r][c - 1] : -1; n >= 0) {
+                    Tile &t = tiles[n];
+                    if (t.col + t.colSpan == c && empty(t.row, t.row + t.rowSpan, c, c + 1)) {
+                        ++t.colSpan;
+                        fill(n);
+                        grew = true;
+                        continue;
+                    }
+                }
+                if (const int n = r > 0 ? grid[r - 1][c] : -1; n >= 0) {
+                    Tile &t = tiles[n];
+                    if (t.row + t.rowSpan == r && empty(r, r + 1, t.col, t.col + t.colSpan)) {
+                        ++t.rowSpan;
+                        fill(n);
+                        grew = true;
+                        continue;
+                    }
+                }
+                if (const int n = c + 1 < cols ? grid[r][c + 1] : -1; n >= 0) {
+                    Tile &t = tiles[n];
+                    if (t.col == c + 1 && empty(t.row, t.row + t.rowSpan, c, c + 1)) {
+                        --t.col;
+                        ++t.colSpan;
+                        fill(n);
+                        grew = true;
+                        continue;
+                    }
+                }
+                if (const int n = r + 1 < rows ? grid[r + 1][c] : -1; n >= 0) {
+                    Tile &t = tiles[n];
+                    if (t.row == r + 1 && empty(r, r + 1, t.col, t.col + t.colSpan)) {
+                        --t.row;
+                        ++t.rowSpan;
+                        fill(n);
+                        grew = true;
+                    }
+                }
+            }
+        }
+    }
+
+    std::stable_sort(tiles.begin(), tiles.end(), [](const Tile &a, const Tile &b) {
+        return a.row != b.row ? a.row < b.row : a.col < b.col;
+    });
+    QVariantList out;
+    for (const Tile &t : std::as_const(tiles)) {
+        QVariantMap e = t.entry;
+        e.insert("row", t.row);
+        e.insert("col", t.col);
+        e.insert("rowSpan", t.rowSpan);
+        e.insert("colSpan", t.colSpan);
+        out << e;
+    }
+    return out;
 }

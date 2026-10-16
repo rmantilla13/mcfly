@@ -13,6 +13,9 @@ Rectangle {
     property real imageShare: large ? 0.5 : 0.52
     // Short hosts (Home's column) drop the takeaway so the source never overlaps it.
     property bool showTakeaway: true
+    // The picture drifts in and out, very slowly (News' hero, while it's on
+    // screen and Settings → Animated tiles is on).
+    property bool kenBurns: false
     signal opened(var story)
 
     readonly property string tint: story.sectionColor || Theme.accent
@@ -39,6 +42,8 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: card.pictureHeight
+            // A zooming picture stays in its frame, also where it stopped.
+            clip: card.large
             Rectangle {
                 anchors.fill: parent
                 gradient: Gradient {
@@ -67,6 +72,14 @@ Rectangle {
                 visible: status === Image.Ready
                 opacity: visible ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: Theme.smooth } }
+                // In and out over most of a minute: from wherever it is, so
+                // stopping and starting again never jumps.
+                SequentialAnimation {
+                    running: card.kenBurns && picture.visible
+                    loops: Animation.Infinite
+                    ScaleAnimator { target: picture; to: 1.08; duration: 26000; easing.type: Easing.InOutSine }
+                    ScaleAnimator { target: picture; to: 1.0; duration: 26000; easing.type: Easing.InOutSine }
+                }
             }
             // Section tag over the picture.
             Rectangle {

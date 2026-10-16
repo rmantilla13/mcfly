@@ -13,16 +13,29 @@ import McFly
 KeyboardStyle {
     id: look
 
-    property color trayColor: Theme.dark ? "#2B2B2D" : "#D1D3D9"
-    property color letterColor: Theme.dark ? "#6B6B6E" : "#FFFFFF"
-    property color functionColor: Theme.dark ? "#464648" : "#ACB3BE"
-    property color shadowColor: Theme.dark ? "#1C1C1E" : "#898A8D"
-    property color inkColor: Theme.dark ? "#FFFFFF" : "#000000"
-    Behavior on trayColor { ColorAnimation { duration: Theme.moodFade } }
-    Behavior on letterColor { ColorAnimation { duration: Theme.moodFade } }
-    Behavior on functionColor { ColorAnimation { duration: Theme.moodFade } }
-    Behavior on shadowColor { ColorAnimation { duration: Theme.moodFade } }
-    Behavior on inkColor { ColorAnimation { duration: Theme.moodFade } }
+    // Theme.dark, a moment late: by then Theme has set paletteFade for this
+    // change (a Dark mode tap, themeFade; a mood, moodFade), which the
+    // Behaviors read as they start. Theme.dark itself can flip first.
+    property bool _dark: false
+    property bool _ready: false
+    Component.onCompleted: { _dark = Theme.dark; _ready = true }
+    // (In a property: a KeyboardStyle takes no children.)
+    property Connections _follow: Connections {
+        target: Theme
+        function onDarkChanged() { Qt.callLater(look._followDark) }
+    }
+    function _followDark() { _dark = Theme.dark }
+
+    property color trayColor: _dark ? "#2B2B2D" : "#D1D3D9"
+    property color letterColor: _dark ? "#6B6B6E" : "#FFFFFF"
+    property color functionColor: _dark ? "#464648" : "#ACB3BE"
+    property color shadowColor: _dark ? "#1C1C1E" : "#898A8D"
+    property color inkColor: _dark ? "#FFFFFF" : "#000000"
+    Behavior on trayColor { enabled: look._ready; ColorAnimation { duration: Theme.paletteFade } }
+    Behavior on letterColor { enabled: look._ready; ColorAnimation { duration: Theme.paletteFade } }
+    Behavior on functionColor { enabled: look._ready; ColorAnimation { duration: Theme.paletteFade } }
+    Behavior on shadowColor { enabled: look._ready; ColorAnimation { duration: Theme.paletteFade } }
+    Behavior on inkColor { enabled: look._ready; ColorAnimation { duration: Theme.paletteFade } }
 
     // Half the gap between two keys (each key draws inside its cell).
     readonly property real keyGap: Math.round(6 * scaleHint)

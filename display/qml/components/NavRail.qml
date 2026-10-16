@@ -1,17 +1,21 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import McFly
 import McFly.Core
 
 // The navigation: one model, two shapes. A rail down the left (Wide and
 // Compact) with icon + label items, or, with `horizontal`, a bar along the
 // bottom (Mini and Tall) of icon-only slots where the active one widens to
-// show its label. The active item is a blue pill that glides.
+// show its label. The active item is a blue pill that glides. While McFly
+// is `thinking` (an answer on its way, the panel shut), a ring in the voice
+// glow's colours turns around the Ask button.
 Rectangle {
     id: rail
     property int currentIndex: 0
     property bool horizontal: false
+    property bool thinking: false
     signal selected(int index)
     signal settingsRequested()
     signal askRequested()
@@ -91,6 +95,57 @@ Rectangle {
         implicitHeight: implicitWidth
     }
 
+    // A ring that fades from nothing into the voice spectrum, turning once
+    // every couple of seconds: a spinner that doesn't nag. It turns as a
+    // whole (an Animator), so nothing is redrawn but its angle; with
+    // Settings → Animated tiles off it holds still.
+    component ThinkingRing: Item {
+        id: thinkingRing
+        objectName: "thinkingRing"
+        readonly property real thickness: 3
+        // Under the button: whatever the renderer makes of the ring's hole,
+        // the button's own disc covers the middle.
+        z: -1
+        opacity: rail.thinking ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.enter; easing.type: Easing.InOutSine } }
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: "transparent"
+                fillRule: ShapePath.OddEvenFill
+                fillGradient: ConicalGradient {
+                    centerX: thinkingRing.width / 2
+                    centerY: thinkingRing.height / 2
+                    angle: 90
+                    GradientStop { position: 0.0; color: Qt.rgba(0.56, 0.34, 0.90, 0) }
+                    GradientStop { position: 0.45; color: Qt.rgba(0.56, 0.34, 0.90, 0.55) }
+                    GradientStop { position: 0.75; color: Theme.spectrum[2] }
+                    GradientStop { position: 1.0; color: Theme.spectrum[3] }
+                }
+                PathAngleArc {
+                    centerX: thinkingRing.width / 2; centerY: thinkingRing.height / 2
+                    radiusX: thinkingRing.width / 2; radiusY: radiusX
+                    startAngle: 0; sweepAngle: 360
+                }
+                PathAngleArc {
+                    centerX: thinkingRing.width / 2; centerY: thinkingRing.height / 2
+                    radiusX: thinkingRing.width / 2 - thinkingRing.thickness; radiusY: radiusX
+                    startAngle: 0; sweepAngle: 360
+                }
+            }
+        }
+        RotationAnimator on rotation {
+            objectName: "spin"
+            running: thinkingRing.visible && Device.animatedTiles && !Device.idle
+            from: 0
+            to: 360
+            duration: 2400
+            loops: Animation.Infinite
+        }
+    }
+
     // ---- The rail
     ColumnLayout {
         id: column
@@ -127,11 +182,13 @@ Rectangle {
 
         // Ask McFly (typed or spoken).
         NavButton {
+            id: railAsk
             Layout.alignment: Qt.AlignHCenter
             icon: "sparkle"
             fill: Theme.accentSoft
             ink: Theme.accent
             onClicked: rail.askRequested()
+            ThinkingRing { anchors.centerIn: parent; width: railAsk.width + 10; height: width }
         }
         NavButton {
             Layout.alignment: Qt.AlignHCenter
@@ -175,6 +232,7 @@ Rectangle {
         Item {
             width: 64; height: 64
             NavButton { anchors.centerIn: parent; icon: "sparkle"; fill: Theme.accentSoft; ink: Theme.accent; onClicked: rail.askRequested() }
+            ThinkingRing { anchors.centerIn: parent; width: 64; height: 64 }
         }
         Item {
             width: 64; height: 64
