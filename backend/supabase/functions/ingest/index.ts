@@ -9,7 +9,8 @@
 //   POST /ingest/metrics     { as_of?, metrics: [{ key, value, label?, unit?, delta?, delta_pct?, note?, group? }] }
 //   POST /ingest/dashboards  { dashboards: [{ key, title, subtitle?, widgets: [{ type, ... }] }] }
 //   POST /ingest/events      { calendar?, replace?, events: [{ id?, title, starts_at, ends_at?, all_day?, location? }] }
-//   POST /ingest             any of the above with "type": "briefs" | "quotes" | ... | "events"
+//   POST /ingest/todos       { todos: [{ id?, title, kind?: "todo" | "reminder", due_at?, all_day?, notes?, done? }] }
+//   POST /ingest             any of the above with "type": "briefs" | "quotes" | ... | "todos"
 //   GET  /ingest             who the key belongs to and its last few pushes
 //   GET  /ingest/memory      notes (memory:read)      POST /ingest/memory   keep notes (memory:write)
 //   GET  /ingest/events      upcoming events (calendar:read)   (reads.ts)
@@ -124,6 +125,12 @@ async function store(agent: Agent, parsed: Parsed): Promise<{ count: number; ext
         extra: { ...(parsed.calendar ? { calendar: parsed.calendar } : {}), replaced: parsed.replace },
       };
     }
+    case "todos": {
+      const { data, error } = await service.rpc("ingest_todos", { agent: agent.id, items: parsed.todos });
+      if (error) return { error: error.message };
+      const ids = Array.isArray(data) ? data : [];
+      return { count: ids.length || parsed.todos.length, extra: { ids } };
+    }
   }
 }
 
@@ -187,7 +194,7 @@ Deno.serve(async (req) => {
   const read = await readJson(req, MAX_BODY);
   if ("error" in read) return read.error;
   const feed = path || feedFromBody(read.body);
-  if (!feed) return reply({ error: 'say which feed: POST /ingest/briefs, /quotes, /news, /projects, /metrics, /dashboards or /events, or add "type"' }, 400);
+  if (!feed) return reply({ error: 'say which feed: POST /ingest/briefs, /quotes, /news, /projects, /metrics, /dashboards, /events or /todos, or add "type"' }, 400);
 
   const parsed = parse(feed, read.body);
   if ("error" in parsed) {

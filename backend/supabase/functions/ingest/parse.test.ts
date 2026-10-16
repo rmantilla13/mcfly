@@ -15,6 +15,8 @@ import {
   parseNews,
   parseProjects,
   parseQuotes,
+  parseTodos,
+  type Todo,
 } from "./parse.ts";
 
 const fail = (r: unknown) => (r as { error?: string }).error;
@@ -26,7 +28,7 @@ Deno.test("feedFromPath: the segment after ingest, on Supabase and locally", () 
   assertEquals(feedFromPath("/functions/v1/ingest"), "");
   assertEquals(feedFromPath("/ingest/photos"), null);
   assertEquals(feedFromPath("/ingest/news/extra"), null);
-  for (const feed of ["projects", "metrics", "dashboards", "events"]) assertEquals(feedFromPath(`/functions/v1/ingest/${feed}`), feed);
+  for (const feed of ["projects", "metrics", "dashboards", "events", "todos"]) assertEquals(feedFromPath(`/functions/v1/ingest/${feed}`), feed);
 });
 
 Deno.test("feedFromBody: type, feed, or the shape itself", () => {
@@ -47,6 +49,8 @@ Deno.test("feedFromBody: type, feed, or the shape itself", () => {
   assertEquals(feedFromBody({ events: [], calendar: "Work", replace: true }), "events");
   assertEquals(feedFromBody({ event: { title: "t" } }), "events");
   assertEquals(feedFromBody({ type: "dashboards", events: [] }), "dashboards");
+  assertEquals(feedFromBody({ todos: [] }), "todos");
+  assertEquals(feedFromBody({ todo: { title: "t" } }), "todos");
 });
 
 Deno.test("agentKey: bearer or the header, and the key shape", () => {
@@ -403,6 +407,46 @@ Deno.test("parse: routes by feed", () => {
   assertEquals((parse("dashboards", { key: "x", widgets: [{ type: "text", body: "b" }] }) as { feed: string }).feed, "dashboards");
   assertEquals(parse("events", { title: "x", starts_at: "2026-01-02T00:00:00Z" }),
     { feed: "events", events: [{ calendar: "Calendar", title: "x", starts_at: "2026-01-02T00:00:00.000Z" }], replace: false });
+  assertEquals(parse("todos", { title: "x" }), { feed: "todos", todos: [{ kind: "todo", title: "x" }] });
   assertEquals(fail(parse("news", {})), "slug must be like 2026-10-14 (lower-case letters, digits and dashes)");
   assertEquals(fail(parse("metrics", {})), "send { metrics: [{ key, value }] } or one { key, value }");
+});
+
+Deno.test("parseTodos: todos, reminders, days and done", () => {
+  assertEquals(parseTodos({
+    todos: [
+      { title: " Buy milk " },
+      { id: "call-mom", kind: "reminder", title: "Call mom", due_at: "2026-11-02T17:00:00-06:00", notes: " landline " },
+      { title: "File taxes", due: "2026-11-02T06:00:00Z", all_day: true, done: false, data: { via: "grok" } },
+      { title: "Renew passport", done: true },
+    ],
+  }), {
+    todos: [
+      { kind: "todo", title: "Buy milk" },
+      { id: "call-mom", kind: "reminder", title: "Call mom", notes: "landline", due_at: "2026-11-02T23:00:00.000Z" },
+      { kind: "todo", title: "File taxes", due_at: "2026-11-02T06:00:00.000Z", all_day: true, done: false, data: { via: "grok" } },
+      { kind: "todo", title: "Renew passport", done: true },
+    ],
+  });
+  assertEquals(parseTodos({ todo: { kind: "reminder", title: "Stretch", remind_at: "2026-11-02T15:00:00Z" } }),
+    { todos: [{ kind: "reminder", title: "Stretch", due_at: "2026-11-02T15:00:00.000Z" }] });
+  assertEquals(parseTodos([{ title: "x" }]), { todos: [{ kind: "todo", title: "x" }] });
+});
+
+Deno.test("parseTodos: what it refuses", () => {
+  const one = (t: Record<string, unknown>) => fail(parseTodos({ todos: [{ title: "x", ...t }] }));
+  assertEquals(fail(parseTodos({})), "send { todos: [{ title, kind?, due_at? }] } or one { title, kind?, due_at? }");
+  assertEquals(fail(parseTodos({ todos: [] })), "no todos in the request");
+  assertEquals(fail(parseTodos({ todos: [1] })), "todo 1 must be an object");
+  assertEquals(fail(parseTodos({ todos: [{ title: " " }] })), "todo 1 needs a title");
+  assertEquals(one({ kind: "chore" }), "todo x: kind must be todo or reminder");
+  assertEquals(one({ due_at: "tomorrow" }), "todo x: due_at must be an ISO-8601 timestamp");
+  assertEquals(one({ all_day: "yes" }), "todo x: all_day must be true or false");
+  assertEquals(one({ done: "yes" }), "todo x: done must be true or false");
+  assertEquals(one({ all_day: true }), "todo x: all_day needs due_at (the day)");
+  assertEquals(one({ kind: "reminder" }), "reminder x needs due_at: when to remind");
+  assertEquals(one({ kind: "reminder", due_at: "2026-11-02T06:00:00Z", all_day: true }), "reminder x needs a time, not a whole day");
+  assertEquals(fail(parseTodos({ todos: Array.from({ length: 201 }, () => ({ title: "x" })) })), "at most 200 todos per push");
+  const long = parseTodos({ todos: [{ id: "i".repeat(300), title: "t".repeat(400), notes: "n".repeat(3000) }] }) as { todos: Todo[] };
+  assertEquals([long.todos[0].id!.length, long.todos[0].title.length, long.todos[0].notes!.length], [200, 300, 2000]);
 });

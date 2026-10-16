@@ -13,8 +13,8 @@ Make the agent in the console (Agents → New agent) or in the phone app; the
 key is shown once. Every push is logged there (Overview → Recent pushes),
 with the first problem in a sentence when something is refused.
 
-The feeds are `briefs`, `quotes`, `news`, `projects`, `metrics`, `dashboards`
-and `events`. `POST /ingest` with a `"type"` field works too, and
+The feeds are `briefs`, `quotes`, `news`, `projects`, `metrics`, `dashboards`,
+`events` and `todos`. `POST /ingest` with a `"type"` field works too, and
 `GET /ingest` answers who the key belongs to and its last ten pushes. Every
 answer is JSON: `{ "ok": true, "feed": "...", "count": n, ... }` or
 `{ "error": "what was wrong" }` with 400 (bad payload), 401 (no or unknown
@@ -231,6 +231,35 @@ curl -X POST "$MCFLY_URL/functions/v1/ingest/events" \
 | `replace` | with a `calendar` in the body: the push is that calendar whole, and events not in it are removed. The way to mirror Google, iCloud or a calendar link: push the next weeks every hour with `replace` |
 
 Events are kept 60 days after they end. At most 1000 per push.
+
+## Todos and reminders
+
+```bash
+curl -X POST "$MCFLY_URL/functions/v1/ingest/todos" \
+  -H "Authorization: Bearer $MCFLY_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "todos": [
+      { "id": "passport", "title": "Renew the passport", "due_at": "2026-11-02T00:00:00-06:00", "all_day": true },
+      { "id": "call-mom", "kind": "reminder", "title": "Call mom", "due_at": "2026-10-16T17:30:00-05:00" },
+      { "id": "invoice", "title": "Send the Q4 invoice", "done": true }
+    ]
+  }'
+```
+
+| Field | |
+|---|---|
+| `title` (≤300) | required |
+| `kind` | `todo` (the default: something to do) or `reminder` (the display announces it, card and voice, at `due_at`) |
+| `due_at` | a todo's deadline (optional), a reminder's time (required). With `all_day`, the day: send its local midnight |
+| `id` | your id (≤200); the same id **updates** it |
+| `done` | `true` checks it off (the first time is kept), `false` opens it again; left out, it stays as it was |
+| `notes` (≤2000), `all_day`, `data` | optional |
+
+The answer's `ids` are the stored rows' ids, in order. At most 200 per push.
+Home's timeline shows today's: reminders at their time, todos due today,
+overdue or undated at the top of the day. The assistant reads the open ones
+and can check any of them off when asked. McFly's own (added by asking it)
+belong to the built-in agent "McFly", which has no key.
 
 ## Reading back
 

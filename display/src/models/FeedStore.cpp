@@ -30,6 +30,9 @@ constexpr qint64 kCheckInIntervalMs = 5 * 60 * 1000;
 // Re-check the date at least this often, so a jump of the clock (NTP setting
 // it at boot) is noticed between syncs and in demo mode too.
 constexpr qint64 kDayCheckMaxMs = 15 * 60 * 1000;
+// A reminder whose time came this recently is still announced (the display
+// was starting, or the sync that brought it ran late); older ones are not.
+constexpr qint64 kReminderLateMs = 5 * 60 * 1000;
 constexpr int kSparklinePoints = 60;
 
 QVariantList toList(const QJsonDocument &doc) { return doc.array().toVariantList(); }
@@ -106,6 +109,8 @@ FeedStore::FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent)
     m_today = QDate::currentDate();
     m_dayTimer.setSingleShot(true);
     connect(&m_dayTimer, &QTimer::timeout, this, &FeedStore::rollDay);
+    m_reminderTimer.setSingleShot(true);
+    connect(&m_reminderTimer, &QTimer::timeout, this, &FeedStore::fireReminders);
 
     connect(m_client, &SupabaseClient::sessionChanged, this, [this]() {
         if (m_client->refreshToken().isEmpty())
@@ -262,6 +267,21 @@ void FeedStore::loadDemo()
         QJsonObject m = v.toObject();
         m.insert("updated_at", nowDt.addSecs(-qint64(m.value("daysAgo").toDouble() * 86400)).toString(Qt::ISODateWithMs));
         m_rawMemories << m.toVariantMap();
+    }
+    m_rawTodos.clear();
+    for (const QJsonValue &v : root.value("todos").toArray()) {
+        QJsonObject t = v.toObject();
+        // Like the events: a day around today (and a time), so it looks current.
+        if (t.contains("dayOffset")) {
+            const QString at = t.value("at").toString();
+            const QDateTime due(m_today.addDays(t.value("dayOffset").toInt()), at.isEmpty() ? QTime(0, 0) : QTime::fromString(at, "HH:mm"));
+            t.insert("due_at", due.toString(Qt::ISODateWithMs));
+            t.insert("all_day", at.isEmpty());
+        }
+        t.insert("id", QStringLiteral("demo-todo-%1").arg(m_rawTodos.size()));
+        if (!t.contains("agent_id"))
+            t.insert("agent_id", "a-mcfly");
+        m_rawTodos << t.toVariantMap();
     }
 
     // Briefs are stored relative to now so the demo always looks current.
@@ -553,6 +573,24 @@ void FeedStore::loadLive()
             m_rawCalendarSources = toList(doc);
             rebuild();
         });
+        // Todos and reminders (newer too): same, optional. The open ones; a
+        // reminder whose time passed before yesterday is over.
+        QUrlQuery todos;
+        todos.addQueryItem("select", "id,agent_id,kind,title,notes,due_at,all_day,done_at,created_at");
+        todos.addQueryItem("done_at", "is.null");
+        todos.addQueryItem("or", "(kind.eq.todo,due_at.gte." + QDateTime(m_today.addDays(-1), QTime(0, 0)).toUTC().toString(Qt::ISODate) + ")");
+        todos.addQueryItem("order", "due_at.nullslast,created_at");
+        todos.addQueryItem("limit", "200");
+        m_client->select("todos", todos, [this, generation](const QJsonDocument &doc, const QString &error) {
+            if (generation != m_generation)
+                return;
+            if (!error.isEmpty()) {
+                qInfo() << "todos not available:" << error;
+                return;
+            }
+            m_rawTodos = toList(doc);
+            rebuild();
+        });
         load("briefs", QUrlQuery("select=*&order=published_at.desc&limit=100"),
              [this](const QJsonDocument &d) { m_rawBriefs = toList(d); });
         load("symbols", QUrlQuery("select=*&hidden=eq.false&order=sort_order,symbol"),
@@ -658,6 +696,7 @@ void FeedStore::unpair()
     m_rawMetricSettings.clear();
     m_rawDashboards.clear();
     m_rawEvents.clear();
+    m_rawTodos.clear();
     m_lastSync = QDateTime();
     rebuild();
 
@@ -1399,12 +1438,101 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
             start, end);
     }
 
+    // Todos and reminders. A reminder sits at its time today; a todo due at a
+    // time today sits there too, and one due today (the whole day), overdue
+    // or undated heads the day with the all-day rows.
+    for (const QVariant &v : std::as_const(m_rawTodos)) {
+        const QVariantMap t = v.toMap();
+        if (!t.value("done_at").toString().isEmpty())
+            continue;
+        const bool reminder = t.value("kind").toString() == QLatin1String("reminder");
+        const QDateTime due = parseTimestamp(t.value("due_at").toString());
+        if (reminder ? !due.isValid() || due.date() != m_today : due.isValid() && due.date() > m_today)
+            continue;
+        const bool timed = due.isValid() && !t.value("all_day").toBool() && due.date() == m_today;
+        // "Grok · To do" over the title, as other rows name their source;
+        // under it, when it's due and the notes.
+        const QString kindWord = reminder ? tr("Reminder") : tr("To do");
+        const QString source = agentName(t.value("agent_id").toString());
+        QStringList detail;
+        if (!reminder && due.isValid())
+            detail << (due.date() < m_today ? tr("Was due %1").arg(dayLabel(due.date()))
+                       : timed           ? tr("Due by %1").arg(timeLabel(due))
+                                         : tr("Due today"));
+        const QString notes = t.value("notes").toString().simplified();
+        if (!notes.isEmpty())
+            detail << notes;
+        const QDateTime at = timed || reminder ? due : m_today.startOfDay();
+        add(QVariantMap{{"kind", reminder ? "reminder" : "todo"}, {"id", t.value("id")},
+                        {"label", source.isEmpty() ? kindWord : source + QStringLiteral(" · ") + kindWord}, {"title", t.value("title")},
+                        {"detail", detail.join(QStringLiteral(" · "))},
+                        {"color", agentColor(t.value("agent_id").toString())}, {"allDay", !(timed || reminder)}, {"target", 6}},
+            at, at);
+        if (!(timed || reminder)) {
+            // Not "All day": it's a thing to do, not a day-long event.
+            QVariantMap row = m_timeline.takeLast().toMap();
+            row.insert("timeLabel", tr("To do"));
+            m_timeline << row;
+        }
+    }
+
     std::stable_sort(m_timeline.begin(), m_timeline.end(), [](const QVariant &a, const QVariant &b) {
         const QVariantMap ma = a.toMap(), mb = b.toMap();
         if (ma.value("allDay").toBool() != mb.value("allDay").toBool())
             return ma.value("allDay").toBool();
         return ma.value("startMs").toLongLong() < mb.value("startMs").toLongLong();
     });
+    armReminders();
+}
+
+// The next reminder still to come, or one whose time has just come: the
+// timer fires then (at least every kDayCheckMaxMs, so a jump of the clock
+// is caught). Called after every rebuild, so a new or moved reminder counts.
+void FeedStore::armReminders()
+{
+    if (m_mode != QLatin1String("live")) {
+        m_reminderTimer.stop(); // the demo's reminders are for looking at
+        return;
+    }
+    const QDateTime nowDt = now();
+    qint64 next = -1;
+    for (const QVariant &v : std::as_const(m_rawTodos)) {
+        const QVariantMap t = v.toMap();
+        if (t.value("kind").toString() != QLatin1String("reminder") || !t.value("done_at").toString().isEmpty()
+            || m_reminded.contains(t.value("id").toString()))
+            continue;
+        const QDateTime due = parseTimestamp(t.value("due_at").toString());
+        if (!due.isValid())
+            continue;
+        const qint64 ms = nowDt.msecsTo(due);
+        if (ms <= 0 && ms > -kReminderLateMs)
+            next = 0;
+        else if (ms > 0 && (next < 0 || ms < next))
+            next = ms;
+    }
+    if (next < 0)
+        m_reminderTimer.stop();
+    else
+        m_reminderTimer.start(int(qMin(next, kDayCheckMaxMs)));
+}
+
+void FeedStore::fireReminders()
+{
+    const QDateTime nowDt = now();
+    for (const QVariant &v : std::as_const(m_rawTodos)) {
+        const QVariantMap t = v.toMap();
+        const QString id = t.value("id").toString();
+        if (t.value("kind").toString() != QLatin1String("reminder") || !t.value("done_at").toString().isEmpty() || m_reminded.contains(id))
+            continue;
+        const QDateTime due = parseTimestamp(t.value("due_at").toString());
+        const qint64 late = due.isValid() ? due.msecsTo(nowDt) : -1;
+        if (late < 0 || late >= kReminderLateMs)
+            continue;
+        m_reminded.insert(id);
+        emit reminderDue(QVariantMap{{"id", id}, {"title", t.value("title")}, {"notes", t.value("notes").toString().simplified()},
+                                     {"timeLabel", timeLabel(due)}});
+    }
+    armReminders();
 }
 
 void FeedStore::pushDeviceSettings(const QVariantMap &patch)

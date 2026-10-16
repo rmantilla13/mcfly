@@ -48,6 +48,7 @@ Change it first when a shape changes.
 | `metrics`, `metric_settings`, `metrics_latest` | Any number over time, grouped |
 | `dashboards` | Boards agents lay out: a title and a widgets array (metric, status, progress, chart, list, text) |
 | `events` | Calendar events, per calendar; a push can replace a calendar whole |
+| `todos` | Todos (maybe due by a day or time) and reminders (announced at a time), from agents or added by asking McFly |
 | `admin_audit_log` | Every admin change |
 
 Writes to the feeds happen only in the `ingest_*` SQL functions (called with
@@ -123,7 +124,10 @@ on a schedule (Settings → Sleep).
 `assistant` grounds the model in a snapshot read with the caller's own JWT:
 the display name and local time, the newest briefs, every visible quote and
 metric, the open projects with their last update, the dashboards' widgets,
-the next week's events and today's stories. No tools in v1, nothing stored.
+the next week's events, the open todos and reminders and today's stories.
+Asked to, it adds an event, a todo or a reminder to the day, or checks a todo
+off: four tools whose writes go through the ingest functions as McFly's own
+key-less agent, never because something in the snapshot asked.
 `quick` mode (voice) answers in one or two spoken sentences; `chat` may use
 short lists. The provider is `platform_settings.assistant_provider` (Claude
 or Grok, set in the console or the app) unless a display pins its own in

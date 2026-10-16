@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QSettings>
 #include <QTimer>
 #include <QVariantList>
@@ -137,6 +138,9 @@ signals:
     void todayChanged();
     void dataChanged();
     void notify(const QString &message);
+    // A reminder's time has come, once per reminder while this display runs
+    // (or within a few minutes of it, at start): { id, title, notes, timeLabel }.
+    void reminderDue(const QVariantMap &reminder);
 
 private:
     void setMode(const QString &mode);
@@ -152,6 +156,8 @@ private:
     void rebuild();
     void rebuildProductivity(const QHash<QString, QVariantMap> &agentById);
     void rebuildTimeline(const QHash<QString, QVariantMap> &agentById);
+    void armReminders();
+    void fireReminders();
     QDateTime now() const { return m_clock ? m_clock() : QDateTime::currentDateTime(); }
     bool updateToday();
     bool rollDay();
@@ -185,6 +191,8 @@ private:
     std::function<QDateTime()> m_clock; // tests only; empty means the real clock
     QDate m_today;
     QTimer m_dayTimer; // fires just after local midnight
+    QTimer m_reminderTimer;     // fires at the next reminder's time
+    QSet<QString> m_reminded;   // reminders already announced, by id
 
     // Raw rows as loaded (demo JSON or Supabase).
     QString m_displayName = QStringLiteral("McFly");
@@ -194,6 +202,7 @@ private:
     QVariantMap m_deviceSettings;
     bool m_deviceSettingsSeen = false;
     QVariantList m_rawProjects, m_rawMetrics, m_rawMetricSettings, m_rawDashboards, m_rawEvents;
+    QVariantList m_rawTodos; // open todos and reminders (todos)
     QString m_shownReportId; // "" = the newest
     QString m_newsSourceId;  // "" = every source
     QString m_assistantProvider = QStringLiteral("claude");

@@ -87,6 +87,8 @@ Item {
         case "brief": return "brief"
         case "alert": return "info"
         case "project": return item.icon || "check"
+        case "todo": return "check"
+        case "reminder": return "clock"
         default: return "calendar"
         }
     }

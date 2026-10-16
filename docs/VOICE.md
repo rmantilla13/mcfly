@@ -160,6 +160,12 @@ seconds, so the two can start in any order.
 4. The display asks the assistant and sends `speak` with the reply. The
    service speaks it and answers `spoken`.
 
+Ask it to add to your day ("put the dentist on Friday at 3", "remind me to
+call mom at 5", "add milk to my list", "I bought the milk") and the
+assistant does, with its tools ([PLATFORM_SPEC.md](PLATFORM_SPEC.md) §2.4),
+then says what it saved. When a reminder's time comes, the display shows it
+at the top of the screen and sends `speak` with it, once.
+
 The wake word is ignored while the service is speaking (so it can't wake
 itself), while a question is in progress, for 2 s after it fires, and for
 0.5 s after speaking or listening ends, while the room's echo fades.

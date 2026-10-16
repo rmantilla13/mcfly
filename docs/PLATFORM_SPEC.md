@@ -159,16 +159,25 @@ display (anyone `can_read()`).
 ```
 POST { message: string (≤4000), mode?: "chat" | "quick", stream?: boolean,
        history?: [{ role: "user" | "assistant", text }] (the last turns, at most 10, client-held) }
-stream false → { reply, model }
+stream false → { reply, model, changed? }
 stream true  → text/event-stream:  event: delta  data: { text }
-                                   event: done   data: { reply, model }
+                                   event: done   data: { reply, model, changed? }
                                    event: error  data: { message }
 ```
 
 Grounded in a snapshot read with the caller's own JWT: the display name and
 local time (`platform_settings`), the newest briefs (10, clipped), every
 visible symbol's latest quote and note, and the newest report's stories
-(headline, takeaway, source). Read-only in v1 (no tools, nothing stored).
+(headline, takeaway, source), and the open `todos`. Tools: when the person
+asks, it adds an event (calendar "McFly"), a todo or a reminder, or checks a
+todo off (`add_event`, `add_todo`, `add_reminder`, `complete_todo`). Times
+come from the model as local wall-clock times and are turned into instants
+in `platform_settings.timezone` on the server. The writes go through
+`ingest_events` / `ingest_todos` / `set_todo_done` with the service role, as
+the built-in key-less agent "McFly" (`mcfly_agent()`), after `can_read()`
+passed; at most 5 per question, and never because the snapshot says to.
+`changed` (`["events", "todos"]`) says what was written, so a client can
+refresh at once.
 `quick` answers in one or two spoken sentences, no markdown; `chat` may use
 short lists. Model: `ASSISTANT_MODEL` secret, default `claude-sonnet-5-5`.
 Login: `ANTHROPIC_API_KEY` secret. Errors: 400 bad body, 401 no session,
@@ -186,6 +195,11 @@ sparklines), `news_reports` with embedded `news_items` (newest 14). Checks
 in (`devices.last_seen_at`) every 5 min. Screens: Home, Briefs, Markets,
 News (story detail with a QR code for the link), Settings; screen savers
 Ambient (the default), Clock and Headlines; the quick-answer card (voice) and the Ask panel.
+Also read (optional, so an older backend doesn't fail the sync): open `todos`,
+shown on Home's timeline; when a reminder's time comes (or came in the last
+5 minutes), a card at the top of the screen and the voice service read it out
+once (`FeedStore.reminderDue`). After an answer whose `done` has `changed`, it
+syncs at once.
 
 ## 4. Apple app
 

@@ -3,8 +3,8 @@
 // this turns whatever an agent sent into exactly what the ingest_* SQL
 // functions take, or says what's wrong in one sentence.
 
-export type Feed = "briefs" | "quotes" | "news" | "projects" | "metrics" | "dashboards" | "events";
-export const FEEDS: Feed[] = ["briefs", "quotes", "news", "projects", "metrics", "dashboards", "events"];
+export type Feed = "briefs" | "quotes" | "news" | "projects" | "metrics" | "dashboards" | "events" | "todos";
+export const FEEDS: Feed[] = ["briefs", "quotes", "news", "projects", "metrics", "dashboards", "events", "todos"];
 
 export type Brief = {
   id?: string;
@@ -101,6 +101,19 @@ export type CalendarEvent = {
   data?: Record<string, unknown>;
 };
 
+// A todo or a reminder. A reminder needs due_at (a time); a todo may have a
+// due time, or a due day with all_day.
+export type Todo = {
+  id?: string;
+  kind: "todo" | "reminder";
+  title: string;
+  notes?: string;
+  due_at?: string;
+  all_day?: boolean;
+  done?: boolean;
+  data?: Record<string, unknown>;
+};
+
 export type Parsed =
   | { feed: "briefs"; briefs: Brief[] }
   | { feed: "quotes"; quotes: Quote[]; as_of?: string }
@@ -108,7 +121,8 @@ export type Parsed =
   | { feed: "projects"; projects: Project[] }
   | { feed: "metrics"; metrics: Metric[]; as_of?: string }
   | { feed: "dashboards"; dashboards: Dashboard[] }
-  | { feed: "events"; events: CalendarEvent[]; calendar?: string; replace: boolean };
+  | { feed: "events"; events: CalendarEvent[]; calendar?: string; replace: boolean }
+  | { feed: "todos"; todos: Todo[] };
 
 type Fail = { error: string };
 
@@ -138,6 +152,7 @@ export const MAX_WIDGETS = 40;
 export const MAX_LIST_ITEMS = 20;
 export const MAX_POINTS = 120;
 export const MAX_EVENTS = 1000;
+export const MAX_TODOS = 200;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -163,6 +178,7 @@ export function feedFromBody(body: unknown): Feed | null {
   if (Array.isArray(body.metrics) || isObject(body.metric)) return "metrics";
   if (Array.isArray(body.dashboards) || isObject(body.dashboard)) return "dashboards";
   if (Array.isArray(body.events) || isObject(body.event)) return "events";
+  if (Array.isArray(body.todos) || isObject(body.todo)) return "todos";
   return null;
 }
 
@@ -597,6 +613,42 @@ export function parseEvents(body: unknown): { events: CalendarEvent[]; calendar?
   return { events, ...(calendar ? { calendar } : {}), replace };
 }
 
+// { todos: [...] } | { todo: {...} } | [...] | one { title, kind? }
+export function parseTodos(body: unknown): { todos: Todo[] } | Fail {
+  const items = listOf(body, "todos", "todo", "title", "{ title, kind?, due_at? }");
+  if (isFail(items)) return items;
+  if (items.length === 0) return { error: "no todos in the request" };
+  if (items.length > MAX_TODOS) return { error: `at most ${MAX_TODOS} todos per push` };
+  const todos: Todo[] = [];
+  for (const [i, raw] of items.entries()) {
+    if (!isObject(raw)) return { error: `todo ${i + 1} must be an object` };
+    const title = str(raw.title, 300);
+    if (!title) return { error: `todo ${i + 1} needs a title` };
+    const kind = raw.kind == null ? "todo" : raw.kind;
+    if (kind !== "todo" && kind !== "reminder") return { error: `todo ${title}: kind must be todo or reminder` };
+    const dueAt = when(raw.due_at ?? raw.due ?? raw.remind_at, `todo ${title}: due_at`);
+    if (isFail(dueAt)) return dueAt;
+    if (raw.all_day != null && typeof raw.all_day !== "boolean") return { error: `todo ${title}: all_day must be true or false` };
+    if (raw.done != null && typeof raw.done !== "boolean") return { error: `todo ${title}: done must be true or false` };
+    if (raw.all_day === true && !dueAt) return { error: `todo ${title}: all_day needs due_at (the day)` };
+    if (kind === "reminder" && !dueAt) return { error: `reminder ${title} needs due_at: when to remind` };
+    if (kind === "reminder" && raw.all_day === true) return { error: `reminder ${title} needs a time, not a whole day` };
+    const id = str(raw.id ?? raw.external_id, 200);
+    const notes = str(raw.notes ?? raw.description, 2000);
+    todos.push({
+      ...(id ? { id } : {}),
+      kind,
+      title,
+      ...(notes ? { notes } : {}),
+      ...(dueAt ? { due_at: dueAt } : {}),
+      ...(raw.all_day === true ? { all_day: true } : {}),
+      ...(typeof raw.done === "boolean" ? { done: raw.done } : {}),
+      ...(isObject(raw.data) ? { data: raw.data } : {}),
+    });
+  }
+  return { todos };
+}
+
 export function parse(feed: Feed, body: unknown): Parsed | Fail {
   switch (feed) {
     case "briefs": {
@@ -625,6 +677,10 @@ export function parse(feed: Feed, body: unknown): Parsed | Fail {
     }
     case "events": {
       const r = parseEvents(body);
+      return isFail(r) ? r : { feed, ...r };
+    }
+    case "todos": {
+      const r = parseTodos(body);
       return isFail(r) ? r : { feed, ...r };
     }
   }

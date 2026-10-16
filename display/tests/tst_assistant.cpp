@@ -108,6 +108,31 @@ private slots:
         QCOMPARE(rig->ai.replyText(), QString());
     }
 
+    // When the assistant added to the day (or checked a todo off), `done`
+    // says so, and the feeds are read again at once rather than in a minute.
+    void aChangeRefreshesTheFeeds()
+    {
+        startLive();
+        const auto syncs = [this]() { return m_server.requests("GET", "/rest/v1/events").size(); };
+        QTRY_VERIFY(syncs() >= 1);
+        const int before = syncs();
+        m_server.route("/functions/v1/assistant", [](const Request &r) {
+            const bool adds = r.body.value("message").toString().startsWith("Add");
+            QJsonObject done{{"reply", adds ? "Added." : "Nothing to add."}};
+            if (adds)
+                done.insert("changed", QJsonArray{"events"});
+            return stream({event("done", done)});
+        });
+        rig->ai.askQuick("What's next?");
+        QTRY_VERIFY(!rig->ai.busy());
+        QTest::qWait(300);
+        QCOMPARE(syncs(), before); // a plain answer leaves the feeds alone
+        rig->ai.askQuick("Add the dentist tomorrow at 3");
+        QTRY_VERIFY(!rig->ai.busy());
+        QCOMPARE(rig->ai.replyText(), QStringLiteral("Added."));
+        QTRY_COMPARE(syncs(), before + 1);
+    }
+
     void anErrorEventKeepsThePartialAnswer()
     {
         startLive();

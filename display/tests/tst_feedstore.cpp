@@ -381,6 +381,74 @@ private slots:
         QCOMPARE(newsRows, 1);
     }
 
+    // Todos and reminders (migration 20261015000020): today's on the
+    // timeline; a reminder announced once, when its time comes.
+    void todosAndReminders()
+    {
+        // A clock that runs from noon today, so the fixtures (hours either
+        // side of it) never straddle midnight, whenever this runs.
+        const QDateTime now(QDate::currentDate(), QTime(12, 0));
+        auto running = std::make_shared<QElapsedTimer>();
+        running->start();
+        m_server.route("/rest/v1/todos", [now](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", "t-undated"}, {"agent_id", "a1"}, {"kind", "todo"}, {"title", "Buy milk"}, {"notes", QJsonValue::Null},
+                            {"due_at", QJsonValue::Null}, {"all_day", false}, {"done_at", QJsonValue::Null}},
+                QJsonObject{{"id", "t-late"}, {"agent_id", "a1"}, {"kind", "todo"}, {"title", "File taxes"}, {"notes", QJsonValue::Null},
+                            {"due_at", iso(QDateTime(QDate::currentDate().addDays(-2), QTime(0, 0)))}, {"all_day", true}, {"done_at", QJsonValue::Null}},
+                QJsonObject{{"id", "t-later"}, {"agent_id", "a1"}, {"kind", "todo"}, {"title", "Book flights"}, {"notes", QJsonValue::Null},
+                            {"due_at", iso(now.addDays(2))}, {"all_day", false}, {"done_at", QJsonValue::Null}},
+                QJsonObject{{"id", "r-soon"}, {"agent_id", "a1"}, {"kind", "reminder"}, {"title", "Call mom"}, {"notes", "landline"},
+                            {"due_at", iso(now.addMSecs(2500))}, {"all_day", false}, {"done_at", QJsonValue::Null}},
+                QJsonObject{{"id", "r-old"}, {"agent_id", "a1"}, {"kind", "reminder"}, {"title", "Long gone"}, {"notes", QJsonValue::Null},
+                            {"due_at", iso(now.addSecs(-3600))}, {"all_day", false}, {"done_at", QJsonValue::Null}},
+            }));
+        });
+        QSettings().clear();
+        QSettings().setValue("device/id", "dev-1");
+        rig = std::make_unique<Rig>(m_server.baseUrl());
+        rig->client.setRefreshToken("refresh-1");
+        rig->store.setClock([now, running]() { return now.addMSecs(running->elapsed()); });
+        QSignalSpy due(&rig->store, &FeedStore::reminderDue);
+        rig->store.start();
+        QTRY_VERIFY_WITH_TIMEOUT(rig->store.online(), 5000);
+        auto row = [this](const QString &title) {
+            for (const QVariant &v : rig->store.timeline())
+                if (v.toMap().value("title").toString() == title)
+                    return v.toMap();
+            return QVariantMap();
+        };
+        QTRY_VERIFY(!row(QStringLiteral("Buy milk")).isEmpty());
+
+        const QVariantMap milk = row(QStringLiteral("Buy milk"));
+        QCOMPARE(milk.value("kind").toString(), QStringLiteral("todo"));
+        QVERIFY(milk.value("allDay").toBool()); // heads the day
+        QCOMPARE(milk.value("timeLabel").toString(), QStringLiteral("To do"));
+        QCOMPARE(milk.value("label").toString(), QStringLiteral("Grok · To do"));
+        QCOMPARE(milk.value("detail").toString(), QString());
+        QCOMPARE(milk.value("target").toInt(), 6);
+        QCOMPARE(milk.value("color").toString(), QStringLiteral("#7A64E8")); // its agent's
+        QVERIFY(row(QStringLiteral("File taxes")).value("detail").toString().startsWith(QStringLiteral("Was due ")));
+        QVERIFY(row(QStringLiteral("Book flights")).isEmpty()); // not today's
+        const QVariantMap mom = row(QStringLiteral("Call mom"));
+        QCOMPARE(mom.value("kind").toString(), QStringLiteral("reminder"));
+        QVERIFY(!mom.value("allDay").toBool());
+        QCOMPARE(mom.value("label").toString(), QStringLiteral("Grok · Reminder"));
+        QCOMPARE(mom.value("detail").toString(), QStringLiteral("landline"));
+        QCOMPARE(row(QStringLiteral("Long gone")).value("kind").toString(), QStringLiteral("reminder")); // a past row
+
+        // Its time comes: announced once, the old one never.
+        QTRY_COMPARE_WITH_TIMEOUT(due.count(), 1, 6000);
+        const QVariantMap fired = due.first().first().toMap();
+        QCOMPARE(fired.value("id").toString(), QStringLiteral("r-soon"));
+        QCOMPARE(fired.value("title").toString(), QStringLiteral("Call mom"));
+        QCOMPARE(fired.value("notes").toString(), QStringLiteral("landline"));
+        QVERIFY(!fired.value("timeLabel").toString().isEmpty());
+        rig->store.refresh(); // the next sync brings it again
+        QTest::qWait(800);
+        QCOMPARE(due.count(), 1);
+    }
+
     void newsSources()
     {
         startLive();
@@ -511,6 +579,13 @@ private slots:
         QVERIFY(rig->store.eventDays().size() >= 4);
         QVERIFY(rig->store.newsSources().size() >= 1);
         QCOMPARE(rig->store.lastSyncLabel(), QStringLiteral("Sample data"));
+        // Todos and reminders: today's on the timeline.
+        QStringList kinds;
+        for (const QVariant &v : rig->store.timeline())
+            kinds << v.toMap().value("kind").toString();
+        QVERIFY(kinds.contains(QStringLiteral("todo")));
+        if (!nearMidnight())
+            QVERIFY(kinds.contains(QStringLiteral("reminder")));
         // Memory and agent scopes (migration 20261015000001).
         QCOMPARE(rig->store.memories().size(), 3);
         QCOMPARE(rig->store.calendarSources().size(), 2);

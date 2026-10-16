@@ -336,6 +336,31 @@ ApplicationWindow {
         }
     }
 
+    // A reminder whose time has come (Store.reminderDue): a card at the top,
+    // over everything but the sleep cover, read out once. It wakes the
+    // screen, as the wake word does: the person asked to be told.
+    Layer {
+        z: 5
+        x: Math.round((window.width - width) / 2)
+        y: Theme.mini ? 16 : 32
+        width: Math.min(window.width - 2 * Theme.pageMargin, Theme.wide ? 760 : 640)
+        height: reminderCard.implicitHeight
+        visible: reminderCard.opacity > 0
+        ReminderCard {
+            id: reminderCard
+            anchors.fill: parent
+        }
+    }
+    Connections {
+        target: Store
+        function onReminderDue(reminder) {
+            Device.wake()
+            reminderCard.add(reminder)
+            if (Voice.available)
+                Voice.speak(qsTr("Reminder: %1").arg(reminder.title))
+        }
+    }
+
     // Sleep (Settings → Sleep) covers everything: fade to black, then hide
     // what's under it so nothing redraws while the panel is off (PanelPower).
     Layer {

@@ -713,6 +713,12 @@
       ]
     }
   ],
+  "todos": [
+    { "kind": "todo", "title": "Renew the passport", "agent_id": "a-grok" },
+    { "kind": "todo", "title": "Send the Q4 invoice", "dayOffset": 0, "notes": "Acme, net 30" },
+    { "kind": "reminder", "title": "Call mom", "dayOffset": 0, "at": "17:30" },
+    { "kind": "todo", "title": "Book flights for Austin", "dayOffset": 2 }
+  ],
   "events": [
     {
       "calendar": "Work",

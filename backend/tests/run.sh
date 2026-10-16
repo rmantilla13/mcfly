@@ -20,7 +20,7 @@ supa="$here/../supabase"
 
 # Migrations that need Supabase itself (realtime). The plain run skips them;
 # the tests in supabase_tests get them on top of stub_realtime.sql.
-supabase_only=(20261014000002_realtime.sql 20261014000004_realtime_productivity.sql)
+supabase_only=(20261014000002_realtime.sql 20261014000004_realtime_productivity.sql 20261015000021_realtime_todos.sql)
 supabase_tests=(realtime_test)
 
 PG_BIN="${PG_BIN:-$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)}"

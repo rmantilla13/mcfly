@@ -216,6 +216,10 @@ void Assistant::onEvent(const QString &event, const QJsonObject &data)
         m_replyText += text;
         emit replyChanged();
     } else if (event == "done") {
+        // It added to the day or checked something off: show it now, not at
+        // the next sync.
+        if (!data.value("changed").toArray().isEmpty())
+            m_store->refresh();
         complete(data.value("reply").toString());
     } else if (event == "error") {
         const QString message = data.value("message").toString();

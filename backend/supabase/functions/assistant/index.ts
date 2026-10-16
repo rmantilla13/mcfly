@@ -3,15 +3,20 @@
 //
 //   POST { message, mode?: "chat" | "quick", stream?: boolean,
 //          history?: [{ role, text }], provider?: "claude" | "grok" }
-//     stream false -> { reply, model }
-//     stream true  -> text/event-stream: delta…, then done (or error)
+//     stream false -> { reply, model, changed? }
+//     stream true  -> text/event-stream: delta…, then done { reply, model, changed? } (or error)
 //
 // The caller is a paired display or an admin: anyone can_read() says may.
 // The snapshot the answer is grounded in (settings, briefs, quotes, projects,
-// metrics, dashboards, the week's calendar, the newest report) is read with
-// the caller's own JWT, so row-level security decides what it sees; the
-// service role only identifies the caller. Read-only: no tools, nothing
-// stored.
+// metrics, dashboards, the week's calendar, open todos, the newest report) is
+// read with the caller's own JWT, so row-level security decides what it sees.
+//
+// Tools (tools.ts): when the person asks, it adds an event, a todo or a
+// reminder, or checks a todo off. Those writes go through the ingest SQL
+// functions with the service role, as McFly's own agent, after can_read()
+// has said the caller may read; the display itself still never writes.
+// `done` (and the JSON reply) carries `changed: ["events" | "todos"]` when
+// something was written, so a client can refresh at once.
 //
 // Who answers is platform_settings.assistant_provider, which the body may
 // override: Claude through the SDK (ANTHROPIC_API_KEY, ASSISTANT_MODEL) or
@@ -26,12 +31,26 @@ import Anthropic from "npm:@anthropic-ai/sdk@^0.133.0";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { authenticate, bearerToken, corsHeaders, HttpError, json, preflight, readJson } from "../_shared/http.ts";
 import {
+  type Changed,
+  CLAUDE_TOOLS,
+  type EventItem,
+  GROK_TOOLS,
+  grokArguments,
+  GrokToolCalls,
+  MAX_ROUNDS,
+  type Store,
+  type TodoItem,
+  TOOL_TOKENS,
+  ToolRunner,
+} from "./tools.ts";
+import {
   type AssistantRequest,
   chooseProvider,
   conversation,
   formatSnapshot,
   grokChunk,
   grokModelName,
+  type GrokMessage,
   grokRequestBody,
   type GrokUsage,
   MAX_TOKENS,
@@ -111,7 +130,7 @@ function modelOutcome(err: unknown): "busy" | "unavailable" | null {
 async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
   const now = new Date().toISOString();
   const weekAhead = new Date(Date.now() + SNAPSHOT.eventDays * 86_400_000).toISOString();
-  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories] = await Promise.all([
+  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories, todos] = await Promise.all([
     db.from("platform_settings").select("display_name, timezone, assistant_provider").maybeSingle(),
     db.from("briefs").select("title, kind, published_at, body")
       .or(`expires_at.is.null,expires_at.gt.${now}`)
@@ -137,6 +156,11 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     // Shared notes only: an agent's own working notes stay with the agent.
     db.from("memories").select("text, pinned").is("agent_id", null)
       .order("pinned", { ascending: false }).order("updated_at", { ascending: false }).limit(SNAPSHOT.memories),
+    // Open todos and reminders, soonest first, undated last. A reminder whose
+    // time passed more than a day ago is over.
+    db.from("todos").select("id, kind, title, due_at, all_day").is("done_at", null)
+      .or(`kind.eq.todo,due_at.gte.${new Date(Date.now() - 86_400_000).toISOString()}`)
+      .order("due_at", { ascending: true, nullsFirst: false }).order("created_at").limit(SNAPSHOT.todos),
   ]);
   const failed = (what: string, r: { error: { message: string } | null }) => {
     if (r.error) console.error(`snapshot ${what} failed:`, r.error.message);
@@ -154,8 +178,39 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     events: failed("events", events) ? null : events.data ?? [],
     reports: failed("report", reports) ? null : reports.data ?? [],
     memories: failed("notes", memories) ? null : memories.data ?? [],
+    todos: failed("todos", todos) ? null : todos.data ?? [],
   };
 }
+
+// ───────────────────────────── Writes ─────────────────────────────
+
+// What the tools write through: the ingest SQL functions, with the service
+// role, as McFly's own agent. Each call is one row; failures throw.
+const store: Store = {
+  async agent() {
+    const { data, error } = await service.rpc("mcfly_agent");
+    if (error || typeof data !== "string") throw new Error(error?.message ?? "no agent");
+    return data;
+  },
+  async addEvent(agent: string, event: EventItem) {
+    // Never replace_calendar: that would remove McFly's other events.
+    const { error } = await service.rpc("ingest_events", { agent, items: [event], replace_calendar: null });
+    if (error) throw new Error(error.message);
+  },
+  async addTodo(agent: string, todo: TodoItem) {
+    const { data, error } = await service.rpc("ingest_todos", { agent, items: [todo] });
+    if (error) throw new Error(error.message);
+    return Array.isArray(data) ? String(data[0] ?? "") : "";
+  },
+  async setDone(id: string) {
+    const { error } = await service.rpc("set_todo_done", { todo: id, done: true });
+    if (error) throw new Error(error.message);
+  },
+  async log(agent: string, feed: Changed, ok: boolean, message?: string) {
+    const { error } = await service.rpc("record_ingest", { agent, feed, count: 1, status: ok ? "ok" : "error", message: message ?? null });
+    if (error) console.error("record_ingest failed:", error.message);
+  },
+};
 
 // ───────────────────────────── Conversation ─────────────────────────────
 
@@ -163,107 +218,186 @@ interface Turn {
   mode: Mode;
   snapshot: string;
   messages: Anthropic.Beta.BetaMessageParam[];
+  tools: ToolRunner;
   signal?: AbortSignal;
   onText?: (text: string) => void;
 }
 interface Answer {
   reply: string;
   model: string;
+  changed?: Changed[];
 }
 
-// Asks Claude once, streaming text as it arrives. Returns the reply and the
-// model that served it; API errors propagate to the caller.
-async function converseClaude({ claude, model, mode, snapshot, messages, signal, onText }: Turn & { claude: Anthropic; model: string }): Promise<Answer> {
+// The reply as streamed: text from every round, the rounds' texts kept apart
+// so "Done." doesn't run into what came before it.
+function replyStream(mode: Mode, onText?: (text: string) => void) {
   const reply = new ReplyBuilder();
-  const emit = (text: string) => {
-    const out = reply.push(text);
-    if (out) onText?.(out);
+  let newRound = false;
+  return {
+    reply,
+    emit(text: string) {
+      if (newRound && reply.text && text.trim()) {
+        const gap = reply.push(mode === "quick" ? " " : "\n\n");
+        if (gap) onText?.(gap);
+      }
+      if (text.trim()) newRound = false;
+      const out = reply.push(text);
+      if (out) onText?.(out);
+    },
+    nextRound() {
+      newRound = true;
+    },
   };
-  const stream = claude.beta.messages.stream({
-    model,
-    max_tokens: MAX_TOKENS[mode],
-    // Conversational and latency-sensitive: low effort keeps answers quick.
-    // Thinking stays at the model's default (adaptive).
-    output_config: { effort: "low" },
-    // If a safety classifier declines a benign question, the API re-runs it on
-    // Anthropic's fallback model instead of failing the turn.
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    system: systemPrompt(snapshot, mode),
-    messages,
-  }, { signal });
-  for await (const event of stream) {
-    if (event.type === "content_block_start" && event.content_block.type === "text") emit(event.content_block.text);
-    else if (event.type === "content_block_delta" && event.delta.type === "text_delta") emit(event.delta.text);
-  }
-  const message = await stream.finalMessage();
-  const u = message.usage;
-  console.log(`assistant ${mode}: ${message.model}, ${u.input_tokens} in (${u.cache_read_input_tokens ?? 0} cached), ${u.output_tokens} out`);
-
-  // The whole fallback chain declined. Any partial text is discarded; the
-  // `done` reply replaces what was streamed.
-  if (message.stop_reason === "refusal") return { reply: REPLY.refusal, model: message.model };
-  return { reply: reply.text || REPLY.empty, model: message.model };
 }
 
-// Asks Grok once through xAI's Chat Completions API, always streaming, and
-// reads the `data:` lines as they come. Failures are GrokErrors.
-async function converseGrok({ apiKey, model, mode, snapshot, messages, signal, onText }: Turn & { apiKey: string; model: string }): Promise<Answer> {
-  const reply = new ReplyBuilder();
-  const emit = (text: string) => {
-    const out = reply.push(text);
-    if (out) onText?.(out);
-  };
-  let res: Response;
-  try {
-    res = await fetch(XAI_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify(grokRequestBody({ model, mode, snapshot, messages, stream: true })),
-      signal,
-    });
-  } catch (err) {
-    if (signal?.aborted) throw err;
-    throw new GrokError(0, err instanceof Error ? err.name : "unreachable");
-  }
-  if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => "");
-    throw new GrokError(res.status, oneLine(detail, 200) || res.statusText || "no body");
-  }
+const changedOf = (tools: ToolRunner): Pick<Answer, "changed"> =>
+  tools.changed.size ? { changed: [...tools.changed].sort() } : {};
 
+// Asks Claude, streaming text as it arrives, and runs the tools it calls
+// (at most MAX_ROUNDS model calls; the last can't call any). Returns the
+// reply and the model that served it; API errors propagate to the caller.
+async function converseClaude({ claude, model, mode, snapshot, messages, tools, signal, onText }: Turn & { claude: Anthropic; model: string }): Promise<Answer> {
+  const out = replyStream(mode, onText);
+  const transcript = [...messages];
+  let served = model;
+  const usage = { input: 0, cached: 0, output: 0 };
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    const stream = claude.beta.messages.stream({
+      model,
+      max_tokens: MAX_TOKENS[mode] + TOOL_TOKENS,
+      // Conversational and latency-sensitive: low effort keeps answers quick.
+      // Thinking stays at the model's default (adaptive).
+      output_config: { effort: "low" },
+      // If a safety classifier declines a benign question, the API re-runs it on
+      // Anthropic's fallback model instead of failing the turn.
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      system: systemPrompt(snapshot, mode),
+      tools: CLAUDE_TOOLS,
+      tool_choice: round === MAX_ROUNDS ? { type: "none" } : { type: "auto" },
+      messages: transcript,
+    }, { signal });
+    for await (const event of stream) {
+      if (event.type === "content_block_start" && event.content_block.type === "text") out.emit(event.content_block.text);
+      else if (event.type === "content_block_delta" && event.delta.type === "text_delta") out.emit(event.delta.text);
+    }
+    const message = await stream.finalMessage();
+    served = message.model;
+    usage.input += message.usage.input_tokens;
+    usage.cached += message.usage.cache_read_input_tokens ?? 0;
+    usage.output += message.usage.output_tokens;
+
+    // The whole fallback chain declined. Any partial text is discarded; the
+    // `done` reply replaces what was streamed. A refused turn's tool calls
+    // never run.
+    if (message.stop_reason === "refusal") {
+      console.log(`assistant ${mode}: ${served}, refused after ${tools.writes} writes`);
+      return { reply: REPLY.refusal, model: served, ...changedOf(tools) };
+    }
+    const calls = message.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    // A call cut off at max_tokens may parse as a shorter input: don't run it.
+    if (message.stop_reason !== "tool_use" || !calls.length) break;
+
+    // The assistant turn goes back exactly as it came, thinking included.
+    transcript.push({ role: "assistant", content: message.content });
+    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+    for (const call of calls) {
+      const r = await tools.run(call.name, call.input);
+      results.push({ type: "tool_result", tool_use_id: call.id, content: r.content, ...(r.isError ? { is_error: true } : {}) });
+    }
+    transcript.push({ role: "user", content: results });
+    out.nextRound();
+  }
+  console.log(`assistant ${mode}: ${served}, ${usage.input} in (${usage.cached} cached), ${usage.output} out, ${tools.writes} writes`);
+  return { reply: out.reply.text || REPLY.empty, model: served, ...changedOf(tools) };
+}
+
+// Asks Grok through xAI's Chat Completions API, always streaming, reads the
+// `data:` lines as they come, and runs the tools it calls, like Claude's.
+// Failures are GrokErrors.
+async function converseGrok({ apiKey, model, mode, snapshot, messages, tools, signal, onText }: Turn & { apiKey: string; model: string }): Promise<Answer> {
+  const out = replyStream(mode, onText);
+  const base = grokRequestBody({ model, mode, snapshot, messages, stream: true });
+  const extra: GrokMessage[] = [];
   let served = model;
   let usage: GrokUsage | undefined;
-  // One chunk's payloads; true once [DONE] has been seen.
-  const take = (payloads: string[]): boolean => {
-    for (const payload of payloads) {
-      if (payload === "[DONE]") return true;
-      const chunk = grokChunk(payload);
-      if (!chunk) continue;
-      if (chunk.model) served = chunk.model;
-      if (chunk.usage) usage = chunk.usage;
-      emit(chunk.text);
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    let res: Response;
+    try {
+      res = await fetch(XAI_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({
+          ...base,
+          max_tokens: base.max_tokens + TOOL_TOKENS,
+          messages: [...base.messages, ...extra],
+          tools: GROK_TOOLS,
+          tool_choice: round === MAX_ROUNDS ? "none" : "auto",
+        }),
+        signal,
+      });
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      throw new GrokError(0, err instanceof Error ? err.name : "unreachable");
     }
-    return false;
-  };
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const { data, rest } = splitSseData(buffer);
-      buffer = rest;
-      if (take(data)) break;
+    if (!res.ok || !res.body) {
+      const detail = await res.text().catch(() => "");
+      throw new GrokError(res.status, oneLine(detail, 200) || res.statusText || "no body");
     }
-    // A last line without its newline.
-    if (buffer.trim()) take(splitSseData(buffer + "\n").data);
-  } finally {
-    await reader.cancel().catch(() => {});
+
+    const calls = new GrokToolCalls();
+    let said = "";
+    let finish = "";
+    // One chunk's payloads; true once [DONE] has been seen.
+    const take = (payloads: string[]): boolean => {
+      for (const payload of payloads) {
+        if (payload === "[DONE]") return true;
+        const chunk = grokChunk(payload);
+        if (!chunk) continue;
+        if (chunk.model) served = chunk.model;
+        if (chunk.usage) usage = chunk.usage;
+        if (chunk.toolCalls) calls.push(chunk.toolCalls);
+        if (chunk.finish) finish = chunk.finish;
+        said += chunk.text;
+        out.emit(chunk.text);
+      }
+      return false;
+    };
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const { data, rest } = splitSseData(buffer);
+        buffer = rest;
+        if (take(data)) break;
+      }
+      // A last line without its newline.
+      if (buffer.trim()) take(splitSseData(buffer + "\n").data);
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+
+    const called = calls.calls;
+    // Cut off mid-call ("length"): the arguments can't be trusted.
+    if (!called.length || finish === "length") break;
+    extra.push({
+      role: "assistant",
+      content: said || null,
+      tool_calls: called.map((c) => ({ id: c.id, type: "function" as const, function: { name: c.name, arguments: c.arguments } })),
+    });
+    for (const c of called) {
+      const args = grokArguments(c.arguments);
+      const r = args.ok ? await tools.run(c.name, args.input) : { content: `Not saved: ${args.error}.`, isError: true };
+      extra.push({ role: "tool", tool_call_id: c.id, content: r.content });
+    }
+    out.nextRound();
   }
-  console.log(`assistant ${mode}: ${served}, ${usage?.prompt_tokens ?? "?"} in, ${usage?.completion_tokens ?? "?"} out`);
-  return { reply: reply.text || REPLY.empty, model: served };
+  console.log(`assistant ${mode}: ${served}, ${usage?.prompt_tokens ?? "?"} in, ${usage?.completion_tokens ?? "?"} out, ${tools.writes} writes`);
+  return { reply: out.reply.text || REPLY.empty, model: served, ...changedOf(tools) };
 }
 
 // ───────────────────────────── Streaming ─────────────────────────────
@@ -312,7 +446,13 @@ function sseResponse(run: (send: Send, signal: AbortSignal) => Promise<void>): R
 async function answer(db: SupabaseClient, req: AssistantRequest): Promise<Response> {
   const rows = await loadSnapshot(db);
   const snapshot = formatSnapshot(rows);
-  const turn: Turn = { mode: req.mode, snapshot: snapshot.text, messages: conversation(req.history, req.message) };
+  const open = (rows.todos ?? []).map((t) => ({ id: t.id, title: oneLine(t.title, 300) }));
+  const turn: Turn = {
+    mode: req.mode,
+    snapshot: snapshot.text,
+    messages: conversation(req.history, req.message),
+    tools: new ToolRunner(store, snapshot.timezone, open),
+  };
 
   // The provider is picked after the snapshot read: the setting rides in it.
   let ask: (signal?: AbortSignal, onText?: (text: string) => void) => Promise<Answer>;
