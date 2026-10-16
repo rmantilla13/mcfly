@@ -39,6 +39,8 @@
 	<string>Scan the pairing code on your McFly display.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © McFly. All rights reserved.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Show today's weather where you are on Home. Only your approximate location is used, for the forecast.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Talk to McFly instead of typing.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

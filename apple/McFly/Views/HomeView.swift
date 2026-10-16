@@ -7,13 +7,24 @@ import SwiftUI
 /// one strip, then one stream of what arrived and what is planned
 /// (`Timeline`). Past rows fade, the event on now is outlined, the next one
 /// is marked. The moon opens the ambient screen.
+///
+/// On iPhone and iPad the status bar tells the time, so the big clock gives
+/// its room to four glance tiles (`GlanceGrid`): what's next, the weather,
+/// what needs you and the top story.
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @State private var showAsk = false
     @State private var showVoice = false
     @State private var showAmbient = false
+    @State private var weather = WeatherModel(isDemo: Config.isDemo)
 
     private var feeds: FeedStore { app.feeds }
+
+    #if os(iOS)
+    static let showsClock = false
+    #else
+    static let showsClock = true
+    #endif
 
     var body: some View {
         // Past, now and next move once a minute, and so does the clock.
@@ -23,12 +34,15 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ClockHeader(now: now, greeting: Timeline.greeting(now: now, name: feeds.displayName),
-                                synced: feeds.loadedAt, isDemo: app.isDemo) {
+                                synced: feeds.loadedAt, isDemo: app.isDemo, showsClock: Self.showsClock) {
                         showAmbient = true
                     }
                     if let message = feeds.errorMessage {
                         ErrorBanner(message: message) { Task { await feeds.refresh() } }
                     }
+                    #if os(iOS)
+                    GlanceGrid(now: now, feeds: feeds, weather: weather)
+                    #else
                     if let event = Timeline.upNext(feeds.events, now: now) {
                         NavigationLink(value: event) { NextCard(event: event, now: now) }
                             .buttonStyle(PressableStyle())
@@ -39,6 +53,7 @@ struct HomeView: View {
                         }
                         .buttonStyle(PressableStyle())
                     }
+                    #endif
                     AskBar(onAsk: { showAsk = true }, onTalk: { showVoice = true })
                     MarketsStrip(series: Array(feeds.series.prefix(6)))
                     TodayHeading(count: timeline.count)
@@ -77,7 +92,11 @@ struct HomeView: View {
                 .allowsHitTesting(false)
         }
         .screenBackground()
-        .refreshable { await feeds.refresh() }
+        .refreshable {
+            weather.refreshIfStale()
+            await feeds.refresh()
+        }
+        .onAppear { weather.refreshIfStale() }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
@@ -109,8 +128,8 @@ struct HomeView: View {
     }
 }
 
-/// Where a timeline row goes: the story, the brief, the project or the event.
-private enum HomeRoute: Hashable {
+/// Where a timeline row or a glance tile goes: the story, the brief, the project or the event.
+enum HomeRoute: Hashable {
     case story(NewsItem)
     case brief(Brief)
     case project(Project)
@@ -151,6 +170,8 @@ private struct ClockHeader: View {
     let greeting: String
     let synced: Date?
     let isDemo: Bool
+    /// The display's big clock; on a phone the status bar has the time, so just the date.
+    var showsClock = true
     let onAmbient: () -> Void
 
     var body: some View {
@@ -181,6 +202,19 @@ private struct ClockHeader: View {
                 .buttonStyle(PressableStyle())
                 .accessibilityLabel("Ambient screen")
             }
+            if !showsClock {
+                Text(now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.top, 6)
+                if let syncLabel {
+                    Text(syncLabel)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.muted)
+                }
+            } else {
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text(Self.time(now))
                     .font(.system(size: 88, weight: .light))
@@ -199,6 +233,7 @@ private struct ClockHeader: View {
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.muted)
                 .lineLimit(1)
+            }
         }
     }
 
