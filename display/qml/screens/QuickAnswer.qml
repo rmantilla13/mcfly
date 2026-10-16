@@ -38,6 +38,24 @@ Item {
     property bool replyFailed: false
     readonly property bool canFollowUp: Voice.followUp && Voice.available && Voice.canTranscribe
                                         && !replyFailed && turns < maxTurns
+    // How long an answer may take to be said before the card stops waiting
+    // for `spoken`: a grace period plus some per character. Only a guess: on
+    // the Pi, Kokoro speaks slower than real time, so while the service still
+    // says it's speaking the card keeps waiting.
+    property int speechGraceMs: 10000
+    property int speechMsPerChar: 90
+
+    // Why a conversation went on or stopped, for the display's log (never
+    // what was said).
+    function note(text) { console.info("voice card: " + text) }
+    function followUpBlocker() {
+        return !Voice.followUp ? "follow-up questions are off"
+             : !Voice.available ? "the voice service is gone"
+             : !Voice.canTranscribe ? "there is no microphone"
+             : replyFailed ? "the answer was an error"
+             : turns >= maxTurns ? "it has answered " + turns + " times"
+             : "nothing"
+    }
 
     visible: opacity > 0
     opacity: shown ? 1 : 0
@@ -73,6 +91,7 @@ Item {
         phase = "listening"
         stallTimer.restart()
         startCheck.restart()
+        note("listening for a follow-up after answer " + turns)
         Voice.listen()
         return true
     }
@@ -82,7 +101,13 @@ Item {
         startCheck.stop()
         // "Thanks", "that's all", or McFly hearing the end of its own answer:
         // nothing to ask, the conversation is over.
-        if (followingUp && (AI.endsConversation(text) || AI.echoesReply(text, earlierAnswer))) {
+        if (followingUp && AI.endsConversation(text)) {
+            note("conversation over: a closing remark")
+            dismiss(false)
+            return
+        }
+        if (followingUp && AI.echoesReply(text, earlierAnswer)) {
+            note("conversation over: it heard the end of its own answer")
             dismiss(false)
             return
         }
@@ -96,6 +121,7 @@ Item {
         stallTimer.stop()
         startCheck.stop()
         if (followingUp) {
+            note("conversation over: nothing more was said")
             dismiss(false) // nobody said anything more: that's the end of it
             return
         }
@@ -140,22 +166,55 @@ Item {
         dismissTimer.restart()
     }
 
-    Timer { id: dismissTimer; onTriggered: quick.dismiss(false) }
-    // If `spoken` never comes (speech failed), don't hang around forever.
-    Timer { id: speechTimer; onTriggered: { quick.awaitingSpeech = false; quick.dismissIn(6000) } }
-    // The service ends a turn within ~12 s; give up quietly if it doesn't.
-    Timer { id: stallTimer; interval: 20000; onTriggered: if (quick.phase === "listening") quick.miss() }
     // After an answer is read out, the room's echo fades before the mic opens
     // again, or McFly would hear the end of its own sentence.
+    function armFollowUp() {
+        followUpTimer.waits = 0
+        followUpTimer.interval = 700
+        followUpTimer.restart()
+    }
+
+    Timer { id: dismissTimer; onTriggered: quick.dismiss(false) }
+    // If `spoken` never comes (speech failed), don't hang around forever. A
+    // service still speaking hasn't failed, though: look again in a moment.
+    Timer {
+        id: speechTimer
+        property int extraWaits: 0
+        onTriggered: {
+            if (Voice.state === "speaking" && ++extraWaits <= 40) { // two more minutes at most
+                interval = 3000
+                restart()
+                return
+            }
+            quick.note("stopped waiting: the answer was never reported spoken")
+            quick.awaitingSpeech = false
+            quick.dismissIn(6000)
+        }
+    }
+    // The service ends a turn within ~12 s; give up quietly if it doesn't.
+    Timer { id: stallTimer; interval: 20000; onTriggered: if (quick.phase === "listening") quick.miss() }
     Timer {
         id: followUpTimer
-        interval: 700
+        property int waits: 0
         onTriggered: {
-            // Only into a quiet room: never over a reminder being read out.
-            if (quick.phase === "done" && Voice.state === "idle" && quick.followUp())
+            if (quick.phase !== "done")
                 return
-            if (quick.phase === "done")
-                quick.dismissIn(6000)
+            // Only into a quiet room: never over a reminder being read out,
+            // and not before the service has said it's done speaking.
+            if (Voice.state === "idle") {
+                if (!quick.followUp()) {
+                    quick.note("no follow-up: " + quick.followUpBlocker())
+                    quick.dismissIn(6000)
+                }
+                return
+            }
+            if (++waits <= 10) {
+                interval = 300
+                restart()
+                return
+            }
+            quick.note("no follow-up: the voice service stayed " + Voice.state)
+            quick.dismissIn(6000)
         }
     }
     // A follow-up the service never started listening for (it said why in an
@@ -163,7 +222,12 @@ Item {
     Timer {
         id: startCheck
         interval: 2500
-        onTriggered: if (quick.followingUp && quick.phase === "listening" && Voice.state === "idle") quick.dismiss(false)
+        onTriggered: {
+            if (quick.followingUp && quick.phase === "listening" && Voice.state === "idle") {
+                quick.note("conversation over: the voice service didn't start listening")
+                quick.dismiss(false)
+            }
+        }
     }
 
     Connections {
@@ -182,7 +246,8 @@ Item {
             if (speechId) {
                 quick.awaitingSpeech = true
                 quick.speechId = speechId
-                speechTimer.interval = 10000 + text.length * 90
+                speechTimer.interval = quick.speechGraceMs + text.length * quick.speechMsPerChar
+                speechTimer.extraWaits = 0
                 speechTimer.restart()
             } else {
                 // Nothing to listen to: leave it up long enough to read.
@@ -194,14 +259,21 @@ Item {
         target: Voice
         enabled: quick.shown
         function onSpoken(id) {
-            if (!quick.awaitingSpeech || id !== quick.speechId)
+            // The answer this card shows, even after the speech timer gave up
+            // on it: the card is still up for a few seconds, and a follow-up
+            // is still welcome. (A follow-up or a new conversation clears
+            // speechId, so a reply cut short is ignored.)
+            if (!id || id !== quick.speechId || quick.phase !== "done")
                 return
             quick.awaitingSpeech = false
             speechTimer.stop()
-            if (quick.canFollowUp)
-                followUpTimer.restart()
-            else
+            dismissTimer.stop()
+            if (quick.canFollowUp) {
+                quick.armFollowUp()
+            } else {
+                quick.note("no follow-up: " + quick.followUpBlocker())
                 quick.dismissIn(6000)
+            }
         }
         function onAvailableChanged() {
             if (!Voice.available && quick.phase === "listening")

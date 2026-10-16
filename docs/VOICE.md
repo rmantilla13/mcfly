@@ -209,7 +209,11 @@ seconds, so the two can start in any order.
    ignores a follow-up that repeats the end of the answer (McFly hearing
    itself) and stops after six answers. Tapping the card while McFly is
    talking cuts it short and listens; tapping it after an answer asks
-   another question.
+   another question. The card waits for `spoken` however long the answer
+   takes to say, as long as the service still reports `speaking` (Kokoro is
+   slower than real time on the Pi). The display's log says why each
+   conversation went on or ended, never what was said:
+   `journalctl -u mcfly-display | grep "voice card"`.
 
 Every question asked out loud gets a spoken answer: the wake word, the mic
 on Home (which opens the same voice card) and the mic in the assistant

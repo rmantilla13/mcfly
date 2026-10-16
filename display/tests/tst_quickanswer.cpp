@@ -44,7 +44,8 @@ class TestQuickAnswer : public QObject
     // they run out. And how long a reply takes to say.
     QStringList m_heard;
     int m_speakMs = 0;
-    QString m_speaking; // the id being "said"
+    bool m_reportSpeaking = true; // send "state": "speaking" while saying it, as the service does
+    QString m_speaking;           // the id being "said"
 
     SupabaseClient *m_client = nullptr;
     FeedStore *m_store = nullptr;
@@ -88,6 +89,8 @@ class TestQuickAnswer : public QObject
             return;
         m_speaking.clear();
         sendToDisplay({{"type", "spoken"}, {"id", id}});
+        if (m_reportSpeaking)
+            sendToDisplay({{"type", "state"}, {"state", "idle"}});
     }
 
 private slots:
@@ -109,6 +112,8 @@ private slots:
                 if (type == "speak") {
                     // "Said" after m_speakMs (at once by default).
                     m_speaking = m.value("id").toString();
+                    if (m_reportSpeaking)
+                        sendToDisplay({{"type", "state"}, {"state", "speaking"}});
                     QTimer::singleShot(m_speakMs, this, [this, id = m_speaking]() { finishSpeech(id); });
                 } else if (type == "listen") {
                     // As the service does: cut any speech short, then one
@@ -173,8 +178,11 @@ private slots:
         m_ai->reset();
         m_voice->setFollowUp(true);
         m_quick->setProperty("maxTurns", 6);
+        m_quick->setProperty("speechGraceMs", 10000);
+        m_quick->setProperty("speechMsPerChar", 90);
         m_heard.clear();
         m_speakMs = 0;
+        m_reportSpeaking = true;
         m_speaking.clear();
         QTest::qWait(50);
         m_received.clear();
@@ -258,6 +266,54 @@ private slots:
         QTest::qWait(1500);
         QCOMPARE(listens(), 0);
         QCOMPARE(phase(), QStringLiteral("done")); // closes 6 s after, as without follow-ups
+    }
+
+    void aSlowAnswerStillGetsAFollowUp()
+    {
+        // Kokoro on the Pi speaks slower than real time, so an answer can
+        // outlast the card's guess at how long saying it takes. While the
+        // service says it's still speaking, the card keeps waiting, and then
+        // listens for the follow-up as usual.
+        m_quick->setProperty("speechGraceMs", 300);
+        m_quick->setProperty("speechMsPerChar", 0);
+        m_speakMs = 1500;
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        QTest::qWait(800); // past the guess, still being said
+        QCOMPARE(phase(), QStringLiteral("done"));
+        QCOMPARE(listens(), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 1, 4000);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden")); // that follow-up heard nothing
+    }
+
+    void aLateSpokenStillFollowsUp()
+    {
+        // A service that never reports "speaking": the card stops waiting on
+        // its guess, but a `spoken` that comes while it's still up opens the
+        // follow-up all the same.
+        m_reportSpeaking = false;
+        m_quick->setProperty("speechGraceMs", 300);
+        m_quick->setProperty("speechMsPerChar", 0);
+        m_speakMs = 1500;
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 1, 4000);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
+    }
+
+    void twoFollowUpsInARow()
+    {
+        // The conversation keeps going: each answer is followed by another
+        // turn, until nothing more is said.
+        m_heard = {QStringLiteral("what's in the news"), QStringLiteral("what's blocking Onyx?")};
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE_WITH_TIMEOUT(spokenTexts().size(), 3, 15000);
+        QCOMPARE(m_quick->property("turns").toInt(), 3);
+        QTRY_COMPARE_WITH_TIMEOUT(listens(), 3, 3000);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
     }
 
     void tappingCutsIn()
