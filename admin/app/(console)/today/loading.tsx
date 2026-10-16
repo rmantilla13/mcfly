@@ -1,6 +1,8 @@
 import { cn } from "cn";
+import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TODAY_LAYOUT_COOKIE, todayLayout } from "@/lib/today-layout";
 
 // Today while it loads: the page's grid (components/today/TodayView.tsx)
 // with the usual tiles in their places, so nothing jumps when it arrives.
@@ -24,7 +26,19 @@ function Head() {
   return <Bone className="h-3 w-28" />;
 }
 
-export default function TodayLoading() {
+export default async function TodayLoading() {
+  // Bento and Assistant arrange the page differently: a plain block stands in
+  // for them, rather than Today's grid jumping into another.
+  if (todayLayout((await cookies()).get(TODAY_LAYOUT_COOKIE)?.value) !== "today") {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-end">
+          <Bone className="h-11 w-72 sm:h-9" />
+        </div>
+        <Block className="h-[560px] rounded-[26px]" />
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-6 xl:grid-cols-12" role="status">
       <span className="sr-only">Loading Today…</span>
