@@ -67,7 +67,7 @@ admin RPCs.
 |---|---|
 | `briefs` | Text updates: `agent_id`, `external_id` (the agent's own id; unique per agent, a re-push replaces), `title` (≤200), `body` (≤20,000, plain text with blank lines and `- ` bullets), `kind` ∈ hourly · daily · alert · update, `published_at`, `expires_at`, `created_at`, `updated_at` |
 | `quotes` | One row per push and symbol: `agent_id`, `symbol` (upper, `^[A-Z0-9.^=:-]{1,16}$`), `name`, `price`, `change`, `change_pct`, `currency` (3 letters), `note` (≤2000), `data` (jsonb), `as_of`, `created_at` |
-| `quotes_latest` | View: the newest row per symbol |
+| `quotes_latest` | View: the newest row per symbol. Its `data` (the holding, signals and stats of docs/AGENTS.md) is read from here by the display, the app and the console's Markets (a direct select, `can_read()`), so the history is read without it |
 | `symbols` | Every symbol seen: `symbol`, `name`, `sort_order` (1000 for new ones), `hidden`, `updated_at`. The console orders and hides; the display shows `not hidden` in `sort_order, symbol` order |
 | `news_reports` | A Daily Pulse report: `agent_id`, `slug` (unique, normally the date), `report_date`, `display_date` (as the agent wrote it), `hero_item` (an item key), `published_at` |
 | `news_items` | `report_id`, `section_key`, `section_name`, `section_order`, `item_key` (unique per report and section), `position`, `headline` (≤300), `takeaway` (≤2000), `url` (http/https), `image_url`, `source_domain` (host without www) |
@@ -208,7 +208,9 @@ SwiftUI, iPhone and Mac from one target set (`apple/`). Signs in with the
 person's account (email + password or magic link, supabase-swift) and then:
 
 - reads the same feeds through PostgREST with the person's JWT (RLS lets an
-  admin read; a person who isn't an admin sees an explanation);
+  admin read; a person who isn't an admin sees an explanation); `quotes`
+  without `data`, which comes from `quotes_latest`, so Markets shows the
+  holding, signals and numbers as the display does;
 - **pairs a display**: enter (or scan) the 6-digit code → `pair-device`
   `claim`; lists displays (`admin_list_devices`) and can rename/revoke;
 - voice: talks to `assistant` (`quick` for spoken turns, `chat` typed), with

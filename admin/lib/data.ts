@@ -6,6 +6,7 @@ import { cache } from "react";
 import * as demo from "@/lib/demo/store";
 import { demoMode, supabaseConfig, supabaseProjectUrl } from "@/lib/env";
 import { DataError } from "@/lib/errors";
+import type { QuoteLatestRow } from "@/lib/holdings";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   Admin,
@@ -259,6 +260,21 @@ export async function listQuotes(): Promise<QuoteRow[]> {
     change_pct: numOrNull(q.change_pct),
     history_count: num(q.history_count),
   }));
+}
+
+// Each symbol's newest push with what its agent added (`data`: the holding,
+// signals and the day's numbers; lib/holdings.ts shapes it). A direct select
+// of the quotes_latest view, as the display reads it: RLS lets the admin
+// read it, so no migration. Optional: without it the prices still show.
+export async function listQuoteData(): Promise<QuoteLatestRow[]> {
+  const src = await source();
+  if (src.demo) return demo.demoListQuoteData();
+  const { data, error } = await src.db.from("quotes_latest").select("symbol,agent_id,as_of,created_at,data");
+  if (error) {
+    console.error("quotes_latest failed:", error.message);
+    return [];
+  }
+  return Array.isArray(data) ? (data as QuoteLatestRow[]) : [];
 }
 
 export async function listNewsReports(lim = 30): Promise<NewsReportRow[]> {

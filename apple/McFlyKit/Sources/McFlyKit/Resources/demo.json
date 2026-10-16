@@ -135,7 +135,8 @@
       "currency": "USD",
       "note": null,
       "as_of": "2026-10-14T20:00:00+00:00",
-      "created_at": "2026-10-14T20:00:00+00:00"
+      "created_at": "2026-10-14T20:00:00+00:00",
+      "data": {"position": {"shares": 12, "avg_cost": 512.4}, "stats": {"open": 666.9, "high": 669.8, "low": 665.7, "prev_close": 666.31, "volume": 61200000, "avg_volume": 72400000, "low_52w": 508.2, "high_52w": 670.4}}
     },
     {
       "id": 11,
@@ -148,7 +149,8 @@
       "currency": "USD",
       "note": null,
       "as_of": "2026-10-14T20:00:00+00:00",
-      "created_at": "2026-10-14T20:00:00+00:00"
+      "created_at": "2026-10-14T20:00:00+00:00",
+      "data": {"signals": [{"text": "Crossed above its 50-day average ($379.40)", "tone": "up"}]}
     },
     {
       "id": 10,
@@ -161,7 +163,8 @@
       "currency": "USD",
       "note": null,
       "as_of": "2026-10-14T20:00:00+00:00",
-      "created_at": "2026-10-14T20:00:00+00:00"
+      "created_at": "2026-10-14T20:00:00+00:00",
+      "data": {"position": {"shares": 60, "avg_cost": 121.8}, "signals": [{"text": "RSI 72: above 70 for the first time since July", "tone": "up"}, {"text": "Volume 1.8× its 30-day average", "tone": "watch"}], "stats": {"open": 188.9, "high": 192.4, "low": 188.1, "prev_close": 188.4, "volume": 312000000, "avg_volume": 173000000, "market_cap": 4660000000000.0, "pe": 54.8, "low_52w": 86.6, "high_52w": 195.0, "earnings": "Nov 19, after close"}}
     },
     {
       "id": 9,
@@ -174,7 +177,8 @@
       "currency": "USD",
       "note": "Services beat; iPhone 18 demand steady.",
       "as_of": "2026-10-14T20:00:00+00:00",
-      "created_at": "2026-10-14T20:00:00+00:00"
+      "created_at": "2026-10-14T20:00:00+00:00",
+      "data": {"position": {"shares": 40, "avg_cost": 178.25}, "signals": [{"text": "Earnings Thursday after the close", "tone": "watch"}, {"text": "Up 6 of the last 7 sessions", "tone": "up"}], "stats": {"open": 245.6, "high": 248.4, "low": 244.9, "prev_close": 245.12, "volume": 52300000, "avg_volume": 48100000, "market_cap": 3680000000000.0, "pe": 37.2, "low_52w": 169.2, "high_52w": 260.1, "earnings": "Thu, after close"}}
     },
     {
       "id": 8,

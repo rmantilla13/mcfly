@@ -59,6 +59,7 @@ export type DemoQuote = {
   currency: string;
   note: string | null;
   as_of: string;
+  data?: Record<string, unknown>; // the holding, signals and day's numbers (docs/AGENTS.md)
 };
 
 export type DemoSymbol = { symbol: string; name: string | null; sort_order: number; hidden: boolean; updated_at: string };
@@ -179,6 +180,27 @@ const QUOTES: QuoteSpec[] = [
   { symbol: "NVDA", name: "NVIDIA", price: 191.25, change: 2.85, change_pct: 1.51, sort: 2 },
   { symbol: "TSLA", name: "Tesla", price: 402.1, change: -5.3, change_pct: -1.3, sort: 3 },
 ];
+
+// What the stocks agent sends with today's quotes, as a brokerage-reading
+// Market desk would (scripts/market_desk.py): three holdings, the signals it
+// noticed and the day's numbers.
+const QUOTE_DATA: Record<string, Record<string, unknown>> = {
+  SPY: {
+    position: { shares: 12, avg_cost: 512.4 },
+    stats: { open: 666.9, high: 669.8, low: 665.7, prev_close: 666.31, volume: 61200000, avg_volume: 72400000, low_52w: 508.2, high_52w: 670.4 },
+  },
+  AAPL: {
+    position: { shares: 40, avg_cost: 178.25 },
+    signals: [{ text: "Earnings Thursday after the close", tone: "watch" }, { text: "Up 6 of the last 7 sessions", tone: "up" }],
+    stats: { open: 245.6, high: 248.4, low: 244.9, prev_close: 245.12, volume: 52300000, avg_volume: 48100000, market_cap: 3.68e12, pe: 37.2, low_52w: 169.2, high_52w: 260.1, earnings: "Thu, after close" },
+  },
+  NVDA: {
+    position: { shares: 60, avg_cost: 121.8 },
+    signals: [{ text: "RSI 72: above 70 for the first time since July", tone: "up" }, { text: "Volume 1.8× its 30-day average", tone: "watch" }],
+    stats: { open: 188.9, high: 192.4, low: 188.1, prev_close: 188.4, volume: 312000000, avg_volume: 173000000, market_cap: 4.66e12, pe: 54.8, low_52w: 86.6, high_52w: 195.0, earnings: "Nov 19, after close" },
+  },
+  TSLA: { signals: [{ text: "Fell below its 50-day average ($406.80)", tone: "down" }] },
+};
 
 const PULSE_SECTIONS: { key: string; name: string; items: { id: string; h: string; t: string; url: string; image?: string }[] }[] = [
   {
@@ -366,6 +388,7 @@ export function buildDemoState(now = Date.now()): DemoState {
         change: day === 0 ? spec.change : Math.round((rand() - 0.5) * 600) / 100,
         change_pct: day === 0 ? spec.change_pct : Math.round((rand() - 0.5) * 300) / 100,
         currency: "USD", note: day === 0 ? (spec.note ?? null) : null, as_of: asOf,
+        ...(day === 0 && QUOTE_DATA[spec.symbol] ? { data: QUOTE_DATA[spec.symbol] } : {}),
       });
       price = price * (1 - (rand() - 0.48) * 0.03);
     }

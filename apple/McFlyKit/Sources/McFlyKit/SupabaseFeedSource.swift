@@ -24,12 +24,18 @@ public struct SupabaseFeedSource: FeedSource {
             .execute().data)
     }
 
+    /// The history without `data`, which only the newest row needs.
     public func loadQuotes(limit: Int) async throws -> [Quote] {
-        try decode(await client.from("quotes").select()
+        try decode(await client.from("quotes")
+            .select("id,agent_id,symbol,name,price,change,change_pct,currency,note,as_of,created_at")
             .order("as_of", ascending: false)
             .order("id", ascending: false)
             .limit(limit)
             .execute().data)
+    }
+
+    public func loadLatestQuoteData() async throws -> [QuoteLatest] {
+        try decode(await client.from("quotes_latest").select("symbol,as_of,data").execute().data)
     }
 
     public func loadSymbols() async throws -> [Symbol] {

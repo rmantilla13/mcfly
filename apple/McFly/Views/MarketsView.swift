@@ -1,7 +1,8 @@
 import McFlyKit
 import SwiftUI
 
-/// A tile per symbol with a sparkline from its history.
+/// A tile per symbol with a sparkline from its history, the holding when the
+/// agent sends one, and the holdings summed over the grid.
 struct MarketsView: View {
     enum Segment: String, CaseIterable, Identifiable {
         case markets = "Markets", metrics = "Metrics"
@@ -31,10 +32,14 @@ struct MarketsView: View {
                     EmptyCard(text: feeds.hasLoaded ? "No quotes yet. A stocks agent pushes them." : "Loading…",
                               systemImage: "chart.line.uptrend.xyaxis")
                 } else {
+                    let markets = feeds.markets
+                    if !markets.portfolio.isEmpty {
+                        HoldingsSummary(portfolio: markets.portfolio)
+                    }
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(feeds.series) { series in
                             NavigationLink(value: series) {
-                                SymbolTile(series: series)
+                                SymbolTile(series: series, insight: markets.insights[series.symbol])
                             }
                             .buttonStyle(PressableStyle())
                         }
@@ -273,26 +278,125 @@ extension Format {
     }
 }
 
+/// The holdings among the shown symbols, summed: the bar over the display's
+/// Markets grid.
+struct HoldingsSummary: View {
+    let portfolio: Portfolio
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                MarketKicker(text: portfolio.count == 1 ? "Holding" : "\(portfolio.count) holdings")
+                Text(Format.price(portfolio.value))
+                    .font(.title2.weight(.bold).monospacedDigit())
+                    .foregroundStyle(Theme.text)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 28) { moves }
+                VStack(alignment: .leading, spacing: 8) { moves }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: Theme.radiusSm + 2)
+    }
+
+    @ViewBuilder
+    private var moves: some View {
+        if let day = portfolio.dayChange {
+            move("Today", Format.signedPrice(day), pct: portfolio.dayChangePct, digits: 2, value: day)
+        }
+        if let gain = portfolio.totalChange {
+            move("Total gain", Format.signedPrice(gain), pct: portfolio.totalChangePct, digits: 1, value: gain)
+        }
+    }
+
+    private func move(_ label: String, _ amount: String, pct: Double?, digits: Int, value: Double) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            MarketKicker(text: label)
+            Text(amount + (pct.map { "  " + Format.signed($0, fractionDigits: digits) + "%" } ?? ""))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(Color.change(value))
+                .lineLimit(1)
+        }
+    }
+}
+
+/// A small caps label over a number, as the display's.
+private struct MarketKicker: View {
+    let text: String
+    var color: Color = Theme.muted
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.caption2.weight(.semibold))
+            .tracking(1)
+            .foregroundStyle(color)
+    }
+}
+
+extension QuoteData.Signal.Tone {
+    var color: Color {
+        switch self {
+        case .up: Theme.gain
+        case .down: Theme.loss
+        case .watch: Theme.warning
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .up: "arrow.up.right"
+        case .down: "arrow.down.right"
+        case .watch: "eye"
+        }
+    }
+}
+
 struct SymbolTile: View {
     let series: QuoteSeries
+    var insight: QuoteInsight?
 
     var body: some View {
         let quote = series.latest
         let color = Color.change(quote.changePct ?? quote.change)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(series.symbol)
-                    .font(.headline)
-                    .foregroundStyle(Theme.text)
+                HStack(spacing: 6) {
+                    Text(series.symbol)
+                        .font(.headline)
+                        .foregroundStyle(Theme.text)
+                    // The agent noticed something: its first signal's tone.
+                    if let tone = insight?.signals.first?.tone {
+                        Circle().fill(tone.color).frame(width: 8, height: 8)
+                            .accessibilityLabel("Has signals")
+                    }
+                }
                 Spacer()
                 Text(Format.percent(quote.changePct))
                     .font(.subheadline.weight(.semibold).monospacedDigit())
                     .foregroundStyle(color)
             }
-            Text(series.displayName)
-                .font(.caption)
-                .foregroundStyle(Theme.muted)
-                .lineLimit(1)
+            // The holding's value and gain (the shares are in the detail), else the name.
+            if let holding = insight?.holding {
+                HStack(spacing: 4) {
+                    Text("You · " + Format.price(holding.value, currency: quote.currency))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 2)
+                    if let pct = holding.totalChangePct {
+                        Text(Format.signed(pct, fractionDigits: 1) + "%")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Color.change(pct))
+                    }
+                }
+                .font(.caption.monospacedDigit())
+            } else {
+                Text(series.displayName)
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+            }
             Sparkline(values: series.prices, color: color)
                 .frame(height: 44)
                 .padding(.vertical, 4)
@@ -321,6 +425,17 @@ struct SymbolDetailView: View {
                     Text(series.displayName)
                         .font(.subheadline)
                         .foregroundStyle(tile.inkMuted)
+                }
+                if let insight = app.feeds.markets.insights[series.symbol] {
+                    if let holding = insight.holding {
+                        PositionCard(holding: holding, currency: quote.currency)
+                    }
+                    if !insight.signals.isEmpty {
+                        SignalsCard(signals: insight.signals)
+                    }
+                    if !insight.ranges.isEmpty || !insight.stats.isEmpty {
+                        NumbersCard(ranges: insight.ranges, stats: insight.stats, currency: quote.currency)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text("History").font(.caption.weight(.bold)).foregroundStyle(Theme.muted)
@@ -352,5 +467,125 @@ struct SymbolDetailView: View {
         .screenBackground()
         .navigationTitle(series.symbol)
         .inlineTitle()
+    }
+}
+
+/// The holding: its value, the gain since bought and today's, then shares,
+/// cost and its share of the holdings.
+private struct PositionCard: View {
+    let holding: Holding
+    let currency: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            MarketKicker(text: "Your position")
+            Text(Format.price(holding.value, currency: currency))
+                .font(.title2.weight(.bold).monospacedDigit())
+                .foregroundStyle(Theme.text)
+            if let gain = holding.totalChange {
+                Text(Format.signedPrice(gain, currency: currency)
+                     + (holding.totalChangePct.map { " (" + Format.signed($0, fractionDigits: 1) + "%)" } ?? "") + " overall")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.change(gain))
+            }
+            if let day = holding.dayChange {
+                Text(Format.signedPrice(day, currency: currency) + " today")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(Color.change(day))
+            }
+            let details = [holding.shares.map(Format.shares),
+                           holding.avgCost.map { "avg " + Format.price($0, currency: currency) },
+                           holding.weightPct.map { $0.formatted(.number.precision(.fractionLength($0 < 10 ? 1 : 0))) + "% of holdings" }]
+                .compactMap { $0 }
+            if !details.isEmpty {
+                Text(details.joined(separator: " · "))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(Theme.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+}
+
+/// What the agent noticed: facts, each with its direction.
+private struct SignalsCard: View {
+    let signals: [QuoteData.Signal]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            MarketKicker(text: "Signals")
+            ForEach(Array(signals.enumerated()), id: \.offset) { _, signal in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: signal.tone.symbol)
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(signal.tone.color)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+                    Text(signal.text)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+}
+
+/// Where the price sits between today's and the year's low and high, then
+/// the day's numbers.
+private struct NumbersCard: View {
+    let ranges: [PriceRange]
+    let stats: [MarketStat]
+    let currency: String
+
+    private let columns = [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(ranges) { range in
+                VStack(alignment: .leading, spacing: 6) {
+                    MarketKicker(text: range.label)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.divider).frame(height: 4)
+                            Circle()
+                                .fill(Theme.text)
+                                .frame(width: 12, height: 12)
+                                .offset(x: range.position * (geo.size.width - 12))
+                        }
+                        .frame(maxHeight: .infinity)
+                    }
+                    .frame(height: 12)
+                    .accessibilityHidden(true)
+                    HStack {
+                        Text(Format.price(range.low, currency: currency))
+                        Spacer()
+                        Text(Format.price(range.high, currency: currency))
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Theme.muted)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if !stats.isEmpty {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                    ForEach(stats) { stat in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(stat.label).font(.caption).foregroundStyle(Theme.muted)
+                            Text(stat.value)
+                                .font(.subheadline.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(Theme.text)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 }

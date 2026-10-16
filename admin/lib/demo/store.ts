@@ -2,6 +2,7 @@ import "server-only";
 import { buildDemoState, type DemoAgent, type DemoState } from "@/lib/demo/fixtures";
 import { DataError } from "@/lib/errors";
 import { ONLINE_WINDOW_MS } from "@/lib/format";
+import type { QuoteLatestRow } from "@/lib/holdings";
 import type {
   BackendStatus,
   Bot,
@@ -132,6 +133,15 @@ export function demoListBriefs(lim: number, off: number): Brief[] {
       const agent = s.agents.find((a) => a.id === b.agent_id);
       return { ...b, agent_name: agent?.name ?? "?", agent_color: agent?.color ?? "#4F7CF7" };
     });
+}
+
+// The quotes_latest view's extras: what the stocks agent sent with each
+// symbol's newest push. The demo has no created_at; its newest as_of is the push.
+export function demoListQuoteData(): QuoteLatestRow[] {
+  return state().symbols.flatMap((sym) => {
+    const q = latestQuote(sym.symbol);
+    return q ? [{ symbol: q.symbol, agent_id: q.agent_id, as_of: q.as_of, created_at: null, data: q.data ?? {} }] : [];
+  });
 }
 
 export function demoListQuotes(): QuoteRow[] {

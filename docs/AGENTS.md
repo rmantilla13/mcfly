@@ -81,7 +81,9 @@ of the list; order and hide them in the console (Feed → Markets).
 Three keys in a quote's `data` are drawn on the display: the holding on the
 symbol's tile and the total over the Markets grid and on Home's ticker, the
 signals as a dot on the tile and a list in its detail, the numbers in the
-detail (the day and 52-week ranges as bars, with where the price sits).
+detail (the day and 52-week ranges as bars, with where the price sits). The
+iPhone's Markets (McFlyKit `Holdings`) and the console's Feed → Markets
+(`lib/holdings.ts`) shape them the same way and show them too.
 
 ```json
 { "symbol": "NVDA", "price": 191.25, "change": 2.85, "change_pct": 1.51,

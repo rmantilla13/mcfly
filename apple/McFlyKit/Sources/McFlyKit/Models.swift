@@ -127,7 +127,7 @@ public struct Brief: Codable, Identifiable, Hashable, Sendable {
 }
 
 /// One push of one symbol. `quotes` keeps the history; the newest row per
-/// symbol is the quote shown. The `data` jsonb column is not read by the app.
+/// symbol is the quote shown, with what its agent added in `data`.
 public struct Quote: Codable, Identifiable, Hashable, Sendable {
     public let id: Int64
     public var agentId: UUID
@@ -140,16 +140,20 @@ public struct Quote: Codable, Identifiable, Hashable, Sendable {
     public var note: String?
     public var asOf: Date
     public var createdAt: Date
+    /// The holding, signals and day's numbers (`Holdings`). The live history
+    /// leaves it out; the newest row's comes from `quotes_latest`.
+    public var data: QuoteData?
 
     public init(id: Int64, agentId: UUID, symbol: String, name: String? = nil, price: Double, change: Double? = nil,
-                changePct: Double? = nil, currency: String = "USD", note: String? = nil, asOf: Date, createdAt: Date) {
+                changePct: Double? = nil, currency: String = "USD", note: String? = nil, asOf: Date, createdAt: Date,
+                data: QuoteData? = nil) {
         self.id = id; self.agentId = agentId; self.symbol = symbol; self.name = name; self.price = price
         self.change = change; self.changePct = changePct; self.currency = currency; self.note = note
-        self.asOf = asOf; self.createdAt = createdAt
+        self.asOf = asOf; self.createdAt = createdAt; self.data = data
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, symbol, name, price, change, currency, note
+        case id, symbol, name, price, change, currency, note, data
         case agentId = "agent_id"
         case changePct = "change_pct"
         case asOf = "as_of"

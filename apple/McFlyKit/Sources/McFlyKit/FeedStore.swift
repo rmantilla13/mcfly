@@ -7,6 +7,8 @@ public protocol FeedSource: Sendable {
     func loadAgents() async throws -> [Agent]
     func loadBriefs(limit: Int) async throws -> [Brief]
     func loadQuotes(limit: Int) async throws -> [Quote]
+    /// The newest row's `data` per symbol (`quotes_latest`).
+    func loadLatestQuoteData() async throws -> [QuoteLatest]
     func loadSymbols() async throws -> [Symbol]
     func loadReports(limit: Int) async throws -> [NewsReport]
     func loadSettings() async throws -> PlatformSettings?
@@ -19,6 +21,11 @@ public protocol FeedSource: Sendable {
     func loadEvents(from: Date, to: Date) async throws -> [CalendarEvent]
 }
 
+extension FeedSource {
+    /// A source whose quote rows carry their own `data` (the demo) needs none.
+    public func loadLatestQuoteData() async throws -> [QuoteLatest] { [] }
+}
+
 /// Everything the feed screens read. One refresh loads every feed at once,
 /// as the Pi display does, so the screens never disagree with each other.
 @MainActor
@@ -29,6 +36,8 @@ public final class FeedStore {
     public private(set) var briefs: [Brief] = []
     /// Raw history, newest first.
     public private(set) var quotes: [Quote] = []
+    /// The newest row's `data` per symbol (live; the demo's rows carry their own).
+    public private(set) var quoteData: [QuoteLatest] = []
     public private(set) var symbols: [Symbol] = []
     /// Newest first, items embedded.
     public private(set) var reports: [NewsReport] = []
@@ -76,6 +85,7 @@ public final class FeedStore {
             async let agents = source.loadAgents()
             async let briefs = source.loadBriefs(limit: Self.briefLimit)
             async let quotes = source.loadQuotes(limit: Self.quoteLimit)
+            async let quoteData = source.loadLatestQuoteData()
             async let symbols = source.loadSymbols()
             async let reports = source.loadReports(limit: Self.reportLimit)
             async let settings = source.loadSettings()
@@ -89,6 +99,8 @@ public final class FeedStore {
                 .filter { $0.expiresAt.map { $0 > now } ?? true }
                 .sorted { $0.publishedAt > $1.publishedAt }
             self.quotes = try await quotes
+            // Extras: without them the prices still show.
+            self.quoteData = (try? await quoteData) ?? []
             self.symbols = try await symbols
             self.reports = try await reports.sorted { ($0.reportDate, $0.publishedAt) > ($1.reportDate, $1.publishedAt) }
             self.settings = try await settings
@@ -148,6 +160,11 @@ public final class FeedStore {
     public var series: [QuoteSeries] { QuoteSeries.group(quotes, symbols: symbols) }
 
     public func series(for symbol: String) -> QuoteSeries? { series.first { $0.symbol == symbol } }
+
+    /// Each shown symbol's holding, signals and numbers, and the holdings summed (`Holdings`).
+    public var markets: (insights: [String: QuoteInsight], portfolio: Portfolio) {
+        Holdings.build(series: series, latest: quoteData)
+    }
 
     public var latestReport: NewsReport? { reports.first }
 

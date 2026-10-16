@@ -39,6 +39,10 @@ enum Theme {
     static let amber = Color(rgb: 0xF6B94A)
     static let up = success
     static let down = Color(rgb: 0xE5604D)
+    /// A market up or down: saturated, as on the display (Theme.qml gain/loss),
+    /// brighter on the dark palettes.
+    static var gain: Color { Color(rgb: palette.isDark ? 0x32E06E : 0x00B54A) }
+    static var loss: Color { Color(rgb: palette.isDark ? 0xFF4D4D : 0xF2262B) }
 
     static let radius: CGFloat = 24
     static let radiusSm: CGFloat = 16
@@ -211,10 +215,10 @@ extension Color {
         Int(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0x5B7CF5
     }
 
-    /// Green up, red down, muted flat.
+    /// A market's move: green up, red down (the display's gain and loss), muted flat.
     static func change(_ value: Double?) -> Color {
         guard let value, value != 0 else { return Theme.muted }
-        return value > 0 ? Theme.up : Theme.down
+        return value > 0 ? Theme.gain : Theme.loss
     }
 }
 
