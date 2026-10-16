@@ -481,41 +481,48 @@ ApplicationWindow {
     }
 
     // The bench (--bench, or MCFLY_BENCH=1 in display.env): every screen in
-    // turn, then the assistant panel and the screen saver, each drawn every
-    // frame (Perf.stress), so the numbers are what it can keep up, not what
-    // it happens to draw. The panel's most is 60 fps, with the GPU's work
-    // under 16.7 ms a frame; under 30 is too slow. A line per screen goes to
-    // the log ("bench: …"), then everything is as it was; --bench quits.
+    // turn, then the assistant panel and the screen saver. Each is measured
+    // twice: as it is, what it delivers (a still screen draws next to
+    // nothing, and that's fine; anything moving should be 30 or more), then
+    // drawn every frame (Perf.stress), what it could keep up: 60 is the
+    // panel's most, with the GPU's work under 16.7 ms a frame; under 30 is
+    // too slow. A line per screen goes to the log ("bench: …"), then
+    // everything is as it was; --bench quits.
     Item {
         id: bench
         visible: false
         readonly property var steps: window.screenNames.map((name, i) => ({ name: name, screen: i }))
                                      .concat([{ name: "assistant", panel: true }, { name: "saver", saver: true }])
         readonly property int settleMs: 2000
-        readonly property int measureMs: 5000
+        readonly property int measureMs: 4000
         property int step: -1
-        property bool collecting: false
+        // settle → delivered → settle → sustained, per step
+        property string phase: ""
         property var acc: ({})
+        property var shown: ({})
         property var results: []
         property bool wasEnabled: false
 
         // After a moment, so the feeds have arrived.
         Timer { interval: 6000; running: startBench; onTriggered: bench.begin() }
-        Timer { id: benchTick; onTriggered: bench.collecting ? bench.next() : bench.measure() }
+        Timer { id: benchTick; onTriggered: bench.advance() }
         Connections {
             target: Perf
-            enabled: bench.collecting
+            enabled: bench.phase === "delivered" || bench.phase === "sustained"
             function onSampled() { bench.add() }
         }
 
         function begin() {
             wasEnabled = Perf.enabled
             Perf.enabled = true
-            Perf.stress = true
             results = []
-            console.info("bench: each screen drawn every frame for " + measureMs / 1000 + " s")
+            console.info("bench: each screen as it is, then drawn every frame, " + measureMs / 1000 + " s each")
             step = -1
-            next()
+            nextStep()
+        }
+        function wait(ms) {
+            benchTick.interval = ms
+            benchTick.start()
         }
         function show(s) {
             Device.wake()
@@ -530,13 +537,41 @@ ApplicationWindow {
                 window.currentScreen = s.screen
             }
         }
-        function measure() {
-            acc = { n: 0, skip: 1, fps: 0, gpu: 0, gpuN: 0, frame: 0, max: 0, temp: -1, throttle: "" }
-            collecting = true
-            benchTick.interval = measureMs
-            benchTick.start()
+        function nextStep() {
+            step++
+            if (step >= steps.length) {
+                finish()
+                return
+            }
+            shown = {}
+            Perf.stress = false
+            show(steps[step])
+            phase = "settle"
+            wait(settleMs)
         }
-        // A second's sample; the first of each straddles the change of screen.
+        function measure(what) {
+            acc = { n: 0, skip: 1, fps: 0, gpu: 0, gpuN: 0, busy: 0, busyN: 0, frame: 0, max: 0, temp: -1, throttle: "" }
+            phase = what
+            wait(measureMs)
+        }
+        function advance() {
+            if (phase === "settle") {
+                measure("delivered")
+            } else if (phase === "delivered") {
+                shown.delivered = summed()
+                Perf.stress = true
+                phase = "settle2"
+                wait(1200)
+            } else if (phase === "settle2") {
+                measure("sustained")
+            } else if (phase === "sustained") {
+                shown.sustained = summed()
+                Perf.stress = false
+                report()
+                nextStep()
+            }
+        }
+        // A second's sample; the first of each straddles a change.
         function add() {
             if (Perf.lines.length < 2)
                 return // "Measuring…"
@@ -550,43 +585,50 @@ ApplicationWindow {
                 acc.gpu += Perf.gpuMsPerFrame
                 acc.gpuN++
             }
+            if (Perf.gpuBusy >= 0) {
+                acc.busy += Perf.gpuBusy
+                acc.busyN++
+            }
             acc.frame += Perf.frameMs
             acc.max = Math.max(acc.max, Perf.frameMaxMs)
             acc.temp = Perf.tempC
             if (Perf.throttle && !Perf.throttle.startsWith("ok"))
                 acc.throttle = Perf.throttle
         }
-        function report() {
-            const s = steps[step], n = Math.max(1, acc.n)
-            const r = { name: s.name, fps: acc.fps / n, gpu: acc.gpuN ? acc.gpu / acc.gpuN : -1,
-                        frame: acc.frame / n, max: acc.max, temp: acc.temp, throttle: acc.throttle }
-            r.verdict = acc.n === 0 ? "no samples" : r.fps >= 55 ? "60" : r.fps >= 28 ? "30+" : "SLOW"
-            results.push(r)
-            console.info("bench: " + s.name.padEnd(10) + " " + r.fps.toFixed(1).padStart(5) + " fps"
-                         + (r.gpu >= 0 ? "   GPU " + r.gpu.toFixed(1).padStart(4) + " ms/frame" : "")
-                         + "   render " + r.frame.toFixed(1) + " ms (max " + r.max.toFixed(1) + ")"
-                         + (r.temp >= 0 ? "   " + r.temp.toFixed(0) + " °C" : "")
-                         + (r.throttle ? " " + r.throttle : "") + "   " + r.verdict)
+        function summed() {
+            const n = Math.max(1, acc.n)
+            return { n: acc.n, fps: acc.fps / n, gpu: acc.gpuN ? acc.gpu / acc.gpuN : -1,
+                     busy: acc.busyN ? acc.busy / acc.busyN : -1, frame: acc.frame / n, max: acc.max,
+                     temp: acc.temp, throttle: acc.throttle }
         }
-        function next() {
-            if (collecting) {
-                collecting = false
-                report()
-            }
-            step++
-            if (step >= steps.length) {
-                finish()
-                return
-            }
-            show(steps[step])
-            benchTick.interval = settleMs
-            benchTick.start()
+        function report() {
+            const d = shown.delivered, s = shown.sustained
+            const r = { name: steps[step].name, delivered: d.fps, sustained: s.fps, gpu: s.gpu, busy: d.busy,
+                        temp: s.temp, throttle: s.throttle || d.throttle }
+            // Delivered: a still screen draws a frame or two a second (its
+            // clock, this overlay); between that and 30, something moves too
+            // slowly.
+            r.slowMotion = d.n > 0 && d.fps >= 5 && d.fps < 28
+            r.verdict = s.n === 0 ? "no samples" : s.fps >= 55 ? "60" : s.fps >= 28 ? "30+" : "SLOW"
+            results.push(r)
+            const f = (v, w) => v.toFixed(1).padStart(w)
+            console.info("bench: " + r.name.padEnd(10)
+                         + " delivers " + f(d.fps, 5) + " fps" + (d.busy >= 0 ? " (GPU " + d.busy.toFixed(0) + "%)" : "")
+                         + "   sustains " + f(s.fps, 5) + " fps"
+                         + (s.gpu >= 0 ? "   GPU " + f(s.gpu, 4) + " ms/frame" : "")
+                         + "   render " + s.frame.toFixed(1) + " ms (max " + s.max.toFixed(1) + ")"
+                         + (r.temp >= 0 ? "   " + r.temp.toFixed(0) + " °C" : "")
+                         + (r.throttle ? " " + r.throttle : "")
+                         + "   " + r.verdict + (r.slowMotion ? ", moves under 30" : ""))
         }
         function finish() {
-            const by = v => results.filter(r => r.verdict === v).map(r => r.name).join(", ") || "none"
+            phase = ""
+            const names = list => list.map(r => r.name).join(", ") || "none"
+            const by = v => names(results.filter(r => r.verdict === v))
             const gpus = results.filter(r => r.gpu >= 0)
             const worst = gpus.length ? gpus.reduce((a, b) => (b.gpu > a.gpu ? b : a)) : null
-            console.info("bench: done. 60 fps: " + by("60") + ". 30+: " + by("30+") + ". Under 30: " + by("SLOW") + "."
+            console.info("bench: done. Sustains 60: " + by("60") + ". 30+: " + by("30+") + ". Under 30: " + by("SLOW") + "."
+                         + " Moves under 30 as it is: " + names(results.filter(r => r.slowMotion)) + "."
                          + (worst ? " Most GPU a frame: " + worst.name + ", " + worst.gpu.toFixed(1) + " ms." : "")
                          + (results.some(r => r.throttle) ? " The Pi was held back during the run: hot numbers are worse than cool ones." : ""))
             Perf.stress = false
