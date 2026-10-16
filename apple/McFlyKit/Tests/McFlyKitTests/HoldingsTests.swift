@@ -105,6 +105,24 @@ final class HoldingsTests: XCTestCase {
         XCTAssertNil(Holdings.build(series: QuoteSeries.group(quotes, symbols: []), latest: stale).insights["AAA"])
     }
 
+    func testIntradayBarsOnTheSession() throws {
+        let data = try decode("""
+        {"intraday": {"interval": "10minute", "open": 1800000000, "close": 1800023400,
+                      "points": [[1800011700, 108], [1800000000, 102], [1800030000, 1], [1800000600]]}}
+        """)
+        XCTAssertEqual(data.intraday?.points.count, 3) // the one without a price is dropped
+        let series = QuoteSeries.group([quote(1, "AAA", 104, change: 4, data: data)], symbols: [])
+        let insight = try XCTUnwrap(Holdings.build(series: series, latest: []).insights["AAA"])
+        let day = try XCTUnwrap(insight.intraday)
+        XCTAssertEqual(day.points.map(\.price), [102, 108]) // in time order; the bar past the close is out
+        XCTAssertEqual(day.open, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertEqual(insight.prevClose, 100)
+        // Fewer than two bars is no chart; a missing close is no intraday at all.
+        let one = try decode(#"{"intraday": {"open": 1800000000, "close": 1800023400, "points": [[1800000000, 9]]}}"#)
+        XCTAssertNil(Holdings.session(one.intraday))
+        XCTAssertNil(try decode(#"{"intraday": {"open": 1800000000, "points": []}}"#).intraday)
+    }
+
     func testFormats() {
         XCTAssertEqual(Format.shares(40), "40 shares")
         XCTAssertEqual(Format.shares(1), "1 share")

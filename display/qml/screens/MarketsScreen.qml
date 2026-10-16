@@ -436,7 +436,8 @@ Item {
                                 Sparkline {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    points: modelData.history
+                                    // Today's bars when the agent sent them, else the push history.
+                                    points: modelData.tilePoints || modelData.history
                                     color: tile.tone
                                     lineWidth: Theme.mini ? 2 : 3
                                     // Drawn on a beat after its tile arrives.
@@ -528,7 +529,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.minimumHeight: 60
-                            points: hero.q.history || []
+                            points: hero.q.tilePoints || hero.q.history || []
                             color: hero.strong
                             lineWidth: 4
                             progress: rv.at(Store.quotes.length + 2)
@@ -610,7 +611,36 @@ Item {
                         Icon { name: markets.current.up ? "arrow-up" : "arrow-down"; size: 20; color: detail.strong }
                         Label { text: (markets.current.changeLabel || "") + "  " + (markets.current.pctLabel || ""); color: detail.strong; font.pixelSize: Theme.fontMd; font.weight: Font.DemiBold }
                     }
+                    // Today's session when the agent sent its bars (the line
+                    // fills in toward the close; dashed: the previous close),
+                    // else the push history.
+                    Label {
+                        visible: intradayChart.visible
+                        readonly property var day: markets.current.intraday || ({})
+                        text: qsTr("%1 · low %2 · high %3").arg(day.dayLabel || "").arg(day.lowLabel || "").arg(day.highLabel || "")
+                        color: detail.inkMuted
+                        font.pixelSize: Theme.fontXs
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    IntradayChart {
+                        id: intradayChart
+                        visible: ((markets.current.intraday || {}).points || []).length > 1
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: (markets.rich ? (Theme.mini ? 70 : Theme.compact ? 104 : 136)
+                                                              : (Theme.mini ? 90 : Theme.compact ? 140 : 180)) + labelHeight
+                        points: (markets.current.intraday || {}).points || []
+                        baseY: (markets.current.intraday || {}).baseY ?? -1
+                        color: detail.strong
+                        baseColor: detail.ink
+                        labelColor: detail.inkMuted
+                        lineWidth: 3.5
+                        openLabel: (markets.current.intraday || {}).openLabel || ""
+                        closeLabel: (markets.current.intraday || {}).closeLabel || ""
+                        progress: Math.min(rv.at(2), markets.detailIn)
+                    }
                     Sparkline {
+                        visible: !intradayChart.visible
                         Layout.fillWidth: true
                         // Shorter when there is more to read under it.
                         Layout.preferredHeight: markets.rich ? (Theme.mini ? 56 : Theme.compact ? 84 : 110)
@@ -621,7 +651,7 @@ Item {
                         // Drawn on again for each symbol picked.
                         progress: Math.min(rv.at(2), markets.detailIn)
                         pulse: markets.justMoved(markets.current)
-                        running: markets.moving && (md.paned || md.pushed)
+                        running: markets.moving && (md.paned || md.pushed) && visible
                     }
 
                     // The holding.

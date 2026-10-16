@@ -101,6 +101,7 @@ qt_add_qml_module(mcfly-display
         qml/components/Backdrop.qml
         qml/components/SpectrumGlow.qml
         qml/components/Sparkline.qml
+        qml/components/IntradayChart.qml
         qml/components/StoryCard.qml
         qml/components/Tag.qml
         qml/components/SegmentedControl.qml

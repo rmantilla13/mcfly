@@ -1,3 +1,4 @@
+import Charts
 import McFlyKit
 import SwiftUI
 
@@ -174,10 +175,6 @@ extension Color {
 }
 
 private extension MetricSeries {
-    static func lowerIsBetter(_ key: String) -> Bool {
-        ["p95", "p99", "latency", "error", "errors", "open", "cost", "spend", "bounce"].contains { key.lowercased().contains($0) }
-    }
-
     /// The move as the display reads one (FeedStore.cpp): the agent's delta,
     /// else the step from the value before. None counts as good news.
     var isGoodNews: Bool {
@@ -209,6 +206,9 @@ private struct MarketTile<Heading: View>: View {
     let values: [Double]
     let note: String?
     let source: String
+    /// Today's session, drawn instead of `values` when there is one.
+    var intraday: QuoteData.Intraday? = nil
+    var prevClose: Double? = nil
     @ViewBuilder var heading: (TileColors) -> Heading
 
     var body: some View {
@@ -226,7 +226,16 @@ private struct MarketTile<Heading: View>: View {
                         changeText(tile)
                     }
                 }
-                if values.count >= 2 {
+                if let intraday {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(Self.dayLine(intraday))
+                            .font(.caption)
+                            .foregroundStyle(tile.inkMuted)
+                        IntradayChart(day: intraday, prevClose: prevClose, color: tile.strong, baseColor: tile.ink, labelColor: tile.inkMuted)
+                            .frame(height: 150)
+                    }
+                    .padding(.vertical, 4)
+                } else if values.count >= 2 {
                     Sparkline(values: values, color: tile.strong, lineWidth: 3)
                         .frame(height: 120)
                         .padding(.vertical, 4)
@@ -243,6 +252,14 @@ private struct MarketTile<Heading: View>: View {
             }
             .padding(22)
         }
+    }
+
+    /// "Today · low $665.81 · high $669.86".
+    static func dayLine(_ day: QuoteData.Intraday) -> String {
+        let prices = day.points.map(\.price)
+        let label = Calendar.current.isDateInToday(day.open) ? "Today" : day.open.formatted(.dateTime.weekday(.wide))
+        guard let low = prices.min(), let high = prices.max() else { return label }
+        return "\(label) · low \(Format.price(low)) · high \(Format.price(high))"
     }
 
     private func valueText(_ tile: TileColors) -> some View {
@@ -399,7 +416,8 @@ struct SymbolTile: View {
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
             }
-            Sparkline(values: series.prices, color: color)
+            // Today's prices when the agent sent its bars, else the push history.
+            Sparkline(values: insight?.intraday?.points.map(\.price) ?? series.prices, color: color)
                 .frame(height: 44)
                 .padding(.vertical, 4)
             Text(Format.price(quote.price, currency: quote.currency))
@@ -420,15 +438,17 @@ struct SymbolDetailView: View {
         let quote = series.latest
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                let insight = app.feeds.markets.insights[series.symbol]
                 MarketTile(good: series.isUp, value: Format.price(quote.price, currency: quote.currency),
                            move: quote.changePct ?? quote.change, change: Format.change(quote.change, pct: quote.changePct),
                            values: series.prices, note: quote.note,
-                           source: Format.source(app.feeds.agent(quote.agentId), asOf: quote.asOf, points: series.history.count)) { tile in
+                           source: Format.source(app.feeds.agent(quote.agentId), asOf: quote.asOf, points: series.history.count),
+                           intraday: insight?.intraday, prevClose: insight?.prevClose) { tile in
                     Text(series.displayName)
                         .font(.subheadline)
                         .foregroundStyle(tile.inkMuted)
                 }
-                if let insight = app.feeds.markets.insights[series.symbol] {
+                if let insight {
                     if let holding = insight.holding {
                         PositionCard(holding: holding, currency: quote.currency)
                     }
@@ -589,5 +609,56 @@ private struct NumbersCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+}
+
+/// Today's price laid out on the whole session, as the display's
+/// IntradayChart: the line runs from the open to the newest bar and the rest
+/// of the day is still to come, a dashed rule marks the previous close, and
+/// the session's times sit under it.
+private struct IntradayChart: View {
+    let day: QuoteData.Intraday
+    let prevClose: Double?
+    let color: Color
+    let baseColor: Color
+    let labelColor: Color
+
+    var body: some View {
+        let prices = day.points.map(\.price) + (prevClose.map { [$0] } ?? [])
+        let low = prices.min() ?? 0, high = prices.max() ?? 1
+        let pad = max((high - low) * 0.08, abs(high) * 0.001)
+        let floor = low - pad
+        Chart {
+            ForEach(day.points, id: \.time) { p in
+                AreaMark(x: .value("Time", p.time), yStart: .value("Floor", floor), yEnd: .value("Price", p.price))
+                    .foregroundStyle(LinearGradient(colors: [color.opacity(0.28), color.opacity(0)], startPoint: .top, endPoint: .bottom))
+                LineMark(x: .value("Time", p.time), y: .value("Price", p.price))
+                    .foregroundStyle(color)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+            }
+            if let prevClose {
+                RuleMark(y: .value("Previous close", prevClose))
+                    .foregroundStyle(baseColor.opacity(0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
+            }
+            if let last = day.points.last {
+                PointMark(x: .value("Time", last.time), y: .value("Price", last.price))
+                    .foregroundStyle(color)
+                    .symbolSize(44)
+            }
+        }
+        .chartXScale(domain: day.open ... day.close)
+        .chartYScale(domain: floor ... high + pad)
+        .chartYAxis(.hidden)
+        .chartXAxis {
+            AxisMarks(values: [day.open, day.close]) { value in
+                AxisValueLabel(anchor: value.index == 0 ? .topLeading : .topTrailing) {
+                    if let date = value.as(Date.self) {
+                        Text(date.formatted(date: .omitted, time: .shortened)).foregroundStyle(labelColor)
+                    }
+                }
+            }
+        }
+        .accessibilityLabel("Today's price, from \(Format.price(day.points.first?.price ?? 0)) to \(Format.price(day.points.last?.price ?? 0))")
     }
 }

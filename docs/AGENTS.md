@@ -103,6 +103,7 @@ iPhone's Markets (McFlyKit `Holdings`) and the console's Feed → Markets
 | `position` | `shares`, `avg_cost`, `value`, `day_change`, `total_change`, `total_change_pct`, `weight_pct`; numbers or numeric strings. The display works out what's missing: value from shares × price, the gain from the average cost, today's move from shares × change, the weight from the total |
 | `signals` | up to six, each `{ "text", "tone" }` with tone `up`, `down` or `watch` (a plain string is `watch`). Facts with a direction ("crossed its 50-day average", "volume 2× average", "earnings Thursday"), not advice |
 | `stats` | `open`, `high`, `low`, `prev_close`, `volume`, `avg_volume`, `market_cap`, `pe`, `low_52w`, `high_52w`, `dividend_yield` (%), `earnings` (text, ≤40); any subset |
+| `intraday` | today's session for the day chart: `{ "interval": "10minute", "open": 1792157400, "close": 1792180800, "points": [[1792157400, 772.31], ...] }`. `open` and `close` are the session's bounds and each point is `[epoch seconds, price]`, oldest first, so the line is laid out on the whole session and fills in toward the close; the newest point is the price now. Two points or more. The tile's line is today's prices too, and the push history when there is none |
 
 A holding and its signals count only while they are part of the agent's
 newest push: send every symbol you hold in each push, and one you sold
@@ -111,7 +112,7 @@ goes. Never send account numbers: the display needs none.
 
 `scripts/market_desk.py` builds this push from what a brokerage's read-only
 tools answer (positions in any number of accounts, quotes, fundamentals,
-RSI and moving averages, the earnings calendar): it combines accounts,
+RSI and moving averages, today's bars, the earnings calendar): it combines accounts,
 works out the gains and picks the signals, so the agent running it only
 gathers the numbers.
 

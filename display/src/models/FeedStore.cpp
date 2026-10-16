@@ -219,6 +219,60 @@ QVariantList rangesOf(const QVariantMap &data, double price, const QString &curr
     return out;
 }
 
+// data.intraday: the session's bars laid out on the whole session, so the
+// line fills in through the day: points as { x, y } (x 0..1 from the open
+// to the close, y 0..1 bottom to top over the day's range and the previous
+// close), baseY where the previous close sits (-1 without one), up (the
+// newest price against it), prices (for a tile's plain sparkline), lowLabel /
+// highLabel, and openSecs / closeSecs for the caller's time labels. Empty
+// with fewer than two points.
+QVariantMap intradayOf(const QVariantMap &data, double prevClose, const QString &currency)
+{
+    const QVariantMap d = data.value(QStringLiteral("intraday")).toMap();
+    const double open = dataNumber(d.value(QStringLiteral("open"))), close = dataNumber(d.value(QStringLiteral("close")));
+    if (std::isnan(open) || std::isnan(close) || close <= open)
+        return {};
+    std::vector<std::pair<double, double>> pts;
+    double lo = qInf(), hi = -qInf();
+    for (const QVariant &v : d.value(QStringLiteral("points")).toList()) {
+        const QVariantList p = v.toList();
+        if (p.size() < 2)
+            continue;
+        const double t = dataNumber(p.at(0)), y = dataNumber(p.at(1));
+        if (std::isnan(t) || std::isnan(y) || t < open || t > close)
+            continue;
+        pts.emplace_back(t, y);
+        lo = std::min(lo, y);
+        hi = std::max(hi, y);
+    }
+    if (pts.size() < 2)
+        return {};
+    std::sort(pts.begin(), pts.end());
+    const double dayLow = lo, dayHigh = hi;
+    const bool hasBase = !std::isnan(prevClose) && prevClose > 0;
+    if (hasBase) {
+        lo = std::min(lo, prevClose);
+        hi = std::max(hi, prevClose);
+    }
+    const double span = hi - lo > 0 ? hi - lo : (hi != 0 ? std::abs(hi) * 0.02 : 1);
+    QVariantList points, prices;
+    for (const auto &[t, y] : pts) {
+        points << QVariantMap{{"x", (t - open) / (close - open)}, {"y", (y - lo) / span}};
+        prices << y;
+    }
+    const double last = pts.back().second;
+    return QVariantMap{
+        {"points", points},
+        {"prices", prices},
+        {"baseY", hasBase ? (prevClose - lo) / span : -1.0},
+        {"up", last >= (hasBase ? prevClose : pts.front().second)},
+        {"lowLabel", money(dayLow, currency)},
+        {"highLabel", money(dayHigh, currency)},
+        {"openSecs", open},
+        {"closeSecs", close},
+    };
+}
+
 // data.stats as [{ label, value }] in a fixed order, only what was sent
 // (the ranges are rangesOf's).
 QVariantList statsOf(const QVariantMap &data, const QString &currency)
@@ -663,7 +717,30 @@ void FeedStore::loadDemo()
             row.insert("change", last ? q.value("change").toVariant() : QVariant());
             row.insert("change_pct", last ? q.value("change_pct").toVariant() : QVariant());
             row.insert("note", last ? q.value("note").toString() : QString());
-            row.insert("data", last ? q.value("data").toObject().toVariantMap() : QVariantMap());
+            QVariantMap data = last ? q.value("data").toObject().toVariantMap() : QVariantMap();
+            // The demo's bars move to today's session (New York's 9:30), so its chart is always today's.
+            QVariantMap intraday = data.value("intraday").toMap();
+            if (!intraday.isEmpty()) {
+                const QTimeZone ny("America/New_York");
+                const QDate day = nowDt.toTimeZone(ny).date();
+                const double shift = double(QDateTime(day, QTime(9, 30), ny).toSecsSinceEpoch()) - intraday.value("open").toDouble();
+                intraday.insert("open", intraday.value("open").toDouble() + shift);
+                intraday.insert("close", intraday.value("close").toDouble() + shift);
+                // Only the bars up to now, as an agent would have them mid-session.
+                const double nowSecs = double(nowDt.toSecsSinceEpoch());
+                QVariantList moved;
+                for (const QVariant &pv : intraday.value("points").toList()) {
+                    const QVariantList pt = pv.toList();
+                    if (pt.size() >= 2 && pt.at(0).toDouble() + shift <= nowSecs)
+                        moved << QVariant(QVariantList{pt.at(0).toDouble() + shift, pt.at(1)});
+                }
+                // And the price now, as the newest point while the session is on.
+                if (!moved.isEmpty() && nowSecs < intraday.value("close").toDouble())
+                    moved << QVariant(QVariantList{nowSecs, q.value("price").toDouble()});
+                intraday.insert("points", moved);
+                data.insert("intraday", intraday);
+            }
+            row.insert("data", data);
             // One point per trading day, the last one this morning.
             row.insert("as_of", nowDt.addDays(-(points - 1 - i)).toString(Qt::ISODateWithMs));
             m_rawQuotes << row;
@@ -1368,6 +1445,18 @@ void FeedStore::rebuild()
         q.insert("signalTone", signalList.isEmpty() ? QString() : signalList.first().toMap().value("tone").toString());
         q.insert("stats", statsOf(data, currency));
         q.insert("ranges", rangesOf(data, price, currency));
+        // Today's chart, labelled in local time; a tile's line is today's
+        // prices when there are bars, else the push history.
+        QVariantMap intraday = intradayOf(data, price - change, currency);
+        if (!intraday.isEmpty()) {
+            const QDateTime opens = QDateTime::fromSecsSinceEpoch(qint64(intraday.value("openSecs").toDouble())).toLocalTime();
+            const QDateTime closes = QDateTime::fromSecsSinceEpoch(qint64(intraday.value("closeSecs").toDouble())).toLocalTime();
+            intraday.insert("openLabel", timeLabel(opens));
+            intraday.insert("closeLabel", timeLabel(closes));
+            intraday.insert("dayLabel", opens.date() == m_today ? tr("Today") : dayLabel(opens.date()));
+        }
+        q.insert("intraday", intraday);
+        q.insert("tilePoints", intraday.isEmpty() ? history : intraday.value("prices").toList());
         if (!position.isEmpty()) {
             ++heldCount;
             const double value = position.value("value").toDouble();

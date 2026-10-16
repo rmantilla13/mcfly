@@ -21,6 +21,9 @@ own field names; the arithmetic is here, where it can be tested:
       "sma50":        { "TSLA": [357.94, 358.85], ... },       the last two daily bars
       "sma200":       { "TSLA": [..., ...], ... },
       "earnings":     [{ "symbol", "report": { "date", "timing" } }, ...],
+      "intraday":     { "TSLA": [["2026-10-16T13:30:00Z", "366.525"], ...], ... },
+                                                               today's bars: begins_at, close_price
+      "intraday_interval": "10minute",
       "follow":       ["SPY", "QQQ", ...]                      shown without a position too
     }
 
@@ -45,6 +48,9 @@ MAX_SIGNALS = 4
 BIG_MOVE_PCT = 3.0
 HEAVY_VOLUME = 1.5
 EARNINGS_SOON_DAYS = 7
+# US equities' regular session, in New York time.
+NEW_YORK = "America/New_York"
+SESSION_OPEN, SESSION_CLOSE = dt.time(9, 30), dt.time(16, 0)
 
 
 def num(value) -> float | None:
@@ -159,9 +165,46 @@ def signals_for(symbol, price, prev_close, change_pct, fund, rsi, sma50, sma200,
     return found[:MAX_SIGNALS]
 
 
-def build(facts: dict, today: dt.date | None = None) -> dict:
+def intraday_of(bars, interval: str, price: float, now: dt.datetime) -> dict | None:
+    """The newest session's bars as [[epoch seconds, price], ...] with its
+    bounds (open, close: epoch seconds, New York's 9:30 to 16:00), so a chart
+    can lay the day out on the whole session; the live price is the newest
+    point while the session is on. None with fewer than two bars."""
+    from zoneinfo import ZoneInfo
+
+    seen: dict[int, float] = {}
+    for bar in bars or []:
+        if isinstance(bar, dict):
+            if bar.get("interpolated"):
+                continue
+            t, p = when(bar.get("begins_at")), num(bar.get("close_price"))
+        elif isinstance(bar, (list, tuple)) and len(bar) >= 2:
+            t, p = when(bar[0]), num(bar[1])
+        else:
+            continue
+        if t is not None and p is not None:
+            seen[int(t.timestamp())] = p
+    if len(seen) < 2:
+        return None
+    ny = ZoneInfo(NEW_YORK)
+    day = dt.datetime.fromtimestamp(max(seen), ny).date()
+    open_ = int(dt.datetime.combine(day, SESSION_OPEN, ny).timestamp())
+    close = int(dt.datetime.combine(day, SESSION_CLOSE, ny).timestamp())
+    points = sorted((t, p) for t, p in seen.items() if open_ <= t < close)
+    if len(points) < 2:
+        return None
+    t_now = int(now.timestamp())
+    if points[-1][0] < t_now < close:
+        points.append((t_now, price))
+    return {"interval": interval, "open": open_, "close": close, "points": [[t, round(p, 4)] for t, p in points]}
+
+
+def build(facts: dict, today: dt.date | None = None, now: dt.datetime | None = None) -> dict:
     """The quotes push for facts.json: every held and followed symbol."""
     today = today or dt.date.today()
+    now = now or dt.datetime.now(dt.timezone.utc)
+    bars = {str(k).upper(): v for k, v in (facts.get("intraday") or {}).items()}
+    interval = str(facts.get("intraday_interval") or "10minute")
     held = holdings(facts.get("positions"))
     quotes, funds = by_symbol(facts.get("quotes")), by_symbol(facts.get("fundamentals"))
     rsi, sma50, sma200 = facts.get("rsi") or {}, facts.get("sma50") or {}, facts.get("sma200") or {}
@@ -210,6 +253,9 @@ def build(facts: dict, today: dt.date | None = None) -> dict:
         stats = {k: v for k, v in stats.items() if v is not None}
         if stats:
             data["stats"] = stats
+        intraday = intraday_of(bars.get(symbol), interval, price, now)
+        if intraday:
+            data["intraday"] = intraday
         row = {"symbol": symbol, "price": round(price, 4)}
         if change is not None:
             row["change"] = round(change, 4)
@@ -217,7 +263,7 @@ def build(facts: dict, today: dt.date | None = None) -> dict:
         if data:
             row["data"] = data
         out.append(row)
-    return {"as_of": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "quotes": out}
+    return {"as_of": now.isoformat(timespec="seconds"), "quotes": out}
 
 
 def main(argv: list[str] | None = None) -> int:

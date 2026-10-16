@@ -85,6 +85,33 @@ class MarketDeskTest(unittest.TestCase):
         texts = [s["text"] for s in market_desk.build(facts, TODAY)["quotes"][0]["data"]["signals"]]
         self.assertEqual(texts, ["Fell below its 200-day average ($51.00)", "At a 52-week low", "Down 5.7% since the last close"])
 
+    def test_intraday_bars_on_the_session(self):
+        # Oct 16, 2026: New York is on EDT, so the session is 13:30 to 20:00 UTC.
+        now = dt.datetime(2026, 10, 16, 15, 47, tzinfo=dt.timezone.utc)
+        facts = {
+            "quotes": [quote("SPY", 768.74, 771.79)],
+            "intraday": {"spy": [
+                ["2026-10-16T13:40:00Z", "772.2"],
+                {"begins_at": "2026-10-16T13:30:00Z", "close_price": "772.31"},
+                {"begins_at": "2026-10-16T13:35:00Z", "close_price": "771.0", "interpolated": True},  # gap-fill: out
+                ["2026-10-15T19:50:00Z", "771.79"],  # yesterday's session: out
+                ["2026-10-16T15:40:00Z", "768.74"],
+            ]},
+            "intraday_interval": "5minute",
+            "follow": ["SPY"],
+        }
+        day = market_desk.build(facts, TODAY, now)["quotes"][0]["data"]["intraday"]
+        self.assertEqual(day["interval"], "5minute")
+        self.assertEqual(day["open"], int(dt.datetime(2026, 10, 16, 13, 30, tzinfo=dt.timezone.utc).timestamp()))
+        self.assertEqual(day["close"], int(dt.datetime(2026, 10, 16, 20, 0, tzinfo=dt.timezone.utc).timestamp()))
+        self.assertEqual([p[1] for p in day["points"]], [772.31, 772.2, 768.74, 768.74])  # oldest first, then the live price
+        self.assertEqual(day["points"][-1][0], int(now.timestamp()))
+        # After the close, no live point; under two bars, no chart.
+        after = dt.datetime(2026, 10, 16, 21, 0, tzinfo=dt.timezone.utc)
+        self.assertEqual(len(market_desk.build(facts, TODAY, after)["quotes"][0]["data"]["intraday"]["points"]), 3)
+        facts["intraday"] = {"SPY": [["2026-10-16T13:30:00Z", "772.31"]]}
+        self.assertNotIn("intraday", market_desk.build(facts, TODAY, now)["quotes"][0].get("data", {}))
+
     def test_no_account_number_leaves(self):
         facts = {"positions": [{"symbol": "SPY", "quantity": "1", "average_buy_price": "700", "account_number": "5QY52076"}],
                  "quotes": [quote("SPY", 771, 770)]}

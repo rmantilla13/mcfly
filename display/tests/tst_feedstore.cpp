@@ -361,6 +361,59 @@ private slots:
         QVERIFY2(snapshot.contains("held: 4 shares, $200.00") && snapshot.contains("RSI 71") && snapshot.contains("worth $350.00"), qPrintable(snapshot));
     }
 
+    // Today's bars laid out on the whole session: x from the open to the
+    // close, y over the day's range and the previous close.
+    void intradayLaysTheDayOnTheSession()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        const qint64 open = 1'800'000'000, close = open + 390 * 60;
+        m_server.route("/rest/v1/symbols", [](const Request &) {
+            return json(R"([{"symbol":"AAA","sort_order":0,"hidden":false},{"symbol":"BBB","sort_order":1,"hidden":false}])");
+        });
+        m_server.route("/rest/v1/quotes", [now](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", 1}, {"agent_id", "a2"}, {"symbol", "AAA"}, {"price", 104}, {"change", 4}, {"currency", "USD"}, {"as_of", iso(now)}},
+                QJsonObject{{"id", 2}, {"agent_id", "a2"}, {"symbol", "BBB"}, {"price", 9}, {"change", 0}, {"currency", "USD"}, {"as_of", iso(now)}},
+                QJsonObject{{"id", 0}, {"agent_id", "a2"}, {"symbol", "BBB"}, {"price", 8}, {"change", 0}, {"currency", "USD"}, {"as_of", iso(now.addDays(-1))}},
+            }));
+        });
+        m_server.route("/rest/v1/quotes_latest", [now, open, close](const Request &) {
+            const QJsonObject day{{"interval", "10minute"}, {"open", double(open)}, {"close", double(close)},
+                                  {"points", QJsonArray{QJsonArray{double(open), 102}, QJsonArray{double(open + 195 * 60), 108},
+                                                        QJsonArray{double(open + 390 * 60 + 60), 1}}}}; // past the close: out
+            return json(rows({
+                QJsonObject{{"symbol", "AAA"}, {"agent_id", "a2"}, {"as_of", iso(now)}, {"data", QJsonObject{{"intraday", day}}}},
+                QJsonObject{{"symbol", "BBB"}, {"agent_id", "a2"}, {"as_of", iso(now)},
+                            {"data", QJsonObject{{"intraday", QJsonObject{{"open", double(open)}, {"close", double(close)},
+                                                                         {"points", QJsonArray{QJsonArray{double(open), 9}}}}}}}},
+            }));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.quotes().size(), 2);
+
+        const QVariantMap aaa = rig->store.quote("AAA");
+        const QVariantMap day = aaa.value("intraday").toMap();
+        const QVariantList points = day.value("points").toList();
+        QCOMPARE(points.size(), 2);
+        // The range is 100 (the previous close, 104 − 4) to 108.
+        QCOMPARE(points.at(0).toMap().value("x").toDouble(), 0.0);
+        QCOMPARE(points.at(0).toMap().value("y").toDouble(), 0.25);
+        QCOMPARE(points.at(1).toMap().value("x").toDouble(), 0.5); // midway through the session
+        QCOMPARE(points.at(1).toMap().value("y").toDouble(), 1.0);
+        QCOMPARE(day.value("baseY").toDouble(), 0.0);
+        QVERIFY(day.value("up").toBool());
+        QCOMPARE(day.value("lowLabel").toString(), QStringLiteral("$102.00"));
+        QCOMPARE(day.value("highLabel").toString(), QStringLiteral("$108.00"));
+        QVERIFY(!day.value("openLabel").toString().isEmpty());
+        // A tile draws today's prices.
+        QCOMPARE(aaa.value("tilePoints").toList(), QVariantList({102.0, 108.0}));
+
+        // One bar is no chart; the tile keeps the push history.
+        const QVariantMap bbb = rig->store.quote("BBB");
+        QVERIFY(bbb.value("intraday").toMap().isEmpty());
+        QCOMPARE(bbb.value("tilePoints").toList(), QVariantList({8.0, 9.0}));
+    }
+
     // One push is the rows written together (created_at), whatever as_of
     // each quote carries: a close three hours old keeps its holding; a
     // symbol only in an earlier push loses it.

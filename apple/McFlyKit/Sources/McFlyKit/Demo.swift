@@ -51,6 +51,9 @@ public struct DemoData: Decodable, Sendable {
         copy.quotes = quotes.map { q in
             var q = q
             q.asOf = moved(q.asOf); q.createdAt = moved(q.createdAt)
+            // Today's chart is today's session, not one shifted by the push's age.
+            let price = q.price
+            if let day = q.data?.intraday { q.data?.intraday = day.movedToToday(now: now, price: price) }
             return q
         }
         // A report's date is a day, not a moment, and the seed's are Chicago's:

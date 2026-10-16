@@ -8,9 +8,52 @@ public struct QuoteData: Codable, Hashable, Sendable {
     public var position: Position?
     public var signals: [Signal]
     public var stats: Stats?
+    /// Today's session bars (docs/AGENTS.md, `intraday`).
+    public var intraday: Intraday?
 
-    public init(position: Position? = nil, signals: [Signal] = [], stats: Stats? = nil) {
-        self.position = position; self.signals = signals; self.stats = stats
+    public init(position: Position? = nil, signals: [Signal] = [], stats: Stats? = nil, intraday: Intraday? = nil) {
+        self.position = position; self.signals = signals; self.stats = stats; self.intraday = intraday
+    }
+
+    /// The session's bars: `{ interval, open, close, points: [[epoch seconds, price], ...] }`,
+    /// open and close the session's bounds, so a chart can lay the day out on all of it.
+    public struct Intraday: Codable, Hashable, Sendable {
+        public struct Point: Hashable, Sendable {
+            public var time: Date
+            public var price: Double
+            public init(time: Date, price: Double) { self.time = time; self.price = price }
+        }
+        public var interval: String?
+        public var open: Date
+        public var close: Date
+        public var points: [Point]
+
+        public init(interval: String? = nil, open: Date, close: Date, points: [Point]) {
+            self.interval = interval; self.open = open; self.close = close; self.points = points
+        }
+
+        enum CodingKeys: String, CodingKey { case interval, open, close, points }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            guard let open = c.number(.open), let close = c.number(.close) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "intraday needs open and close"))
+            }
+            interval = (try? c.decodeIfPresent(String.self, forKey: .interval)).flatMap { $0 }
+            self.open = Date(timeIntervalSince1970: open)
+            self.close = Date(timeIntervalSince1970: close)
+            let raw = (try? c.decodeIfPresent([[Double]].self, forKey: .points)).flatMap { $0 } ?? []
+            points = raw.compactMap { $0.count >= 2 && $0[0].isFinite && $0[1].isFinite
+                ? Point(time: Date(timeIntervalSince1970: $0[0]), price: $0[1]) : nil }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encodeIfPresent(interval, forKey: .interval)
+            try c.encode(open.timeIntervalSince1970, forKey: .open)
+            try c.encode(close.timeIntervalSince1970, forKey: .close)
+            try c.encode(points.map { [$0.time.timeIntervalSince1970, $0.price] }, forKey: .points)
+        }
     }
 
     public struct Position: Codable, Hashable, Sendable {
@@ -92,13 +135,14 @@ public struct QuoteData: Codable, Hashable, Sendable {
         }
     }
 
-    enum CodingKeys: String, CodingKey { case position, signals, stats }
+    enum CodingKeys: String, CodingKey { case position, signals, stats, intraday }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         position = (try? c.decodeIfPresent(Position.self, forKey: .position)).flatMap { $0 }
         signals = (try? c.decodeIfPresent([Signal].self, forKey: .signals)).flatMap { $0 } ?? []
         stats = (try? c.decodeIfPresent(Stats.self, forKey: .stats)).flatMap { $0 }
+        intraday = (try? c.decodeIfPresent(Intraday.self, forKey: .intraday)).flatMap { $0 }
     }
 }
 
@@ -152,9 +196,12 @@ public struct QuoteInsight: Hashable, Sendable {
     public var signals: [QuoteData.Signal]
     public var stats: [MarketStat]
     public var ranges: [PriceRange]
+    /// Today's session, its bars within the session and sorted (two or more), and the close before it.
+    public var intraday: QuoteData.Intraday? = nil
+    public var prevClose: Double? = nil
 
     public static let empty = QuoteInsight(holding: nil, signals: [], stats: [], ranges: [])
-    public var isEmpty: Bool { holding == nil && signals.isEmpty && stats.isEmpty && ranges.isEmpty }
+    public var isEmpty: Bool { holding == nil && signals.isEmpty && stats.isEmpty && ranges.isEmpty && intraday == nil }
 }
 
 /// The holdings among the shown symbols, summed. The percentages are on what
@@ -195,7 +242,9 @@ public enum Holdings {
                 holding: current ? holding(data.position, price: q.price, change: change) : nil,
                 signals: current ? Array(data.signals.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }.prefix(maxSignals)) : [],
                 stats: stats(data.stats, currency: q.currency),
-                ranges: ranges(data.stats, price: q.price))
+                ranges: ranges(data.stats, price: q.price),
+                intraday: session(data.intraday),
+                prevClose: change.map { q.price - $0 })
             if !insight.isEmpty { insights[s.symbol] = insight }
         }
 
@@ -235,6 +284,13 @@ public enum Holdings {
                        totalChangePct: totalPct, weightPct: p.weightPct)
     }
 
+    /// The bars within the session, oldest first; nil with fewer than two.
+    static func session(_ day: QuoteData.Intraday?) -> QuoteData.Intraday? {
+        guard var day, day.close > day.open else { return nil }
+        day.points = day.points.filter { $0.time >= day.open && $0.time <= day.close }.sorted { $0.time < $1.time }
+        return day.points.count >= 2 ? day : nil
+    }
+
     static func ranges(_ s: QuoteData.Stats?, price: Double) -> [PriceRange] {
         guard let s else { return [] }
         return [("Today", s.low, s.high), ("52 weeks", s.low52w, s.high52w)].compactMap { label, low, high in
@@ -260,6 +316,30 @@ public enum Holdings {
         add("P/E", s.pe.map { $0.formatted(.number.precision(.fractionLength(1))) })
         add("Dividend", s.dividendYield.map { $0.formatted(.number.precision(.fractionLength(2))) + "%" })
         add("Earnings", s.earnings.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)) })
+        return out
+    }
+}
+
+extension QuoteData.Intraday {
+    /// The same bars moved onto today's New York session, only those up to
+    /// `now`, then `price` as the newest point while the session is on, as an
+    /// agent would send them mid-session: the demo's, so its chart is always
+    /// today's. Before 9:50 they move onto the day before, whole.
+    public func movedToToday(now: Date, price: Double) -> QuoteData.Intraday {
+        var newYork = Calendar(identifier: .gregorian)
+        newYork.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        guard var target = newYork.date(bySettingHour: 9, minute: 30, second: 0, of: now) else { return self }
+        if now < target.addingTimeInterval(20 * 60) {
+            target = newYork.date(byAdding: .day, value: -1, to: target) ?? target
+        }
+        let shift = target.timeIntervalSince(open)
+        var out = self
+        out.open = open.addingTimeInterval(shift)
+        out.close = close.addingTimeInterval(shift)
+        out.points = points.map { Point(time: $0.time.addingTimeInterval(shift), price: $0.price) }.filter { $0.time <= now }
+        if let last = out.points.last, last.time < now, now < out.close {
+            out.points.append(Point(time: now, price: price))
+        }
         return out
     }
 }
