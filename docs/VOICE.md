@@ -307,6 +307,11 @@ behind it.
   an `Origin` header not in `server.allowed_origins` is refused with 403.
 - `level` is the frame's loudness mapped from −60…0 dBFS onto 0…1, so normal
   speech reads about 0.4–0.8 and can drive the orb directly.
+- In `hello`, `wakeword_model` is the wake word in use (`hey_mcfly`) and
+  `wakeword_name` what the display shows ("Hey McFly"); `mic` is the open
+  microphone's name (`""` when there's none), `voice` Kokoro's voice (`""`
+  when another engine speaks) and `speed` the speaking rate. Clients ignore
+  keys they don't know.
 - `hello.wakeword` is true only when the wake word is switched on *and*
   working: the mic, the wake-word model and the Whisper model are all there.
   `stt` is false without a mic or the Whisper model; `listen` is then
@@ -346,11 +351,6 @@ delay the commands so the display is connected first:
 ```bash
 (sleep 8; echo "wake what's for dinner"; cat) | python -m mcfly_voice --simulate
 ```
-- In `hello`, `wakeword_model` is the wake word in use (`hey_mcfly`) and
-  `wakeword_name` what the display shows ("Hey McFly"); `mic` is the open
-  microphone's name (`""` when there's none), `voice` Kokoro's voice (`""`
-  when another engine speaks) and `speed` the speaking rate. Clients ignore
-  keys they don't know.
 
 Closing stdin doesn't stop the service; Ctrl+C or `quit` does.
 
