@@ -480,6 +480,125 @@ ApplicationWindow {
         }
     }
 
+    // The bench (--bench, or MCFLY_BENCH=1 in display.env): every screen in
+    // turn, then the assistant panel and the screen saver, each drawn every
+    // frame (Perf.stress), so the numbers are what it can keep up, not what
+    // it happens to draw. The panel's most is 60 fps, with the GPU's work
+    // under 16.7 ms a frame; under 30 is too slow. A line per screen goes to
+    // the log ("bench: …"), then everything is as it was; --bench quits.
+    Item {
+        id: bench
+        visible: false
+        readonly property var steps: window.screenNames.map((name, i) => ({ name: name, screen: i }))
+                                     .concat([{ name: "assistant", panel: true }, { name: "saver", saver: true }])
+        readonly property int settleMs: 2000
+        readonly property int measureMs: 5000
+        property int step: -1
+        property bool collecting: false
+        property var acc: ({})
+        property var results: []
+        property bool wasEnabled: false
+
+        // After a moment, so the feeds have arrived.
+        Timer { interval: 6000; running: startBench; onTriggered: bench.begin() }
+        Timer { id: benchTick; onTriggered: bench.collecting ? bench.next() : bench.measure() }
+        Connections {
+            target: Perf
+            enabled: bench.collecting
+            function onSampled() { bench.add() }
+        }
+
+        function begin() {
+            wasEnabled = Perf.enabled
+            Perf.enabled = true
+            Perf.stress = true
+            results = []
+            console.info("bench: each screen drawn every frame for " + measureMs / 1000 + " s")
+            step = -1
+            next()
+        }
+        function show(s) {
+            Device.wake()
+            if (s.saver) {
+                assistant.open = false
+                Device.sleepNow()
+            } else if (s.panel) {
+                window.currentScreen = 0
+                assistant.open = true
+            } else {
+                assistant.open = false
+                window.currentScreen = s.screen
+            }
+        }
+        function measure() {
+            acc = { n: 0, skip: 1, fps: 0, gpu: 0, gpuN: 0, frame: 0, max: 0, temp: -1, throttle: "" }
+            collecting = true
+            benchTick.interval = measureMs
+            benchTick.start()
+        }
+        // A second's sample; the first of each straddles the change of screen.
+        function add() {
+            if (Perf.lines.length < 2)
+                return // "Measuring…"
+            if (acc.skip > 0) {
+                acc.skip--
+                return
+            }
+            acc.n++
+            acc.fps += Perf.fps
+            if (Perf.gpuMsPerFrame >= 0) {
+                acc.gpu += Perf.gpuMsPerFrame
+                acc.gpuN++
+            }
+            acc.frame += Perf.frameMs
+            acc.max = Math.max(acc.max, Perf.frameMaxMs)
+            acc.temp = Perf.tempC
+            if (Perf.throttle && !Perf.throttle.startsWith("ok"))
+                acc.throttle = Perf.throttle
+        }
+        function report() {
+            const s = steps[step], n = Math.max(1, acc.n)
+            const r = { name: s.name, fps: acc.fps / n, gpu: acc.gpuN ? acc.gpu / acc.gpuN : -1,
+                        frame: acc.frame / n, max: acc.max, temp: acc.temp, throttle: acc.throttle }
+            r.verdict = acc.n === 0 ? "no samples" : r.fps >= 55 ? "60" : r.fps >= 28 ? "30+" : "SLOW"
+            results.push(r)
+            console.info("bench: " + s.name.padEnd(10) + " " + r.fps.toFixed(1).padStart(5) + " fps"
+                         + (r.gpu >= 0 ? "   GPU " + r.gpu.toFixed(1).padStart(4) + " ms/frame" : "")
+                         + "   render " + r.frame.toFixed(1) + " ms (max " + r.max.toFixed(1) + ")"
+                         + (r.temp >= 0 ? "   " + r.temp.toFixed(0) + " °C" : "")
+                         + (r.throttle ? " " + r.throttle : "") + "   " + r.verdict)
+        }
+        function next() {
+            if (collecting) {
+                collecting = false
+                report()
+            }
+            step++
+            if (step >= steps.length) {
+                finish()
+                return
+            }
+            show(steps[step])
+            benchTick.interval = settleMs
+            benchTick.start()
+        }
+        function finish() {
+            const by = v => results.filter(r => r.verdict === v).map(r => r.name).join(", ") || "none"
+            const gpus = results.filter(r => r.gpu >= 0)
+            const worst = gpus.length ? gpus.reduce((a, b) => (b.gpu > a.gpu ? b : a)) : null
+            console.info("bench: done. 60 fps: " + by("60") + ". 30+: " + by("30+") + ". Under 30: " + by("SLOW") + "."
+                         + (worst ? " Most GPU a frame: " + worst.name + ", " + worst.gpu.toFixed(1) + " ms." : "")
+                         + (results.some(r => r.throttle) ? " The Pi was held back during the run: hot numbers are worse than cool ones." : ""))
+            Perf.stress = false
+            Perf.enabled = wasEnabled
+            assistant.open = false
+            Device.wake()
+            window.currentScreen = 0
+            if (quitAfterBench)
+                Qt.quit()
+        }
+    }
+
     // Offline indicator: top right beside the rail, top centre over a bar
     // (so it never sits on a header's second-row controls).
     Rectangle {

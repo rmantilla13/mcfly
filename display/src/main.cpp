@@ -120,7 +120,9 @@ int main(int argc, char *argv[])
     QCommandLineOption screen("screen", "Open on this screen: home, briefs, markets, news, projects, boards, calendar, games, setup, saver, ask, settings or admin.", "name");
     QCommandLineOption screenshot("screenshot", "Save a picture of the window to <file> after a moment and quit.", "file");
     QCommandLineOption size("size", "Window size for --windowed, like 800x480 (default 1280x800).", "WxH");
-    parser.addOptions({windowed, demo, noKeyboard, screen, screenshot, size});
+    QCommandLineOption bench("bench", "Measure every screen, drawn every frame, a line each in the log, then quit "
+                                      "(MCFLY_BENCH=1 runs it once at start and carries on).");
+    parser.addOptions({windowed, demo, noKeyboard, screen, screenshot, size, bench});
     parser.process(app);
 
     // A running process with no screen leaves the text console on HDMI and
@@ -175,6 +177,10 @@ int main(int argc, char *argv[])
     engine.addImportPath(QStringLiteral("qrc:/keyboard"));
     engine.rootContext()->setContextProperty("startWindowed", parser.isSet(windowed));
     engine.rootContext()->setContextProperty("startScreen", parser.value(screen));
+    const QByteArray benchEnv = qgetenv("MCFLY_BENCH").trimmed().toLower();
+    const bool benchByEnv = benchEnv == "1" || benchEnv == "on" || benchEnv == "true" || benchEnv == "yes";
+    engine.rootContext()->setContextProperty("startBench", parser.isSet(bench) || benchByEnv);
+    engine.rootContext()->setContextProperty("quitAfterBench", parser.isSet(bench));
     // --size: the panel being designed for, in logical pixels.
     QSize startSize(1280, 800);
     const QStringList wh = parser.value(size).split(QLatin1Char('x'));

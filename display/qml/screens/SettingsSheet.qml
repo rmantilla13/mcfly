@@ -1275,6 +1275,16 @@ Popup {
                                 onToggled: function (on) { Perf.enabled = on }
                             }
                         }
+                        SettingRow {
+                            icon: "refresh"
+                            title: qsTr("Draw every frame")
+                            detail: qsTr("For measuring: the overlay's fps is then what this screen can keep up. 60 is the panel's most; under 30 is too slow. It heats the Pi, and turns off with the overlay.")
+                            Toggle {
+                                enabled: Perf.enabled
+                                checked: Perf.stress
+                                onToggled: function (on) { Perf.stress = on }
+                            }
+                        }
                     }
                 }
                 Label {

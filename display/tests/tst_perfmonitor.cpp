@@ -162,6 +162,53 @@ private slots:
         QVERIFY(forced.forced());
         qunsetenv("MCFLY_PERF_HUD");
     }
+    // Draw every frame (Admin, and the bench): each frame asks for the next,
+    // so an idle window draws flat out and fps says what it can keep up.
+    // Only while sampling, and turning the overlay off turns it off.
+    void stressDrawsEveryFrame()
+    {
+        PerfMonitor perf(true, nullptr);
+        QQuickWindow window;
+        window.resize(200, 120);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        perf.attach(&window);
+        QTest::qWait(300);  // the first frames, drawn on show
+        perf.sample();
+        QTest::qWait(500);
+        perf.sample();
+        const double idle = perf.fps();
+        QVERIFY2(idle < 5, qPrintable(QString::number(idle)));  // nothing changes, nothing drawn
+        QCOMPARE(perf.gpuMsPerFrame(), -1.0);                    // no V3D here
+
+        QSignalSpy changed(&perf, &PerfMonitor::stressChanged);
+        perf.setStress(true);
+        QVERIFY(perf.stress());
+        QCOMPARE(changed.count(), 1);
+        QTest::qWait(500);
+        perf.sample();
+        QVERIFY2(perf.fps() > 20, qPrintable(QString::number(perf.fps())));
+        QVERIFY2(perf.lines().first().contains(QStringLiteral("fps sustained")), qPrintable(perf.lines().first()));
+
+        perf.setStress(false);
+        QCOMPARE(changed.count(), 2);
+        QTest::qWait(200);  // a frame already asked for
+        perf.sample();
+        QTest::qWait(500);
+        perf.sample();
+        QVERIFY2(perf.fps() < 5, qPrintable(QString::number(perf.fps())));
+        QVERIFY(!perf.lines().first().contains(QStringLiteral("sustained")));
+
+        perf.setStress(true);
+        perf.setEnabled(false);
+        QVERIFY(!perf.stress());
+        QCOMPARE(changed.count(), 4);
+
+        PerfMonitor off(false, nullptr);
+        off.attach(&window);
+        off.setStress(true);  // nothing is measuring: refused
+        QVERIFY(!off.stress());
+    }
 };
 
 QTEST_MAIN(TestPerfMonitor)

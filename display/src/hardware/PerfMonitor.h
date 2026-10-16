@@ -51,6 +51,13 @@ class PerfMonitor : public QObject
     Q_PROPERTY(QStringList lines READ lines NOTIFY sampled)
     // Hot (80 °C and up, where the Pi 5 starts slowing itself) or held back now.
     Q_PROPERTY(bool warn READ warn NOTIFY sampled)
+    // The GPU's busy time per frame shown, ms (-1 without the V3D's counters):
+    // under 16.7 the panel's 60 fps can hold, under 33 its 30.
+    Q_PROPERTY(double gpuMsPerFrame READ gpuMsPerFrame NOTIFY sampled)
+    // Draw every frame (measuring): each frame asks for the next, so `fps`
+    // is what the screen can keep up rather than what it happens to draw.
+    // Only while sampling; it turns off with the overlay. Never remembered.
+    Q_PROPERTY(bool stress READ stress WRITE setStress NOTIFY stressChanged)
 
 public:
     // On if MCFLY_PERF_HUD is 1, on, true or yes, else as the switch was
@@ -81,6 +88,9 @@ public:
     QString throttle() const { return m_throttle; }
     QStringList lines() const { return m_lines; }
     bool warn() const { return m_warn; }
+    double gpuMsPerFrame() const { return m_gpuMsPerFrame; }
+    bool stress() const { return m_stress; }
+    void setStress(bool on);
 
     // ---- The files, read (public for the tests' fixtures).
     // /proc/<pid>/status: VmRSS, kB; -1 if missing.
@@ -96,10 +106,12 @@ public:
 signals:
     void sampled();
     void enabledChanged();
+    void stressChanged();
 
 private:
     void start();
     void stop();
+    void startStress();
     void readThrottle();
 
     bool m_enabled = false;
@@ -135,4 +147,7 @@ private:
     QString m_throttle;
     QStringList m_lines;
     bool m_warn = false;
+    double m_gpuMsPerFrame = -1;
+    bool m_stress = false;
+    QMetaObject::Connection m_stressConnection;
 };

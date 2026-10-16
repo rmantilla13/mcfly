@@ -123,12 +123,45 @@ void PerfMonitor::start()
     m_timer.start();
 }
 
+void PerfMonitor::setStress(bool on)
+{
+    if (on == m_stress || (on && !m_timer.isActive()))
+        return; // only while sampling: nothing would measure it
+    m_stress = on;
+    if (!on) {
+        disconnect(m_stressConnection);
+        m_stressConnection = {};
+    } else if (m_timer.isActive()) {
+        startStress();
+    }
+    emit stressChanged();
+}
+
+// Each frame swapped asks for the next, from the GUI thread: the render loop
+// then draws at the panel's rate, or as fast as the screen allows below it.
+void PerfMonitor::startStress()
+{
+    if (!m_window || m_stressConnection)
+        return;
+    m_stressConnection = connect(m_window, &QQuickWindow::frameSwapped, this, [this]() {
+        if (m_window)
+            m_window->update();
+    }, Qt::QueuedConnection);
+    m_window->update();
+}
+
 // Off: no connection left to the window, no timer, nothing on show.
 void PerfMonitor::stop()
 {
     for (const QMetaObject::Connection &c : std::as_const(m_connections))
         disconnect(c);
     m_connections.clear();
+    if (m_stress) {
+        disconnect(m_stressConnection);
+        m_stressConnection = {};
+        m_stress = false;
+        emit stressChanged();
+    }
     m_timer.stop();
     m_lines.clear();
     m_warn = false;
@@ -162,6 +195,7 @@ void PerfMonitor::sample()
         if (gpu && m_lastGpuJobs >= 0) {
             m_gpuJobs = double(jobs - m_lastGpuJobs) / dt;
             m_gpuBusy = 100 * double(runtime - m_lastGpuRuntime) / (dt * 1e9);
+            m_gpuMsPerFrame = frames > 0 ? double(runtime - m_lastGpuRuntime) / 1e6 / double(frames) : -1;
         }
     }
     m_lastCpuSeconds = cpuNow;
@@ -186,9 +220,12 @@ void PerfMonitor::sample()
 
     const auto num = [](double v, int decimals = 0) { return QString::number(v, 'f', decimals); };
     m_lines.clear();
-    m_lines << QStringLiteral("%1 fps · %2 ms (max %3)").arg(num(m_fps), num(m_frameMs, 1), num(m_frameMaxMs, 1));
+    // Drawing every frame, the fps is what this screen can keep up.
+    m_lines << QStringLiteral("%1 fps%2 · %3 ms (max %4)")
+                   .arg(num(m_fps), m_stress ? QStringLiteral(" sustained") : QString(), num(m_frameMs, 1), num(m_frameMaxMs, 1));
     if (m_gpuBusy >= 0)
-        m_lines << QStringLiteral("GPU %1% · %2 jobs/s").arg(num(m_gpuBusy), num(m_gpuJobs));
+        m_lines << (m_gpuMsPerFrame >= 0 ? QStringLiteral("GPU %1% · %2 ms/frame").arg(num(m_gpuBusy), num(m_gpuMsPerFrame, 1))
+                                         : QStringLiteral("GPU %1% · %2 jobs/s").arg(num(m_gpuBusy), num(m_gpuJobs)));
     m_lines << QStringLiteral("CPU %1% · %2").arg(m_cpu >= 0 ? num(m_cpu) : QStringLiteral("–"),
                                                   m_rssMb >= 0 ? num(m_rssMb) + QStringLiteral(" MB") : QStringLiteral("–"));
     QStringList pi;

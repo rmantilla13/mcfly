@@ -421,6 +421,43 @@ the switch was left at. It works in a window on a computer too:
 `MCFLY_PERF_HUD=1 build/display/mcfly-display --demo --windowed`, or
 `--screen admin` to open on the Admin page.
 
+### Frame rate: 30 at least, 60 to aim for
+
+The panel refreshes 60 times a second. Whatever moves (a swipe between
+screens, a sheet opening, the aura, the ticker) should keep up with it, and
+never fall under 30. A screen standing still draws little on purpose (its
+clocks tick once a second): that keeps the Pi cool, so a low fps on the
+overlay while nothing moves is fine.
+
+To see what a screen could keep up, turn on **Draw every frame** under the
+overlay's switch. Each frame then asks for the next, and the overlay's fps
+reads "sustained". The GPU line gives its work a frame: under 16.7 ms holds
+60, under 33 ms holds 30. It stays on only while you watch; it turns off with
+the overlay and is never remembered.
+
+The bench does that for every screen, the assistant panel and the screen
+saver, 5 seconds each, and writes a line each to the log. Add
+`MCFLY_BENCH=1` to `/etc/mcfly/display.env`, then
+`sudo systemctl restart mcfly-display`, and leave the panel alone for a
+minute and a half. It starts a few seconds after the app does, then puts
+everything back as it was:
+
+```bash
+journalctl -u mcfly-display -b | grep 'bench:'
+```
+
+Each line has the screen, the fps it kept up, the GPU's work a frame, the
+render thread's (and its longest), the temperature and any throttling, then
+the verdict: `60`, `30+`, or `SLOW` under 30. The last line sums them up and
+names the screen with the most GPU work a frame.
+
+Take the line out again afterwards: it runs at every start. A hot Pi does
+worse than a cool one, so compare runs at a similar temperature; the last
+line says when the Pi was held back during the run, and `pi-perf.sh` shows
+whether something else was busy. On a computer,
+`build/display/mcfly-display --demo --windowed --bench` runs it and quits,
+which checks the bench itself but says nothing about the Pi.
+
 ## Start over (clean install)
 
 To remove McFly completely and install it fresh (for example after an install
