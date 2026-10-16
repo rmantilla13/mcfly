@@ -107,6 +107,12 @@ newest push: send every symbol you hold in each push, and one you sold
 simply without a `position` (or not at all). Its price stays; the holding
 goes. Never send account numbers: the display needs none.
 
+`scripts/market_desk.py` builds this push from what a brokerage's read-only
+tools answer (positions in any number of accounts, quotes, fundamentals,
+RSI and moving averages, the earnings calendar): it combines accounts,
+works out the gains and picks the signals, so the agent running it only
+gathers the numbers.
+
 ## News (the Daily Pulse report)
 
 The body is the pipeline's `items-YYYY-MM-DD.json`, unchanged:
