@@ -4,13 +4,12 @@
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
+#include <QQuickWindow> // QPointer needs the whole type (GCC 14, Qt 6.8 on the Pi)
 #include <QString>
 #include <QStringList>
 #include <QTimer>
 
 #include <atomic>
-
-class QQuickWindow;
 
 // The performance overlay's numbers (MCFLY_PERF_HUD=1, for development):
 // how fast the window draws and what it costs, sampled once a second.
