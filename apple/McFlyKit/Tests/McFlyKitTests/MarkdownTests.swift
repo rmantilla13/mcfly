@@ -87,6 +87,18 @@ final class MarkdownTests: XCTestCase {
         XCTAssertEqual(Markdown.splitTag("[Due Mon 3 PM]  Armra").text, "Armra")
     }
 
+    func testAnItemsBoldNameSplitsFromItsDetail() {
+        XCTAssertTrue(Markdown.lead("**Armra proposal** — due Monday, Todd wants 2–3 proofs") == ("Armra proposal", "due Monday, Todd wants 2–3 proofs"))
+        XCTAssertTrue(Markdown.lead("**J442 Ashley Henson** – fix the sound") == ("J442 Ashley Henson", "fix the sound"))
+        XCTAssertTrue(Markdown.lead("**Runway**: waiting on Jamie") == ("Runway", "waiting on Jamie"))
+        XCTAssertTrue(Markdown.lead("**Due Monday:** the proposal") == ("Due Monday", "the proposal"))
+        XCTAssertTrue(Markdown.lead("**Homestead** — ") == ("Homestead", nil))
+        // Not a lead: no bold first, bold mid-sentence, bold with nothing to split on, or one still arriving.
+        for text in ["Standup at 9", "Call **Sophie** — today", "**NVDA** is up 2%", "**Armra propo", "**a\nb** — c"] {
+            XCTAssertTrue(Markdown.lead(text) == (text, nil), text)
+        }
+    }
+
     func testAStatsFenceIsTilesNotCode() {
         XCTAssertEqual(Markdown.blocks("```stats\nOpen edits | 5\nDue Monday | 1 | watch\nPortfolio | $118.4k | up\nno pipe here\n| 3\n```\nafter"), [
             .stats([

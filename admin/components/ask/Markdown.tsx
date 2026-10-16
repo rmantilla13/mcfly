@@ -1,19 +1,23 @@
 import { Fragment, type ReactNode } from "react";
 import { cn } from "cn";
-import { parseMarkdown, type Align, type Block, type Inline, type Tone } from "@/lib/markdown";
+import { parseMarkdown, splitLead, type Align, type Block, type Inline, type ListItem, type Tone } from "@/lib/markdown";
 
 // An answer from the full-screen Ask, set for reading: lib/markdown.ts parses
 // it, this turns the parts into elements. Text only ever lands as text.
 //
 // The assistant's own shapes (its `layout` skill, docs/ASSISTANT.md) draw as
-// the phone draws them: a tagged item's tag is a chip, a stats block is a
-// row of tiles, and a table narrower than the page is a grid while a wider
-// one stacks each row into a card with the header's words as labels.
+// the phone draws them (AnswerMarkdown in Components.swift): ### headings
+// are small spaced capitals with a hairline, the answer's first line is a
+// size up, a list with tags is a card of rows (the name, its chip at the
+// row's end, the detail under them), a bold name opening any item gets a
+// line of its own, a stats block is a row of tiles, and a table narrower
+// than the page is a grid while a wider one stacks each row into a card.
 
-// The colour a tone or a tag's word carries: what's late or down in red,
-// what's done or up in green, what's waiting in amber, a day in the accent.
+// The colour a tone or a tag's first word carries: what's late or down in
+// red, what's done or up in green, what's waiting in amber, a day in the
+// accent. "Waiting on Sophie" is amber like "Waiting".
 function toneClass(tone: Tone | string | undefined): string {
-  const word = (tone ?? "").toLowerCase();
+  const word = (tone ?? "").toLowerCase().split(/[^a-z]+/).find(Boolean) ?? "";
   if (/^(down|overdue|late|blocked|missed|off)$/.test(word)) return "text-red-600 dark:text-red-400";
   if (/^(up|done|paid|sent|shipped|on)$/.test(word)) return "text-emerald-700 dark:text-emerald-400";
   if (/^(watch|waiting|pending|soon|risk)$/.test(word)) return "text-amber-700 dark:text-amber-400";
@@ -25,7 +29,7 @@ function Chip({ tag }: { tag: string }) {
   return (
     <span
       className={cn(
-        "mr-2 inline-flex shrink-0 items-center rounded-full px-2 py-0.5 align-[0.1em] text-[0.72em] font-semibold tracking-wide whitespace-nowrap",
+        "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[0.72em] font-semibold tracking-wide whitespace-nowrap",
         tone ? cn("bg-current/10", tone) : "bg-primary/10 text-primary",
       )}
     >
@@ -65,6 +69,40 @@ function inline(nodes: Inline[]): ReactNode {
   });
 }
 
+// An item's words: a bold name opening it on a line of its own, the rest
+// under it a little quieter and starting with a capital; anything else as is.
+function ItemText({ c }: { c: Inline[] }) {
+  const { lead, detail } = splitLead(c);
+  if (!detail) return <>{inline(c)}</>;
+  return (
+    <>
+      <span className="block font-semibold text-foreground">{inline(lead)}</span>
+      <span className="mt-0.5 block text-[0.94em] text-foreground/80 first-letter:uppercase">{inline(detail)}</span>
+    </>
+  );
+}
+
+// A list whose items carry tags: one card, a row an item. The name leads,
+// the chip sits at the row's end (so the names line up), the detail runs
+// the card's width under them.
+function Items({ b }: { b: Extract<Block, { t: "list" }> }) {
+  const row = (item: ListItem, i: number) => {
+    const { lead, detail } = splitLead(item.c);
+    return (
+      <li key={i} className="px-4 py-3">
+        <div className="flex items-baseline gap-3">
+          {b.ordered ? <span className="font-semibold text-muted-foreground tabular-nums">{b.start + i}.</span> : null}
+          <span className={cn("min-w-0 flex-1", detail && "font-semibold text-foreground")}>{inline(lead)}</span>
+          {item.tag ? <Chip tag={item.tag} /> : null}
+        </div>
+        {detail ? <div className="mt-1 text-[0.94em] text-foreground/80 first-letter:uppercase">{inline(detail)}</div> : null}
+        {item.sub ? block(item.sub, 0, 1) : null}
+      </li>
+    );
+  };
+  return <ul className="my-5 divide-y overflow-hidden rounded-xl border bg-card first:mt-0 last:mb-0">{b.items.map(row)}</ul>;
+}
+
 const alignClass = (a: Align) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
 
 function block(b: Block, key: number, depth = 0): ReactNode {
@@ -75,17 +113,21 @@ function block(b: Block, key: number, depth = 0): ReactNode {
           {inline(b.c)}
         </h2>
       ) : (
-        <h3 key={key} className="mt-8 mb-2.5 text-[1.12em] leading-snug font-semibold tracking-[-0.01em] text-foreground first:mt-0">
-          {inline(b.c)}
+        // A section's name in small spaced capitals with a hairline after it.
+        <h3 key={key} className="mt-8 mb-3 flex items-center gap-3 text-[0.78em] font-bold tracking-[0.12em] text-muted-foreground uppercase first:mt-0">
+          <span className="shrink-0">{inline(b.c)}</span>
+          <span aria-hidden className="h-px min-w-4 flex-1 bg-border" />
         </h3>
       );
     case "p":
+      // The answer itself comes first: a size up, so it's read before the detail.
       return (
-        <p key={key} className="my-4 first:mt-0 last:mb-0">
+        <p key={key} className="my-4 first:mt-0 first:text-[1.12em] first:leading-snug last:mb-0">
           {inline(b.c)}
         </p>
       );
     case "list": {
+      if (depth === 0 && b.items.some((item) => item.tag)) return <Items key={key} b={b} />;
       const Tag = b.ordered ? "ol" : "ul";
       return (
         <Tag
@@ -98,9 +140,8 @@ function block(b: Block, key: number, depth = 0): ReactNode {
           )}
         >
           {b.items.map((item, i) => (
-            <li key={i} className={cn("pl-1.5", item.tag && "list-none -ml-6")}>
-              {item.tag ? <Chip tag={item.tag} /> : null}
-              {inline(item.c)}
+            <li key={i} className="pl-1.5">
+              <ItemText c={item.c} />
               {item.sub ? block(item.sub, 0, depth + 1) : null}
             </li>
           ))}
@@ -108,18 +149,20 @@ function block(b: Block, key: number, depth = 0): ReactNode {
       );
     }
     case "table": {
-      // Narrow (three short columns at most): a grid as wide as the page,
-      // and on a phone too. Wider, or with a sentence in a cell: each row is
-      // a card, the first cell its title and the others label: value lines,
-      // so nothing is squeezed, cut off or drawn over its neighbour. On a
-      // phone every table is cards. Class names are written out whole, so
-      // Tailwind's scanner finds them.
+      // Narrow (three short columns at most): a grid as wide as the page.
+      // Wider, or with a sentence in a cell: each row is a card, the first
+      // cell its title and the others label: value lines (just the value
+      // with two columns), so nothing is squeezed, cut off or drawn over its
+      // neighbour. On a phone only a few short figures stay a grid. Class
+      // names are written out whole, so Tailwind's scanner finds them.
       const longest = Math.max(0, ...b.rows.flat().map((cell) => inlineLength(cell)));
+      const widest = Math.max(0, ...[b.head, ...b.rows].map((row) => row.reduce((n, cell) => n + inlineLength(cell), 0)));
       const stack = b.head.length > 3 || longest > 24;
-      const c = stack ? STACKED : STACKED_ON_PHONE;
+      // A few short figures (symbol, price, change) fit a phone as a grid, as on the iPhone.
+      const c = stack ? STACKED : widest > 34 ? STACKED_ON_PHONE : GRID;
       return (
-        <div key={key} className="my-5 overflow-hidden rounded-xl border first:mt-0 last:mb-0">
-          <table className={cn("w-full border-collapse text-[0.92em] tabular-nums", c.table)}>
+        <div key={key} className="my-5 overflow-x-auto rounded-xl border first:mt-0 last:mb-0">
+          <table className={cn("w-full border-collapse text-[0.92em] tabular-nums", c.table, c === GRID && "[overflow-wrap:normal]")}>
             <thead className={cn("bg-muted/60", c.head)}>
               <tr>
                 {b.head.map((cell, i) => (
@@ -141,7 +184,10 @@ function block(b: Block, key: number, depth = 0): ReactNode {
                         i === 0 ? cn("font-medium text-foreground", c.title) : cn("text-foreground/90", c.cell),
                       )}
                     >
-                      {i > 0 && inlineLength(cell) > 0 ? <span className={cn("hidden text-muted-foreground", c.label)}>{inline(b.head[i])}: </span> : null}
+                      {/* Two columns read as a name and what it says: the label would only repeat the header. */}
+                      {i > 0 && b.head.length > 2 && inlineLength(cell) > 0 ? (
+                        <span className={cn("hidden text-muted-foreground", c.label)}>{inline(b.head[i])}: </span>
+                      ) : null}
                       {inline(cell)}
                     </td>
                   ))}
@@ -154,11 +200,18 @@ function block(b: Block, key: number, depth = 0): ReactNode {
     }
     case "stats":
       return (
-        <div key={key} className="my-5 grid grid-cols-2 gap-2 first:mt-0 last:mb-0 sm:grid-cols-3">
+        <div key={key} className="my-5 grid grid-cols-2 gap-2 first:mt-0 last:mb-0 sm:grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
           {b.items.map((s, i) => (
-            <div key={i} className="rounded-xl border bg-card px-4 py-3">
+            <div key={i} className="@container rounded-xl border bg-card px-4 py-3">
               <div className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">{s.label}</div>
-              <div className={cn("mt-1 text-[1.5em] leading-tight font-semibold tracking-tight tabular-nums", toneClass(s.tone) || "text-foreground")}>
+              {/* A figure never breaks: one line, a short one large, a long one sized to its tile, cut with … only past twelve or so characters. */}
+              <div
+                className={cn(
+                  "mt-1 truncate leading-tight font-semibold tracking-tight whitespace-nowrap tabular-nums [overflow-wrap:normal]",
+                  s.value.length <= 7 ? "text-[1.6em]" : "text-[min(1.5em,13cqi)]",
+                  toneClass(s.tone) || "text-foreground",
+                )}
+              >
                 {s.value}
               </div>
             </div>
@@ -182,7 +235,9 @@ function block(b: Block, key: number, depth = 0): ReactNode {
   }
 }
 
-// A table as cards, always or below the sm breakpoint (a phone).
+// A table as a grid everywhere, as cards everywhere, or as cards below the
+// sm breakpoint (a phone).
+const GRID = { table: "", head: "", body: "", row: "", title: "", cell: "", label: "" };
 const STACKED = {
   table: "block",
   head: "sr-only",
@@ -207,6 +262,8 @@ function inlineLength(nodes: Inline[]): number {
   return nodes.reduce((n, node) => n + (node.t === "text" || node.t === "code" ? node.v.length : node.t === "br" ? 1 : inlineLength(node.c)), 0);
 }
 
+// A word too long for the line (a link, a path, a file name) breaks where it
+// has to rather than pushing the page wider than a phone.
 export function Markdown({ text, className }: { text: string; className?: string }) {
-  return <div className={className}>{parseMarkdown(text).map((b, i) => block(b, i))}</div>;
+  return <div className={cn("min-w-0 [overflow-wrap:anywhere]", className)}>{parseMarkdown(text).map((b, i) => block(b, i))}</div>;
 }

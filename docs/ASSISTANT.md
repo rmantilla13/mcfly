@@ -21,15 +21,22 @@ the screen or in the voice. Only `read` is asked for shape.
 Standard Markdown, plus two shapes of McFly's own.
 
 **A tagged list item** opens with a word or two in square brackets (1 to 24
-characters), then a space. The clients draw the tag as a chip, coloured by
-what the word means. A tag a client doesn't know is still readable as
-bracketed text.
+characters), then a space. A list with tags is drawn as one card, a row per
+item: the bold name first, the tag as a chip at the row's end (so the names
+line up whatever the chips say), and the detail under them across the
+card's width. A client that predates tags shows them as bracketed text.
+
+In any list, an item that opens with a bold name followed by a dash or a
+colon (`**Armra proposal** — due Monday`) sets the name on a line of its
+own and the detail under it, starting with a capital.
 
 ```
 - [Mon] **Armra proposal** — 2–3 proofs of concept for Todd
 - [Waiting] **Jamie Umpherson** — interview scheduling, likely next week
 - [Overdue] **J446 Eric Hinman** — confirm the end card
 ```
+
+The colour comes from the tag's first word ("Waiting on Sophie" is amber):
 
 | Word | Chip colour |
 |---|---|
@@ -56,7 +63,14 @@ sentence in a cell. Anything wordier is a tagged list. The clients still
 draw any table the model writes: a grid while it fits the page, and a card
 per row when it doesn't (on a phone, or with more than three columns or a
 cell over 24 characters). A card's title is the row's first cell, and the
-other cells sit under it labelled with the header's words.
+other cells sit under it labelled with the header's words. With two columns
+the label is left out: the card is a name and what it says.
+
+`###` headings are drawn as small spaced capitals with a hairline after
+them, the answer's first paragraph a size larger than the rest, and a word
+too long for the line (a link, a path, a file name) breaks where it has to.
+Nothing in an answer is ever wider than the screen. Stat figures never
+break: short ones are large, long ones shrink to fit their tile.
 
 ## Where each piece lives
 

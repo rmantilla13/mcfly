@@ -293,15 +293,32 @@ private struct AnswerBlockView: View {
     var body: some View {
         switch block {
         case .heading(let level, let text):
-            Text(Markdown.inline(text))
-                .font(level <= 2 ? .system(.title2, design: .rounded, weight: .bold) : .system(.title3, design: .rounded, weight: .semibold))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, first ? 0 : (level <= 2 ? 14 : 10))
-                .accessibilityAddTraits(.isHeader)
+            if level <= 2 {
+                Text(Markdown.inline(text))
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, first ? 0 : 14)
+                    .accessibilityAddTraits(.isHeader)
+            } else {
+                AnswerKicker(text: text)
+                    .padding(.top, first ? 0 : 12)
+            }
         case .paragraph(let text):
-            AnswerText(text: text)
+            // The answer itself comes first: a size up, so it's read before the detail.
+            if first {
+                Text(Markdown.inline(text))
+                    .font(.system(.title3, design: .default, weight: .regular))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                AnswerText(text: text)
+            }
         case .list(let list):
-            AnswerList(list: list, depth: 0)
+            if list.items.contains(where: { $0.tag != nil }) {
+                AnswerItems(list: list)
+            } else {
+                AnswerList(list: list, depth: 0)
+            }
         case .table(let table):
             AnswerTable(table: table)
                 .padding(.vertical, 4)
@@ -339,24 +356,120 @@ private struct AnswerText: View {
     }
 }
 
-/// Bullets in the accent, numbers muted; a sub-list sits under its item. An
-/// item with a tag ([Mon], [Blocked]) wears it as a chip in place of the
-/// bullet, coloured by what the word means.
+/// `### Due Monday`: a section's name in small spaced capitals with a
+/// hairline after it, as Home's "MCFLY NOTICED", so the sections are found
+/// at a glance and the facts under them stay the loudest thing.
+private struct AnswerKicker: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(Markdown.inline(text))
+                .font(.system(size: 13, weight: .bold))
+                .tracking(1.4)
+                .textCase(.uppercase)
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                // The words take the width first; the hairline has what's left.
+                .layoutPriority(1)
+                .accessibilityAddTraits(.isHeader)
+            Rectangle().fill(Theme.divider).frame(height: 1)
+        }
+    }
+}
+
+/// What follows an item's name, starting with a capital as a line of its own
+/// should ("confirm the card" → "Confirm the card").
+private func detailLine(_ detail: String) -> String {
+    guard let first = detail.first, first.isLowercase else { return detail }
+    return first.uppercased() + detail.dropFirst()
+}
+
+/// An item's words: a bold name opening it (`**Armra** — due Monday`) on a
+/// line of its own and the rest under it, a little quieter; anything else
+/// as one paragraph.
+private struct AnswerItemText: View {
+    let text: String
+
+    var body: some View {
+        let (lead, detail) = Markdown.lead(text)
+        if let detail {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Markdown.inline(lead))
+                    .font(.body.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Markdown.inline(detailLine(detail)))
+                    .font(.callout)
+                    .foregroundStyle(Theme.text.opacity(0.78))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            AnswerText(text: text)
+        }
+    }
+}
+
+/// A list whose items carry tags: one card, a row an item. The name leads
+/// each row, the tag sits at the row's end as a chip (so the names line up
+/// whatever the chips say), and the detail runs the card's full width
+/// under them.
+private struct AnswerItems: View {
+    let list: Markdown.List
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(list.items.enumerated()), id: \.offset) { index, item in
+                if index > 0 { Rectangle().fill(Theme.divider).frame(height: 1) }
+                row(item, number: list.ordered ? list.start + index : nil)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous).stroke(Theme.divider, lineWidth: 1))
+    }
+
+    private func row(_ item: Markdown.ListItem, number: Int?) -> some View {
+        let (lead, detail) = Markdown.lead(item.text)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if let number {
+                    Text("\(number).").font(.body.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.muted)
+                }
+                Text(Markdown.inline(lead))
+                    .font(detail == nil ? .body : .body.weight(.semibold))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let tag = item.tag { AnswerChip(tag: tag) }
+            }
+            if let detail {
+                Text(Markdown.inline(detailLine(detail)))
+                    .font(.callout)
+                    .foregroundStyle(Theme.text.opacity(0.78))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let sub = item.sub { AnswerList(list: sub, depth: 1).padding(.top, 4) }
+        }
+    }
+}
+
+/// Bullets in the accent, numbers muted; a sub-list sits under its item. A
+/// bold name opening an item gets a line of its own (`AnswerItemText`).
 private struct AnswerList: View {
     let list: Markdown.List
     let depth: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(list.items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    if let tag = item.tag {
-                        AnswerChip(tag: tag)
-                    } else {
-                        marker(index)
-                    }
+                    marker(index)
                     VStack(alignment: .leading, spacing: 9) {
-                        AnswerText(text: item.text)
+                        AnswerItemText(text: item.text)
                         if let sub = item.sub { AnswerList(list: sub, depth: depth + 1) }
                     }
                 }
@@ -380,13 +493,14 @@ private struct AnswerList: View {
     }
 }
 
-/// The colour a tag's word (or a stat's tone) carries: what's late, blocked
+/// The colour a tag's first word (or a stat's tone) carries: what's late, blocked
 /// or down in the loss red, what's done or up in the gain green, what's
 /// waiting in the palette's warning ink (a dark amber by day, so it reads
 /// as text on white), and a day or a time in the accent.
 private enum AnswerTone {
-    static func color(for word: String) -> Color {
-        switch word.lowercased() {
+    static func color(for tag: String) -> Color {
+        let word = tag.lowercased().split(whereSeparator: { !$0.isLetter }).first.map(String.init) ?? ""
+        switch word {
         case "down", "overdue", "late", "blocked", "missed", "off": return Theme.loss
         case "up", "done", "paid", "sent", "shipped", "on": return Theme.gain
         case "watch", "waiting", "pending", "soon", "risk": return Theme.warningInk
@@ -404,6 +518,7 @@ private struct AnswerChip: View {
         Text(tag)
             .font(.caption.weight(.semibold))
             .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(color.opacity(0.14), in: Capsule())
@@ -471,14 +586,21 @@ private struct AnswerTable: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
                 if index > 0 { Rectangle().fill(Theme.divider).frame(height: 1) }
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: table.header.count == 2 ? 3 : 6) {
                     if let title = row.first, !title.isEmpty {
                         Text(Markdown.inline(title))
-                            .font(.subheadline.weight(.semibold))
+                            .font(.body.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     ForEach(Array(row.enumerated().dropFirst()), id: \.offset) { column, text in
-                        if !text.isEmpty {
+                        if !text.isEmpty && table.header.count == 2 {
+                            // Two columns: the name, then what it says. The label would only repeat the header.
+                            Text(Markdown.inline(text))
+                                .font(.callout)
+                                .foregroundStyle(Theme.text.opacity(0.78))
+                                .lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if !text.isEmpty {
                             let label = column < table.header.count ? table.header[column] : ""
                             if text.count <= 24 {
                                 HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -497,7 +619,7 @@ private struct AnswerTable: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 11)
+                .padding(.vertical, 12)
             }
         }
     }

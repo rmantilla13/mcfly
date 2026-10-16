@@ -363,6 +363,33 @@ function emphasis(text: string, i: number): { t: "strong" | "em" | "del"; inner:
   return { t: ch === "~" ? "del" : "strong", inner: text.slice(i + 2, lineEnd), end: lineEnd };
 }
 
+// ───────────────────────────── Lead ─────────────────────────────
+
+// An item's bold name and what follows it, so it can be set on its own line:
+// `**Armra proposal** — due Monday` → lead "Armra proposal", detail "due
+// Monday". The name must open the item and be followed by a dash (—, – or -)
+// or a colon, or end in a colon itself (`**Due:** Monday`). Anything else is
+// { lead: c, detail: null }. McFlyKit's Markdown.lead does the same.
+export function splitLead(c: Inline[]): { lead: Inline[]; detail: Inline[] | null } {
+  const [first, next, ...rest] = c;
+  if (first?.t !== "strong" || !first.c.length) return { lead: c, detail: null };
+  if (first.c.some((n) => n.t === "br")) return { lead: c, detail: null };
+  const name = trimColon(first.c);
+  const after = next?.t === "text" ? /^\s*[—–:-]\s*/.exec(next.v) : null;
+  if (!after && !name.colon) return { lead: c, detail: null };
+  const head = next?.t === "text" ? next.v.slice(after ? after[0].length : 0).replace(/^\s+/, "") : null;
+  const detail: Inline[] = [...(head ? [{ t: "text" as const, v: head }] : []), ...(next && next.t !== "text" ? [next] : []), ...rest];
+  return { lead: name.c, detail: detail.length ? detail : null };
+}
+
+// The name without a colon at its end (`Due Monday:`), and whether it had one.
+function trimColon(c: Inline[]): { c: Inline[]; colon: boolean } {
+  const last = c[c.length - 1];
+  if (last?.t !== "text" || !/:\s*$/.test(last.v)) return { c, colon: false };
+  const v = last.v.replace(/:\s*$/, "");
+  return { c: v ? [...c.slice(0, -1), { t: "text", v }] : c.slice(0, -1), colon: true };
+}
+
 // ───────────────────────────── Plain text ─────────────────────────────
 
 // The answer as words alone, for reading it aloud or copying it somewhere

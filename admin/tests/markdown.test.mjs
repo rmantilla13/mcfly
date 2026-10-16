@@ -2,7 +2,7 @@
 // in read mode, parsed to data, never HTML, and sane while it streams.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseInline, parseMarkdown, plainText } from "../lib/markdown.ts";
+import { parseInline, parseMarkdown, plainText, splitLead } from "../lib/markdown.ts";
 
 const text = (v) => ({ t: "text", v });
 
@@ -125,6 +125,20 @@ test("a list item may open with a tag, for a chip", () => {
   }
   assert.deepEqual(parseMarkdown("- [Due Mon 3 PM]  Armra")[0].items[0], { c: [text("Armra")], sub: null, tag: "Due Mon 3 PM" });
   assert.equal(parseMarkdown("- [Wednesday 10:30 AM] **Dentist**")[0].items[0].tag, "Wednesday 10:30 AM");
+});
+
+test("an item's bold name splits from its detail", () => {
+  const lead = (s) => splitLead(parseInline(s));
+  assert.deepEqual(lead("**Armra proposal** — due Monday, **Todd** wants 2–3"), {
+    lead: [text("Armra proposal")],
+    detail: [text("due Monday, "), { t: "strong", c: [text("Todd")] }, text(" wants 2–3")],
+  });
+  assert.deepEqual(lead("**J442 Ashley Henson** – fix the sound"), { lead: [text("J442 Ashley Henson")], detail: [text("fix the sound")] });
+  assert.deepEqual(lead("**Runway**: waiting on Jamie"), { lead: [text("Runway")], detail: [text("waiting on Jamie")] });
+  assert.deepEqual(lead("**Due Monday:** the proposal"), { lead: [text("Due Monday")], detail: [text("the proposal")] });
+  assert.deepEqual(lead("**Homestead** — "), { lead: [text("Homestead")], detail: null });
+  // Not a lead: no bold first, bold mid-sentence, bold with nothing to split on.
+  for (const s of ["Standup at 9", "Call **Sophie** — today", "**NVDA** is up 2%"]) assert.deepEqual(lead(s), { lead: parseInline(s), detail: null }, s);
 });
 
 test("a stats fence is tiles, not code", () => {

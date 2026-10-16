@@ -398,6 +398,34 @@ public enum Markdown {
         return (trimmed(tag), rest)
     }
 
+    // MARK: Lead
+
+    /// An item's bold name and what follows it, so a view can set the name
+    /// on its own line: `**Armra proposal** — due Monday` → ("Armra
+    /// proposal", "due Monday"). The name must open the item and be followed
+    /// by a dash (—, – or -) or a colon, or end in a colon itself
+    /// (`**Due:** Monday`). Anything else, or a name still arriving, is
+    /// (text, nil).
+    public static func lead(_ text: String) -> (lead: String, detail: String?) {
+        guard text.hasPrefix("**") else { return (text, nil) }
+        let body = text.dropFirst(2)
+        guard let close = body.range(of: "**") else { return (text, nil) }
+        var name = String(body[..<close.lowerBound]).trimmingCharacters(in: .whitespaces)
+        var rest = body[close.upperBound...].drop(while: { $0 == " " })
+        guard !name.isEmpty, !name.contains("\n") else { return (text, nil) }
+        if let mark = rest.first, "—–-:".contains(mark) {
+            rest = rest.dropFirst()
+        } else if name.hasSuffix(":") {
+            name.removeLast()
+        } else {
+            return (text, nil)
+        }
+        if name.hasSuffix(":") { name.removeLast() }
+        let detail = String(rest).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !detail.isEmpty else { return (name, nil) }
+        return (name.trimmingCharacters(in: .whitespaces), detail)
+    }
+
     // MARK: Inline
 
     /// A block's words, styled: bold, italic, struck and code from the
