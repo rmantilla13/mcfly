@@ -482,8 +482,8 @@ ApplicationWindow {
 
     // The bench (--bench, or MCFLY_BENCH=1 in display.env): every screen in
     // turn, then the assistant panel and the screen saver. Each is measured
-    // twice: as it is, what it delivers (a still screen draws next to
-    // nothing, and that's fine; anything moving should be 30 or more), then
+    // twice: as it is, what it delivers (the frames it draws and the GPU's
+    // share, the heat it costs; frames, not how often anything moves), then
     // drawn every frame (Perf.stress), what it could keep up: 60 is the
     // panel's most, with the GPU's work under 16.7 ms a frame; under 30 is
     // too slow. A line per screen goes to the log ("bench: …"), then
@@ -605,10 +605,6 @@ ApplicationWindow {
             const d = shown.delivered, s = shown.sustained
             const r = { name: steps[step].name, delivered: d.fps, sustained: s.fps, gpu: s.gpu, busy: d.busy,
                         temp: s.temp, throttle: s.throttle || d.throttle }
-            // Delivered: a still screen draws a frame or two a second (its
-            // clock, this overlay); between that and 30, something moves too
-            // slowly.
-            r.slowMotion = d.n > 0 && d.fps >= 5 && d.fps < 28
             r.verdict = s.n === 0 ? "no samples" : s.fps >= 55 ? "60" : s.fps >= 28 ? "30+" : "SLOW"
             results.push(r)
             const f = (v, w) => v.toFixed(1).padStart(w)
@@ -619,7 +615,7 @@ ApplicationWindow {
                          + "   render " + s.frame.toFixed(1) + " ms (max " + s.max.toFixed(1) + ")"
                          + (r.temp >= 0 ? "   " + r.temp.toFixed(0) + " °C" : "")
                          + (r.throttle ? " " + r.throttle : "")
-                         + "   " + r.verdict + (r.slowMotion ? ", moves under 30" : ""))
+                         + "   " + r.verdict)
         }
         function finish() {
             phase = ""
@@ -628,7 +624,6 @@ ApplicationWindow {
             const gpus = results.filter(r => r.gpu >= 0)
             const worst = gpus.length ? gpus.reduce((a, b) => (b.gpu > a.gpu ? b : a)) : null
             console.info("bench: done. Sustains 60: " + by("60") + ". 30+: " + by("30+") + ". Under 30: " + by("SLOW") + "."
-                         + " Moves under 30 as it is: " + names(results.filter(r => r.slowMotion)) + "."
                          + (worst ? " Most GPU a frame: " + worst.name + ", " + worst.gpu.toFixed(1) + " ms." : "")
                          + (results.some(r => r.throttle) ? " The Pi was held back during the run: hot numbers are worse than cool ones." : ""))
             Perf.stress = false

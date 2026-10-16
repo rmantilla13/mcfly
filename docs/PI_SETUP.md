@@ -427,9 +427,12 @@ The panel refreshes 60 times a second. Whatever moves (a swipe between
 screens, a sheet opening, the ticker) runs at that rate. The slow ambient
 motion (the gradients, the auroras, the savers' drift and weather, the voice
 glow while it idles) updates 30 times a second, every other frame:
-`Theme.motionFps`, and nothing is slower. A screen standing still draws
-next to nothing (its clock ticks once a second), which keeps the Pi cool, so
-a low fps on the overlay while nothing moves is fine.
+`Theme.motionFps`, and nothing is slower. Frames drawn aren't how often
+something moves: when the savers' drift updated 10 times a second, the
+saver still drew about 43 frames a second, and News and Projects draw
+every frame with nobody touching them (seen in the October bench, not yet
+explained). A screen with nothing moving draws next to nothing (its clock
+ticks once a second), so a low fps on the overlay then is fine.
 
 To see what a screen could keep up, turn on **Draw every frame** under the
 overlay's switch. Each frame then asks for the next, and the overlay's fps
@@ -450,9 +453,10 @@ journalctl -u mcfly-display -b | grep 'bench:'
 Each line has the screen, then what it delivers as it is (and the GPU's busy
 share, the heat it costs), then what it sustains drawn every frame: the
 fps, the GPU's work a frame, the render thread's (and its longest), the
-temperature and any throttling. The verdict is `60`, `30+`, or `SLOW` under
-30, with "moves under 30" when it delivers more than a still screen but
-fewer than 30 frames. The last line sums them up.
+temperature and any throttling. The verdict, from what it sustains, is
+`60`, `30+`, or `SLOW` under 30. It counts frames, so it can't see motion
+that steps slowly between them; `Theme.motionFps` is what keeps that at
+30. The last line sums them up.
 
 Take the line out again afterwards: it runs at every start. A hot Pi does
 worse than a cool one, so compare runs at a similar temperature; the last
