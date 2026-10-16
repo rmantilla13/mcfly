@@ -64,7 +64,7 @@ function(mcfly_test_qml_module dir)
     foreach(file ${ARGN})
         configure_file(${PROJECT_SOURCE_DIR}/qml/${file} ${dir}/McFly/${file} COPYONLY)
         get_filename_component(type ${file} NAME_WE)
-        if(type STREQUAL "Theme")
+        if(type STREQUAL "Theme" OR type STREQUAL "Glass")
             string(APPEND qmldir "singleton ")
         endif()
         string(APPEND qmldir "${type} 1.0 ${file}\n")
@@ -74,7 +74,7 @@ endfunction()
 
 # The wake-word card (QuickAnswer.qml) with the real assistant and voice client.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml
-    Theme.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
+    Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
     components/SpectrumGlow.qml screens/QuickAnswer.qml)
 
 qt_add_executable(tst_quickanswer tst_quickanswer.cpp
@@ -91,7 +91,7 @@ qt_add_resources(tst_quickanswer "demo_data_quick"
 qt_add_shaders(tst_quickanswer "quick_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag)
+    FILES ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
 add_test(NAME tst_quickanswer COMMAND tst_quickanswer)
 set_tests_properties(tst_quickanswer PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
@@ -99,12 +99,16 @@ set_tests_properties(tst_quickanswer PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=off
 # stacks the on-screen keyboard over dialogs; and closing when the display
 # goes idle.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-dialogs
-    Theme.qml components/PillButton.qml components/FormField.qml components/FocusFlickable.qml
-    components/FormDialog.qml components/Layer.qml)
+    Theme.qml Glass.qml components/Lens.qml components/PillButton.qml components/FormField.qml
+    components/FocusFlickable.qml components/FormDialog.qml components/Layer.qml)
 qt_add_executable(tst_dialogs tst_dialogs.cpp)
 target_compile_options(tst_dialogs PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_dialogs PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-dialogs")
 target_link_libraries(tst_dialogs PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_shaders(tst_dialogs "dialogs_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
 add_test(NAME tst_dialogs COMMAND tst_dialogs)
 set_tests_properties(tst_dialogs PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
@@ -128,7 +132,7 @@ set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscree
 # countdown and now marker, board tiles from boardLayout, the Briefs outline,
 # the nav's thinking ring.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
-    Theme.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
+    Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
     components/SpectrumGlow.qml components/GradientTile.qml components/Sparkline.qml
     components/Ring.qml components/StatusDot.qml components/Reveal.qml components/InsightLine.qml
     components/HealthStrip.qml components/SuggestionChips.qml components/FocusFlickable.qml
@@ -149,7 +153,8 @@ qt_add_resources(tst_screens "demo_data_screens"
 qt_add_shaders(tst_screens "screens_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag)
+    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag
+          ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
 add_test(NAME tst_screens COMMAND tst_screens)
 set_tests_properties(tst_screens PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
@@ -195,10 +200,14 @@ set_tests_properties(tst_settingsbridge PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=
 # ChipRow's chips: a tap within a touch target's height of a chip picks it,
 # one between two chips neither, at the chip heights the screens use.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-chips
-    Theme.qml components/ChipRow.qml)
+    Theme.qml Glass.qml components/Lens.qml components/ChipRow.qml)
 qt_add_executable(tst_chips tst_chips.cpp)
 target_compile_options(tst_chips PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_chips PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-chips")
 target_link_libraries(tst_chips PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_shaders(tst_chips "chips_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
 add_test(NAME tst_chips COMMAND tst_chips)
 set_tests_properties(tst_chips PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")

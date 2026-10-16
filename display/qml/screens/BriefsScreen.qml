@@ -87,11 +87,13 @@ Item {
                     font.weight: Font.DemiBold
                     font.letterSpacing: 1.2
                 }
-                // The picked row's outline, over the rows: it glides when a
-                // tap picks another, and jumps when the list is rebuilt.
+                // The picked row's outline, over the rows: a slab of clear
+                // glass (Lens) that tints the row it lies on with a little of
+                // the aura. It glides when a tap picks another, and jumps
+                // when the list is rebuilt.
                 // The picked row says where it is (a sync makes the rows again).
                 property Item chosenRow: null
-                Rectangle {
+                Lens {
                     id: chosenOutline
                     objectName: "chosenOutline"
                     // Among the rows (a view's own children don't scroll with them).
@@ -104,9 +106,12 @@ Item {
                     width: list.width
                     height: row ? row.height : 0
                     radius: Theme.radiusSm
-                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.16 : 0.10)
-                    border.width: 2
-                    border.color: Theme.accent
+                    kind: "active"
+                    fill: "transparent"
+                    gather: Glass.mix(0.16, 0.24)
+                    lift: 0
+                    sheen: Glass.mix(0.10, 0.04)
+                    shadow: 0
                     Behavior on y { enabled: briefs._tapped; NumberAnimation { duration: Theme.glide; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.standard } }
                     Behavior on height { enabled: briefs._tapped; NumberAnimation { duration: Theme.glide; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.standard } }
                 }

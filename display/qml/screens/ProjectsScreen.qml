@@ -79,12 +79,14 @@ Item {
                         readonly property bool isBlocked: cell.modelData.status === "blocked"
                         readonly property int ringSize: Theme.mini ? 50 : Theme.tall ? 62 : Theme.wide ? 76 : 68
                         radius: Theme.radiusSm
-                        color: chosen ? Theme.accentSoft : Theme.surface
-                        border.width: chosen ? 2 : isBlocked ? 2 : 0
-                        border.color: chosen ? Theme.accent : Theme.danger
+                        color: chosen ? "transparent" : Theme.surface
+                        border.width: !chosen && isBlocked ? 2 : 0
+                        border.color: Theme.danger
                         opacity: cell.modelData.status === "done" ? 0.7 : 1
                         scale: tap.pressed ? 0.97 : 1
                         Behavior on scale { NumberAnimation { duration: Theme.quick } }
+                        // Chosen: active glass (Lens), as the nav pill is.
+                        Lens { anchors.fill: parent; visible: card.chosen; kind: "active"; radius: card.radius }
                         // Blocked: a soft second edge inside the first breathes
                         // in and out, slowly. Stopped, it is simply not there.
                         Rectangle {

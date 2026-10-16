@@ -331,17 +331,19 @@ Popup {
                                 // Fixed: two lines of detail fit beside the icon.
                                 Layout.preferredHeight: Theme.small ? 92 : 104
                                 radius: 24
-                                color: chosen ? Theme.accentSoft : Theme.surfaceAlt
-                                border.width: chosen ? 2 : 0
-                                border.color: Theme.accent
+                                color: chosen ? "transparent" : Theme.surfaceAlt
+                                // Chosen: active glass (Lens), its disc the primary's.
+                                Lens { anchors.fill: parent; visible: parent.chosen; kind: "active"; radius: 24 }
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.margins: 16
                                     spacing: 12
-                                    Rectangle {
-                                        Layout.preferredWidth: 44; Layout.preferredHeight: 44; radius: 22
-                                        color: chosen ? Theme.accent : Theme.surface
-                                        Icon { anchors.centerIn: parent; name: modelData.icon; size: 22; color: chosen ? Theme.accentInk : Theme.text }
+                                    Lens {
+                                        Layout.preferredWidth: 44; Layout.preferredHeight: 44
+                                        kind: chosen ? "primary" : "rest"
+                                        shadowY: chosen ? 3 : 2
+                                        shadowBlur: chosen ? 6 : 5
+                                        Icon { anchors.centerIn: parent; name: modelData.icon; size: 22; color: chosen ? "white" : Theme.text }
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
@@ -540,13 +542,13 @@ Popup {
                                             readonly property bool chosen: AI.effectiveProvider === modelData.id
                                             width: Math.max(Theme.touchTarget, pl.implicitWidth + 28)
                                             height: Theme.touchTarget
-                                            Rectangle {
+                                            Lens {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: parent.width
                                                 height: 44
-                                                radius: 22
-                                                color: providerChip.chosen ? Theme.accent : Theme.surface
-                                                Label { id: pl; anchors.centerIn: parent; text: providerChip.modelData.label; color: providerChip.chosen ? Theme.accentInk : Theme.text; font.pixelSize: Theme.fontXs + 1; font.weight: Font.DemiBold }
+                                                kind: providerChip.chosen ? "active" : "rest"
+                                                shadow: 0
+                                                Label { id: pl; anchors.centerIn: parent; text: providerChip.modelData.label; color: providerChip.chosen ? Glass.ink : Theme.text; font.pixelSize: Theme.fontXs + 1; font.weight: Font.DemiBold }
                                             }
                                             TapHandler { onTapped: AI.provider = providerChip.modelData.id }
                                         }
@@ -603,17 +605,17 @@ Popup {
                                         readonly property bool chosen: Voice.wakewordModel === modelData.id
                                         width: wakeName.implicitWidth + 24
                                         height: Theme.touchTarget
-                                        Rectangle {
+                                        Lens {
                                             anchors.verticalCenter: parent.verticalCenter
                                             width: parent.width
                                             height: 48
-                                            radius: 24
-                                            color: wakeChip.chosen ? Theme.accent : Theme.surface
+                                            kind: wakeChip.chosen ? "active" : "rest"
+                                            shadow: 0
                                             Label {
                                                 id: wakeName
                                                 anchors.centerIn: parent
                                                 text: wakeChip.modelData.label
-                                                color: wakeChip.chosen ? Theme.accentInk : Theme.text
+                                                color: wakeChip.chosen ? Glass.ink : Theme.text
                                                 font.pixelSize: Theme.fontXs + 1
                                                 font.weight: Font.DemiBold
                                             }
@@ -641,17 +643,17 @@ Popup {
                                             readonly property bool chosen: Voice.voiceId === modelData.id
                                             implicitWidth: Math.max(Theme.touchTarget, voiceName.implicitWidth + 28)
                                             implicitHeight: Theme.touchTarget
-                                            Rectangle {
+                                            Lens {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: parent.width
                                                 height: 44
-                                                radius: 22
-                                                color: voiceChip.chosen ? Theme.accent : Theme.surface
+                                                kind: voiceChip.chosen ? "active" : "rest"
+                                                shadow: 0
                                                 Label {
                                                     id: voiceName
                                                     anchors.centerIn: parent
                                                     text: voiceChip.modelData.name
-                                                    color: voiceChip.chosen ? Theme.accentInk : Theme.text
+                                                    color: voiceChip.chosen ? Glass.ink : Theme.text
                                                     font.pixelSize: Theme.fontSm - 1
                                                     font.weight: Font.DemiBold
                                                 }

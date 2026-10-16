@@ -8,7 +8,8 @@ import McFly.Core
 // The navigation: one model, two shapes. A rail down the left (Wide and
 // Compact) with icon + label items, or, with `horizontal`, a bar along the
 // bottom (Mini and Tall) of icon-only slots where the active one widens to
-// show its label. The active item is a blue pill that glides. While McFly
+// show its label. The active item is a glass pill (Lens) that glides along
+// the rail, bending the aura the rail shows faintly beneath it. While McFly
 // is `thinking` (an answer on its way, the panel shut), a ring in the voice
 // glow's colours turns around the Ask button.
 Rectangle {
@@ -32,9 +33,21 @@ Rectangle {
 
     color: Theme.surface
 
-    // Highlight that glides to the active item.
-    Rectangle {
+    // The aura, faint and still, for the pill to bend (Glass.qml). Cached as
+    // a quarter-size layer: it only redraws while the palette fades.
+    Lens {
+        anchors.fill: parent
+        kind: "wash"
+        radius: 0
+        layer.enabled: !fallback
+        layer.smooth: true
+        layer.textureSize: Qt.size(Math.ceil(width / 4), Math.ceil(height / 4))
+    }
+
+    // Highlight that glides to the active item: clear glass over the aura.
+    Lens {
         id: pill
+        kind: "active"
         readonly property Item target: rail.horizontal
             ? (barItems.count > 0 && barRow.width > 0 ? barItems.itemAt(rail.currentIndex) : null)
             : (railItems.count > 0 && column.height > 0 ? railItems.itemAt(rail.currentIndex) : null)
@@ -44,7 +57,6 @@ Rectangle {
         width: target ? target.width : 0
         height: target ? target.height : 0
         radius: rail.horizontal ? 24 : 26
-        color: Theme.accent
         Behavior on y { enabled: !rail.horizontal; SpringAnimation { spring: 5; damping: 0.36; epsilon: 0.4 } }
         Behavior on x { enabled: rail.horizontal; SpringAnimation { spring: 5; damping: 0.36; epsilon: 0.4 } }
         Behavior on width { enabled: rail.horizontal; NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
@@ -74,7 +86,7 @@ Rectangle {
             Icon {
                 name: modelData.icon
                 size: Theme.compact ? 24 : 30
-                color: active ? Theme.accentInk : Theme.textMuted
+                color: active ? Glass.ink : Theme.textMuted
                 Behavior on color { ColorAnimation { duration: Theme.quick } }
             }
             Label {
@@ -83,7 +95,7 @@ Rectangle {
                 text: modelData.label
                 font.pixelSize: Theme.compact ? 13 : 14
                 font.weight: active ? Font.DemiBold : Font.Medium
-                color: active ? Theme.accentInk : Theme.textMuted
+                color: active ? Glass.ink : Theme.textMuted
                 Behavior on color { ColorAnimation { duration: Theme.quick } }
             }
         }
@@ -185,8 +197,9 @@ Rectangle {
             id: railAsk
             Layout.alignment: Qt.AlignHCenter
             icon: "sparkle"
+            kind: "active"
             fill: Theme.accentSoft
-            ink: Theme.accent
+            ink: Glass.ink
             onClicked: rail.askRequested()
             ThinkingRing { anchors.centerIn: parent; width: railAsk.width + 10; height: width }
         }
@@ -231,7 +244,7 @@ Rectangle {
         }
         Item {
             width: 64; height: 64
-            NavButton { anchors.centerIn: parent; icon: "sparkle"; fill: Theme.accentSoft; ink: Theme.accent; onClicked: rail.askRequested() }
+            NavButton { anchors.centerIn: parent; icon: "sparkle"; kind: "active"; fill: Theme.accentSoft; ink: Glass.ink; onClicked: rail.askRequested() }
             ThinkingRing { anchors.centerIn: parent; width: 64; height: 64 }
         }
         Item {

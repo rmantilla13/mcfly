@@ -2,9 +2,9 @@
 
 The McFly display runs on four kinds of panel. They are four settings of one
 design, not four designs: the same homeOS language (left nav rail with the
-gliding pill, white cards on the warm time-of-day canvas, GradientTile
-highlights, cross-fading pages, 64 px targets, no hover) bent, never broken,
-to the room it has. `layout-manifest.json` is the same spec as data.
+gliding glass pill, white cards on the warm time-of-day canvas, GradientTile
+highlights, glass controls, cross-fading pages, 64 px targets, no hover) bent,
+never broken, to the room it has. `layout-manifest.json` is the same spec as data.
 
 Two axes come out of one measurement of the window, in `Main.qml`:
 
@@ -77,6 +77,18 @@ Calendar, then Ask (sparkle), Settings (gear) and Sleep (moon).
 active slot widening to fit its label (the pill animates `x` and `width`),
 a divider, then the three round buttons in 64 px slots. The slots abut; the
 pill is inset 4 px. At 720 wide the bar is about 704 px of slots, centred.
+
+The controls are glass (`Lens.qml`, drawn by `shaders/lens.frag`; what they
+share is `Glass.qml`). The rail shows the aura (the glow's colour fields,
+fixed to the window) faintly and still, cached as a quarter-size layer; the
+pill is clear glass that gathers more of it, so it bends a different part as
+it glides. Everything chosen is the same "active" glass under `Glass.ink`:
+the segment thumb, the chosen chip, Ask, the day picked on Calendar, the
+project or holding open beside its detail, the screen saver picked in
+Settings; the picked brief gets a clear slab of it laid over its row. A
+PillButton left as it is is the primary action in `Glass.primary`;
+everything else is its own fill, lit like glass. Without shaders each is a
+plain rounded rect, the active ones in `Theme.accentSoft`.
 
 `ScreenHeader.qml` is every screen's first row: title, subtitle, an optional
 back arrow while a detail is pushed, and a control slot. At Mini and Tall the

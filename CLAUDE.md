@@ -43,8 +43,10 @@ property is missing from the store, not a QML bug.
 
 **Design language is the Ohana one.** `Theme.qml` tokens, `GradientTile` for
 highlight tiles, `SpectrumGlow` for voice, cards on `Theme.surface`, the nav
-rail. Hit targets 64 px, type readable from across the room. Dark mode and
-the time-of-day palette come from the same tokens.
+rail, and glass controls: `Lens` (with `Glass.qml`) under buttons, chips and
+the chosen state, `Glass.ink` on an active one. Hit targets 64 px, type
+readable from across the room. Dark mode and the time-of-day palette come
+from the same tokens.
 
 **The kiosk's boot and tty rules are tested** (`display/tests/kiosk_boot_test.sh`,
 `bootscreen_test.sh`): the unit files, `install-pi.sh` and the boot video

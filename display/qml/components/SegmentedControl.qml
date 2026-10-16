@@ -2,7 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import McFly
 
-// Pill switch like Day | Week | Month.
+// Pill switch like Day | Week | Month. The thumb is a lens (Lens, "active")
+// gliding along the sunken track, the chosen label in Glass.ink.
 Rectangle {
     id: seg
     property var options: []
@@ -14,12 +15,11 @@ Rectangle {
     radius: height / 2
     color: Theme.sunken
 
-    Rectangle {
+    Lens {
         id: thumb
+        kind: "active"
         y: 6
         height: parent.height - 12
-        radius: height / 2
-        color: Theme.accent
         // Depend on row.width/count so this re-evaluates once the items exist.
         readonly property Item target: repeater.count > 0 && row.width > 0 ? repeater.itemAt(seg.currentIndex) : null
         x: row.x + (target ? target.x : 0)
@@ -46,7 +46,7 @@ Rectangle {
                     text: modelData
                     font.pixelSize: Theme.fontSm
                     font.weight: Font.Medium
-                    color: index === seg.currentIndex ? Theme.accentInk : Theme.text
+                    color: index === seg.currentIndex ? Glass.ink : Theme.text
                 }
                 TapHandler { onTapped: { seg.currentIndex = index; seg.selected(index) } }
             }

@@ -385,12 +385,14 @@ Item {
                         Layout.preferredWidth: 1
                         Layout.preferredHeight: Theme.mini ? 66 : 82
                         radius: 18
-                        color: chosen ? Theme.accent : (iso === Store.today ? Theme.accentSoft : Theme.surface)
+                        color: chosen ? "transparent" : (iso === Store.today ? Theme.accentSoft : Theme.surface)
+                        // The chosen day is active glass (Lens); its dots keep their colours.
+                        Lens { anchors.fill: parent; visible: dayCell.chosen; kind: "active"; radius: 18 }
                         ColumnLayout {
                             anchors.centerIn: parent
                             spacing: 2
-                            Label { Layout.alignment: Qt.AlignHCenter; text: Qt.formatDate(date, "ddd").toUpperCase(); color: chosen ? Theme.accentInk : Theme.textMuted; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1 }
-                            Label { Layout.alignment: Qt.AlignHCenter; text: Qt.formatDate(date, "d"); color: chosen ? Theme.accentInk : Theme.text; font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd; font.weight: Font.DemiBold }
+                            Label { Layout.alignment: Qt.AlignHCenter; text: Qt.formatDate(date, "ddd").toUpperCase(); color: chosen ? Glass.ink : Theme.textMuted; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1 }
+                            Label { Layout.alignment: Qt.AlignHCenter; text: Qt.formatDate(date, "d"); color: chosen ? Glass.ink : Theme.text; font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd; font.weight: Font.DemiBold }
                             Row {
                                 Layout.alignment: Qt.AlignHCenter
                                 spacing: 3
@@ -399,7 +401,7 @@ Item {
                                     delegate: Rectangle {
                                         required property int index
                                         width: 5; height: 5; radius: 2.5
-                                        color: dayCell.chosen ? Theme.accentInk : (calendar.eventsOn(dayCell.iso)[index] || {}).color || Theme.accent
+                                        color: (calendar.eventsOn(dayCell.iso)[index] || {}).color || Theme.accent
                                     }
                                 }
                             }

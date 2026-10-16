@@ -3,7 +3,9 @@ import QtQuick.Controls
 import McFly
 
 // A row of pill chips, one chosen, that scrolls sideways when there are more
-// than fit: news sources, the boards picker, Markets | Metrics.
+// than fit: news sources, the boards picker, Markets | Metrics. In glass
+// (Lens): the chosen chip gathers the aura under Glass.ink, the rest are
+// resting glass; no shadows, which the row's clip would cut.
 //
 //   ChipRow { model: [{ id, label, color? }]; current: "ops"; onPicked: id => ... }
 //
@@ -40,12 +42,12 @@ Flickable {
                 readonly property bool dotted: !!modelData.color
                 width: Math.max(Theme.touchTarget, label.implicitWidth + (dotted ? 44 : 28))
                 height: row.height
-                Rectangle {
+                Lens {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width
                     height: chips.chipHeight
-                    radius: height / 2
-                    color: chip.chosen ? Theme.accent : Theme.surface
+                    kind: chip.chosen ? "active" : "rest"
+                    shadow: 0
                     Rectangle {
                         visible: chip.dotted
                         x: 14
@@ -59,7 +61,7 @@ Flickable {
                         x: chip.dotted ? 30 : (parent.width - implicitWidth) / 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: chip.modelData.label
-                        color: chip.chosen ? Theme.accentInk : Theme.text
+                        color: chip.chosen ? Glass.ink : Theme.text
                         font.pixelSize: Theme.fontXs + 1
                         font.weight: Font.DemiBold
                     }

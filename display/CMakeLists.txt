@@ -82,6 +82,7 @@ target_compile_options(mcfly-display PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(mcfly-display PRIVATE MCFLY_VERSION="${PROJECT_VERSION}")
 
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Glass.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(mcfly-display
     URI McFly
@@ -90,11 +91,13 @@ qt_add_qml_module(mcfly-display
     QML_FILES
         qml/Main.qml
         qml/Theme.qml
+        qml/Glass.qml
         qml/components/Card.qml
         qml/components/NavRail.qml
         qml/components/PillButton.qml
         qml/components/Icon.qml
         qml/components/IconButton.qml
+        qml/components/Lens.qml
         qml/components/Glow.qml
         qml/components/GradientTile.qml
         qml/components/AuroraGlow.qml
@@ -172,6 +175,7 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/spectrumglow.frag
         shaders/aurora.frag
         shaders/glow.frag
+        shaders/lens.frag
         shaders/arc.frag
         shaders/ribbons.frag
         shaders/dawn.frag

@@ -385,11 +385,11 @@ Item {
                             readonly property bool chosen: md.paned && modelData.symbol === markets.current.symbol
                             readonly property color tone: modelData.up ? Theme.gain : Theme.loss
                             radius: Theme.radiusSm
-                            color: chosen ? Theme.accentSoft : Theme.surface
-                            border.width: chosen ? 2 : 0
-                            border.color: Theme.accent
+                            color: chosen ? "transparent" : Theme.surface
                             scale: tileTap.pressed ? 0.97 : 1
                             Behavior on scale { NumberAnimation { duration: Theme.quick } }
+                            // Chosen: active glass (Lens), as the nav pill is.
+                            Lens { anchors.fill: parent; visible: tile.chosen; kind: "active"; radius: tile.radius }
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: Theme.mini ? 14 : 18
