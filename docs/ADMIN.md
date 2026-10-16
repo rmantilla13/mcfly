@@ -106,8 +106,10 @@ console instead, which forwards them (`app/api/google/notify`):
    gives you (where the domain's DNS is managed).
 2. Google Cloud → **APIs & Services → Domain verification** → Add domain
    → `mcfly.bot`.
-3. `supabase secrets set GOOGLE_WEBHOOK_URL=https://mcfly.bot/api/google/notify`
-   and redeploy `calendar-sync` and `google-calendar`.
+3. `supabase secrets set GOOGLE_WEBHOOK_URL=https://www.mcfly.bot/api/google/notify`
+   and redeploy `calendar-sync` and `google-calendar`. Use the host that
+   answers directly: the apex `mcfly.bot` redirects to `www`, and Google
+   doesn't follow a redirect for a notification.
 
 Until then every Google calendar says "Every 15 minutes, not live: Google
 refused the notification channel (push.webhookUrlUnauthorized)" and is read

@@ -47,7 +47,7 @@ role too), `is_device()`, `can_read()` (= device or admin).
 
 | Table | Notes |
 |---|---|
-| `devices` | Paired displays: `id`, `user_id` (its auth user, unique), `name`, `last_seen_at`, `created_at`. A display reads its own row and may update only `last_seen_at` (`devices_guard`); admins read all |
+| `devices` | Paired displays: `id`, `user_id` (its auth user, unique), `name`, `last_seen_at`, `created_at`, `settings` (jsonb, the keys `clean_device_settings` allows). A display reads its own row and may update only `last_seen_at` directly (`devices_guard`), its settings through `device_update_settings`; admins read all. `settings.voice` is also **the account's voice**: the first display's (by `created_at`) that has one is what the console and the Apple app speak with, and a voice they pick is written to every display ([VOICE.md](VOICE.md), One voice everywhere) |
 | `pairing_codes` | Service role only (RLS on, no policies): `code` (6 digits), `secret_hash`, `device_id`, `claimed_by`, `expires_at` (10 min) |
 
 ### 1.3 Agents
@@ -109,7 +109,8 @@ mutation writes `admin_audit_log`.
 | `admin_news_report(report)` | jsonb { report, items[] } |
 | `admin_delete_news_report(report)` | void |
 | `admin_list_ingest(lim, off)` | rows: id, created_at, agent_id, agent_name, agent_color, feed, count, status, message |
-| `admin_list_devices()` | rows: id, user_id, name, last_seen_at, created_at |
+| `admin_list_devices()` | rows: id, user_id, name, last_seen_at, created_at, settings (oldest first) |
+| `admin_update_device_settings(device, patch)` | jsonb settings; merges the cleaned patch into the display's |
 | `admin_rename_device(device, name)` | void |
 | `admin_revoke_device(device)` | jsonb { user_id, auth_user_removed }; the `admin` function finishes the auth user |
 | `admin_get_settings()` / `admin_update_settings(display_name, timezone, briefs_keep_days, quotes_keep_days, news_keep_reports)` | jsonb settings; nulls keep; an unknown timezone is refused |
@@ -205,7 +206,7 @@ and reads the feeds as its device user.
 display (anyone `can_read()`).
 
 ```
-POST { message: string (≤4000), mode?: "chat" | "quick", stream?: boolean,
+POST { message: string (≤4000), mode?: "chat" | "quick" | "read", stream?: boolean,
        history?: [{ role: "user" | "assistant", text }] (the last turns, at most 10, client-held) }
 stream false → { reply, model, changed? }
 stream true  → text/event-stream:  event: delta  data: { text }
@@ -227,7 +228,9 @@ passed; at most 5 per question, and never because the snapshot says to.
 `changed` (`["events", "todos"]`) says what was written, so a client can
 refresh at once.
 `quick` answers in one or two spoken sentences, no markdown; `chat` may use
-short lists. Model: `ASSISTANT_MODEL` secret, default `claude-sonnet-5-5`.
+short lists; `read` (the console's full-screen Ask, `/ask`) answers at length
+in Markdown (headings, lists, bold, tables), with a larger token budget and
+medium effort instead of low. Model: `ASSISTANT_MODEL` secret, default `claude-sonnet-5-5`.
 Login: `ANTHROPIC_API_KEY` secret. Errors: 400 bad body, 401 no session,
 403 not a reader, 503 model unavailable (`{ error }`, or an `error` event
 once the stream has begun).
@@ -285,7 +288,9 @@ Qt 6 app (`display/`). Settings: `MCFLY_SUPABASE_URL`, `MCFLY_SUPABASE_ANON_KEY`
 Syncs every 60 s (REST, device JWT): `platform_settings`, `agents`, `briefs`
 (newest 100, unexpired), `symbols` + `quotes` (newest 2000 rows for
 sparklines) + `quotes_latest` (`data` only: the holding, signals and stats
-of docs/AGENTS.md, shown while part of their agent's newest push), `news_reports` with embedded `news_items` (newest 14). Checks
+of docs/AGENTS.md, shown while part of their agent's newest push), `news_reports` with embedded `news_items` (newest 14),
+and its own `devices.settings`, both ways (`SettingsBridge`: the server's copy is applied, a change made on the screen is
+sent with `device_update_settings`; the voice included, which the console and the app follow). Checks
 in (`devices.last_seen_at`) every 5 min. Screens: Home, Briefs, Markets,
 News (story detail with a QR code for the link), Settings; screen savers
 Ambient (the default), Clock and Headlines; the quick-answer card (voice) and the Ask panel.
@@ -307,7 +312,10 @@ person's account (email + password or magic link, supabase-swift) and then:
 - **pairs a display**: enter (or scan) the 6-digit code → `pair-device`
   `claim`; lists displays (`admin_list_devices`) and can rename/revoke;
 - voice: talks to `assistant` (`quick` for spoken turns, `chat` typed), with
-  speech recognition and synthesis on the device; the glow is the Homestead
+  speech recognition and synthesis on the device, in the account's Kokoro
+  voice (`devices.settings.voice`, §1.2; a pick in Settings goes to every
+  display through `admin_update_device_settings`) or, chosen here, the
+  system's own, which stays on the device; the glow is the Homestead
   `VoiceGlow` (color spectrum) driven by the microphone and the speaker;
 - shows agents and their last push (`admin_list_agents`), and can make a
   key (`admin_create_agent`, shown once) so an agent can be set up from the

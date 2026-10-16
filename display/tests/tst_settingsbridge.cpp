@@ -1,10 +1,16 @@
 #include <QtTest>
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkProxy>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QWebSocket>
+#include <QWebSocketServer>
 
 #include "hardware/DisplayController.h"
 #include "models/SettingsBridge.h"
+#include "voice/VoiceClient.h"
 
 // The display's settings and the server's copy: applied from the server,
 // local changes sent back as a debounced patch, the first empty copy filled
@@ -94,6 +100,58 @@ private slots:
         const QVariantMap patch = pushed.first().first().toMap();
         QCOMPARE(patch.size(), 2);
         QVERIFY(patch.contains("screensaver") && patch.contains("darkMode"));
+    }
+
+    void aVoiceServiceComingBackTakesTheServersVoice()
+    {
+        // The voice is the account's: one picked on the phone while the voice
+        // service was away reaches it when it's back, and what it ran before
+        // isn't sent up over it.
+        QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
+        QWebSocketServer service("fake-voice", QWebSocketServer::NonSecureMode);
+        QVERIFY(service.listen(QHostAddress::LocalHost));
+        QPointer<QWebSocket> peer;
+        QString running = "af_heart"; // what the service ran before it went away
+        auto hello = [&]() {
+            const QJsonObject o{{"type", "hello"}, {"version", "1"}, {"wakeword", true}, {"tts", true}, {"stt", true},
+                                {"voice", running}, {"speed", 1.0}, {"wakeword_model", "hey_jarvis"}};
+            peer->sendTextMessage(QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)));
+        };
+        connect(&service, &QWebSocketServer::newConnection, this, [&]() {
+            peer = service.nextPendingConnection();
+            connect(peer, &QWebSocket::textMessageReceived, this, [&](const QString &t) {
+                const QJsonObject m = QJsonDocument::fromJson(t.toUtf8()).object();
+                if (m.value("type").toString() != QLatin1String("set"))
+                    return;
+                if (m.contains("voice"))
+                    running = m.value("voice").toString();
+                hello(); // the service answers a set with a fresh hello
+            });
+            hello();
+        });
+
+        DisplayController display;
+        VoiceClient voice(QUrl(QStringLiteral("ws://127.0.0.1:%1").arg(service.serverPort())));
+        voice.setRetryInterval(200);
+        SettingsBridge bridge(nullptr, &display, nullptr, &voice);
+        QSignalSpy pushed(&bridge, &SettingsBridge::push);
+        QVariantMap server = bridge.collect(); // the service isn't there yet: no voice keys
+        server.insert("voice", "am_fenrir");
+        server.insert("voiceSpeed", 1.0);
+        server.insert("wakewordModel", "hey_jarvis");
+        server.insert("wakeword", true);
+        bridge.receive(server);
+
+        voice.start();
+        QTRY_COMPARE(voice.voiceId(), QStringLiteral("am_fenrir"));
+        QCOMPARE(running, QStringLiteral("am_fenrir"));
+        QTest::qWait(1800);
+        for (const QList<QVariant> &p : std::as_const(pushed))
+            QVERIFY2(!p.first().toMap().contains("voice"), "the old voice was sent over the account's");
+
+        // Picked on the display itself later: that one goes up.
+        voice.setVoiceOptions("af_bella", 0.0, {});
+        QTRY_COMPARE_WITH_TIMEOUT(pushed.size() > 0 && pushed.last().first().toMap().value("voice") == QVariant("af_bella"), true, 3000);
     }
 
     void keysTheServerLacksAreAdded()

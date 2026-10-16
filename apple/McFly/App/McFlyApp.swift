@@ -198,7 +198,10 @@ struct MainView: View {
         // Back in front after a while: what the agents pushed meanwhile. The
         // display syncs every minute; the phone catches up when it's looked at.
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, let loaded = app.feeds.loadedAt, Date.now.timeIntervalSince(loaded) > 60 else { return }
+            guard phase == .active else { return }
+            // The voice too: picked on the display or the web, it's this device's as well.
+            Task { await app.syncVoice() }
+            guard let loaded = app.feeds.loadedAt, Date.now.timeIntervalSince(loaded) > 60 else { return }
             Task { await app.feeds.refresh() }
         }
     }

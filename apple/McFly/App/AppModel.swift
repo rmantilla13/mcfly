@@ -33,6 +33,11 @@ final class AppModel {
     var pendingPairCode: String?
     /// Set once a sign-in link has been emailed, so the screen can say so.
     var magicLinkSentTo: String?
+    /// The voice answers are read in: the account's (`AccountVoice`), kept on this
+    /// device so the first answer needn't wait for the server, or this device's own.
+    private(set) var voice = VoiceChoice.current
+    @ObservationIgnored private var voicePicks = 0
+    @ObservationIgnored private var voiceSaving: Task<Void, Never>?
     /// The screen savers' backdrop (`AccountBackdrop`), read from the displays: the
     /// mesh, or one of the skies Ambient draws (`Backdrop`). A build pinned to one
     /// (`-McFlyBackdrop`, for screenshots) keeps it.
@@ -94,8 +99,10 @@ final class AppModel {
         do {
             if try await admin.isPlatformAdmin() {
                 phase = .ready
+                async let voiceSynced: Void = syncVoice()
                 async let backdropSynced: Void = syncBackdrop()
                 await feeds.refresh()
+                await voiceSynced
                 await backdropSynced
             } else {
                 phase = .notAdmin
@@ -155,6 +162,39 @@ final class AppModel {
                 report(error)
             }
         }
+    }
+
+    // MARK: Voice
+
+    /// Catches up with the account's voice, picked on the display or the web, say.
+    /// This device's own voice stays; with no display, the choice here is all there is.
+    func syncVoice() async {
+        let pick = voicePicks
+        await voiceSaving?.value
+        guard let account = try? await admin.accountVoice(), pick == voicePicks else { return }
+        setVoice(VoiceChoice(rawValue: AccountVoice.follow(local: voice.rawValue, account: account)) ?? voice)
+    }
+
+    /// A voice picked here. A Kokoro voice goes to every display, so the display and
+    /// the web speak with it too; this device's own voice stays on this device.
+    func chooseVoice(_ choice: VoiceChoice) {
+        voicePicks += 1
+        setVoice(choice)
+        guard choice.kokoro != nil else { return }
+        let admin = admin
+        voiceSaving = Task {
+            do {
+                try await admin.setAccountVoice(choice.rawValue)
+            } catch {
+                report(error)
+            }
+        }
+    }
+
+    private func setVoice(_ choice: VoiceChoice) {
+        guard choice != voice else { return }
+        voice = choice
+        VoiceChoice.current = choice
     }
 
     // MARK: Backdrop

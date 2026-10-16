@@ -33,8 +33,11 @@ SettingsBridge::SettingsBridge(FeedStore *store, DisplayController *display, Ass
     if (m_assistant)
         connect(m_assistant, &Assistant::providerChanged, this, &SettingsBridge::onLocalChange);
     if (m_voice) {
-        // A hello after the display (or the web) changed the voice.
-        connect(m_voice, &VoiceClient::infoChanged, this, &SettingsBridge::onLocalChange);
+        // A hello after the display (or the web) changed the voice. The first one
+        // after the service (re)connects only says what it ran before: the voice
+        // is the account's, and may have been picked elsewhere meanwhile.
+        connect(m_voice, &VoiceClient::availableChanged, this, [this]() { m_voiceFresh = m_voice->available(); });
+        connect(m_voice, &VoiceClient::infoChanged, this, &SettingsBridge::onVoiceInfo);
         connect(m_voice, &VoiceClient::speakRepliesChanged, this, &SettingsBridge::onLocalChange);
         connect(m_voice, &VoiceClient::wakewordEnabledChanged, this, &SettingsBridge::onLocalChange);
     }
@@ -155,6 +158,24 @@ void SettingsBridge::receive(const QVariantMap &settings)
             m_server.insert(it.key(), it.value());
         emit push(add);
     }
+}
+
+void SettingsBridge::onVoiceInfo()
+{
+    if (m_voiceFresh) {
+        m_voiceFresh = false;
+        // The service has just come (back): the server's voice wins over the one
+        // it ran before (picked on the web or the phone while it was away, say).
+        // Its answer, a fresh hello, is then compared as usual.
+        if (m_seenServer && (m_server.contains("voice") || m_server.contains("voiceSpeed") || m_server.contains("wakewordModel"))) {
+            m_applying = true;
+            m_voice->setVoiceOptions(m_server.value("voice").toString(), m_server.value("voiceSpeed", 0.0).toDouble(),
+                                     m_server.value("wakewordModel").toString());
+            m_applying = false;
+            return;
+        }
+    }
+    onLocalChange();
 }
 
 void SettingsBridge::onLocalChange()

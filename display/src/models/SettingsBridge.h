@@ -17,6 +17,10 @@ class VoiceClient;
 //                     the keys that differ.
 //   first sync with an empty server copy: this display's current settings
 //                     are uploaded, so nothing set on the Pi is lost.
+//   the voice service (re)connects: its first hello is what it ran before, not
+//                     a pick, so the server's voice is applied to it instead.
+//                     The voice is the account's: the web and the app follow
+//                     this display's (docs/VOICE.md).
 //
 // Keys and ranges match clean_device_settings (migration 20261015000004).
 // The assistant and voice pointers may be null (tests).
@@ -41,6 +45,7 @@ signals:
 
 private:
     void onLocalChange();
+    void onVoiceInfo();
 
     FeedStore *m_store;
     DisplayController *m_display;
@@ -49,5 +54,6 @@ private:
     QVariantMap m_server;
     bool m_seenServer = false;
     bool m_applying = false;
+    bool m_voiceFresh = false; // the next hello is the voice service's first since it connected
     QTimer m_debounce;
 };

@@ -316,10 +316,12 @@ public struct Device: Codable, Identifiable, Hashable, Sendable {
 
     /// The part of the display's settings (`devices.settings`) the app reads.
     public struct Settings: Codable, Hashable, Sendable {
+        /// The account's voice (`AccountVoice`): one of Kokoro's.
+        public var voice: String?
         /// The screen savers' backdrop (`AccountBackdrop`): the mesh, or one of the skies.
         public var backdrop: String?
 
-        public init(backdrop: String? = nil) { self.backdrop = backdrop }
+        public init(voice: String? = nil, backdrop: String? = nil) { self.voice = voice; self.backdrop = backdrop }
     }
 
     public let id: UUID

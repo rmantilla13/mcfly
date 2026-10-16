@@ -58,6 +58,9 @@ struct VoiceModeView: View {
         }
         .onChange(of: session?.phase) { _, phase in
             guard let phase else { return }
+            // While McFly thinks, catch up with a voice picked elsewhere since, so the
+            // answer is read in it.
+            if phase == .thinking { Task { await app.syncVoice() } }
             AccessibilityNotification.Announcement(Self.status(for: phase)).post()
         }
     }

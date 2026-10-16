@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var saved = false
     @State private var locating = false
     @State private var locationNote: LocationNote?
-    @State private var voice = VoiceChoice.current
     @State private var sample = VoiceSpeaker()
 
     private var changed: Bool {
@@ -87,7 +86,7 @@ struct SettingsView: View {
                 Text("Which model answers Voice and Ask, here and on the display. Saved with the display settings above.")
             }
             Section {
-                Picker("Voice", selection: $voice) {
+                Picker("Voice", selection: Binding(get: { app.voice }, set: { app.chooseVoice($0) })) {
                     ForEach(VoiceChoice.allCases) { Text($0.name).tag($0) }
                 }
                 Button(sample.isSpeaking ? "Stop" : "Hear it") {
@@ -101,11 +100,10 @@ struct SettingsView: View {
                 Text("Voice")
             } footer: {
                 Text(BuiltInVoice.isBundled
-                     ? "Heart, Bella, Michael and Fenrir are the voices the display and the web speak with, made on this device. The first answer after an update takes a moment longer while the voice gets ready."
-                     : "This build doesn't include McFly's voices, so this device's voice reads answers.")
+                     ? "Heart, Bella, Michael or Fenrir is McFly's voice everywhere: picked here, the display and the web speak with it too, and a pick there reaches this device. This device's voice stays on this device. The first answer after an update takes a moment longer while the voice gets ready."
+                     : "This build doesn't include McFly's voices, so this device's voice reads answers. Picking one of McFly's still sets it for the display and the web.")
             }
-            .onChange(of: voice) { _, choice in
-                VoiceChoice.current = choice
+            .onChange(of: app.voice) { _, _ in
                 sample.stop()
                 sample.prepare()
             }
@@ -119,6 +117,7 @@ struct SettingsView: View {
         .screenBackground()
         .navigationTitle("Settings")
         .task { await load() }
+        .task { await app.syncVoice() }
     }
 
     private func load() async {

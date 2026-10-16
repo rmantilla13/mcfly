@@ -3,8 +3,9 @@ import McFlyVoice
 import Observation
 import os
 
-/// Which voice reads answers: one of Kokoro's, the voice the display and the web speak
-/// with, or this device's own. Kept per device under the web's key, Heart unless changed.
+/// Which voice reads answers: one of Kokoro's, the account's voice the display and the web
+/// speak with too (`AccountVoice`, `AppModel.syncVoice`), or this device's own, which stays
+/// here. Kept on the device under the web's key, Heart until the account says otherwise.
 enum VoiceChoice: String, CaseIterable, Identifiable {
     case heart = "af_heart"
     case bella = "af_bella"

@@ -299,6 +299,37 @@ curl -X POST "$MCFLY_URL/functions/v1/ingest/events" \
 
 Events are kept 60 days after they end. At most 1000 per push.
 
+### A Google calendar without a secret address
+
+Calendars (the console page) reads a calendar from its iCal link. Google
+hides a calendar's "Secret address in iCal format" when the calendar was
+shared with you or a Workspace admin turned external sharing off, and its
+public address answers 404 unless the calendar is public. For those,
+`scripts/google-calendar-push.gs` runs in Google Apps Script as you and
+pushes the calendar here every 15 minutes, whole (`replace`): titles, times
+and locations, never descriptions or guests, and not events you declined.
+
+1. Console → Agents → New agent (say "Work calendar"); copy its key. It
+   needs no read access.
+2. Google Calendar → Settings → the calendar → Integrate calendar: copy its
+   Calendar ID.
+3. script.google.com, as the account that sees the calendar → New project →
+   paste the script.
+4. Project Settings → Script Properties: `MCFLY_KEY` (the key),
+   `CALENDAR_ID`, and optionally `CALENDAR_NAME` (the name on the display;
+   default: the calendar's own).
+5. Run `setup` and allow access: it pushes once and schedules itself. `stop`
+   removes the schedule. A failed scheduled run emails you.
+
+To have Google ask for read-only calendar access instead of full access:
+Project Settings → "Show appsscript.json manifest file", then add
+`"oauthScopes": ["https://www.googleapis.com/auth/calendar.readonly",
+"https://www.googleapis.com/auth/script.external_request",
+"https://www.googleapis.com/auth/script.scriptapp"]`.
+
+`deno test --allow-read scripts/google-calendar-push.test.ts` runs the
+script against McFly's own parser.
+
 ## Todos and reminders
 
 ```bash

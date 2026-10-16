@@ -8,6 +8,8 @@ public protocol AdminService: Sendable {
     func listDevices() async throws -> [Device]
     func renameDevice(_ id: UUID, name: String) async throws
     func revokeDevice(_ id: UUID) async throws
+    /// `admin_update_device_settings` with the voice alone (`AccountVoice`).
+    func setVoice(_ voice: String, on device: UUID) async throws
     func listAgents() async throws -> [Agent]
     func createAgent(name: String, kind: Agent.Kind, color: String) async throws -> CreatedAgent
     func rotateAgentKey(_ id: UUID) async throws -> String
@@ -42,6 +44,15 @@ public struct SupabaseAdminService: AdminService {
 
     public func renameDevice(_ id: UUID, name: String) async throws {
         try await client.rpc("admin_rename_device", params: ["device": id.lowercased, "name": name]).execute()
+    }
+
+    /// The function merges the patch into the display's settings, so the rest stay.
+    public func setVoice(_ voice: String, on device: UUID) async throws {
+        struct Params: Encodable {
+            var device: String
+            var patch: [String: String]
+        }
+        try await client.rpc("admin_update_device_settings", params: Params(device: device.lowercased, patch: ["voice": voice])).execute()
     }
 
     /// Through the `admin` function: removing the display's auth user needs the

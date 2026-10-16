@@ -181,6 +181,13 @@ public actor DemoAdminService: AdminService {
         devices.removeAll { $0.id == id }
     }
 
+    public func setVoice(_ voice: String, on device: UUID) async throws {
+        guard let i = devices.firstIndex(where: { $0.id == device }) else { throw McFlyError.message("Device not found") }
+        var settings = devices[i].settings ?? .init()
+        settings.voice = voice
+        devices[i].settings = settings
+    }
+
     public func listAgents() async throws -> [Agent] { agents }
 
     public func createAgent(name: String, kind: Agent.Kind, color: String) async throws -> CreatedAgent {

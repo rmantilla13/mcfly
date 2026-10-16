@@ -172,6 +172,45 @@ The wake word is ignored while the service is speaking (so it can't wake
 itself), while a question is in progress, for 2 s after it fires, and for
 0.5 s after speaking or listening ends, while the room's echo fades.
 
+## One voice everywhere
+
+McFly speaks with the same Kokoro voice on the Pi, in the web console and on
+the iPhone and Mac: Heart unless someone picks Bella, Michael or Fenrir. It is
+one choice for the account, and picking it anywhere changes it everywhere.
+
+| Picked on | Goes to | The others follow |
+|---|---|---|
+| The display (gear → Settings) | The voice service, then its own `devices.settings.voice` (`device_update_settings`) | The web and the app read it from `admin_list_devices` |
+| The console (Displays → Customize) | That display, then every other one (`admin_update_device_settings`) | The display within a minute (its sync), the web and the app likewise |
+| The web (`/voice`) or the app (Settings → Voice) | Every display (`admin_update_device_settings`, `{ "voice": … }` alone) | The display within a minute; the web and the app likewise |
+
+- **Where it lives.** The displays' settings (`devices.settings.voice`) hold
+  it; no table of its own. The account's voice is the first display's (oldest
+  first, as `admin_list_devices` orders them) that has one. With no display
+  paired there is nowhere to share it, so the web and the app each keep their
+  own choice until one is.
+- **When the others catch up.** The display syncs every minute. The web's
+  voice page rereads it every minute and whenever the tab is looked at again;
+  Ask and the Today panel do while they read replies aloud. The app rereads
+  it when it comes to the front, when Settings opens and while McFly thinks
+  about each spoken question, so an answer is read in the voice picked
+  elsewhere a moment ago.
+- **This device's voice stays put.** The web and the app also offer the
+  browser's or the system's own voice. That choice is the device's alone
+  (`mcfly.voice` in the browser's storage or the app's defaults), is never
+  sent, and a voice picked elsewhere doesn't override it. Picking a Kokoro
+  voice again rejoins the account's.
+- **The voice service coming back.** It remembers its voice across restarts
+  (`state.json`), so its first `hello` after it reconnects says what it ran
+  before, not a choice. If the account's voice changed meanwhile, the display
+  sends that one to the service rather than the old one to the server
+  (`SettingsBridge`).
+- **More than one display.** A pick on the web, in the app or in Customize
+  goes to all of them. One made on a display's own screen reaches only that
+  display's row: the web and the app follow it only if it's the oldest
+  display with a voice, and the other displays don't follow it. With one
+  display, as today, that doesn't arise.
+
 ## Settings and tuning
 
 Every key is optional; `voice/voice.example.toml` lists them all with their
@@ -187,7 +226,7 @@ defaults. The ones you're most likely to touch:
 | `stt.model` | `base.en` | `tiny.en` is faster but sloppier; `small.en` is more accurate but noticeably slower on a Pi |
 | `stt.initial_prompt` | empty | Names and odd words, e.g. `"McFly, Grok, NVDA, Daily Pulse."` |
 | `tts.engine` | `auto` | `kokoro`, `piper`, `espeak` or `off`; `auto` tries them in that order |
-| `tts.kokoro_voice` | `af_heart` | Homestead's voices: `af_heart` (Heart), `af_bella` (Bella), `am_michael` (Michael), `am_fenrir` (Fenrir). The display's Settings and the web console's display settings change it while running |
+| `tts.kokoro_voice` | `af_heart` | Homestead's voices: `af_heart` (Heart), `af_bella` (Bella), `am_michael` (Michael), `am_fenrir` (Fenrir). What the service starts with before anything has picked one; once the display has synced, the account's voice (One voice everywhere, above) wins, and the display, the web and the app change it while running |
 | `tts.voice` | `en_US-amy-medium` | The Piper fallback: any [Piper voice](https://rhasspy.github.io/piper-samples/), then `--download-models` |
 | `tts.speed` | `1.0` | `1.1`–`1.2` for snappier answers |
 | `audio.input_device` / `output_device` | auto | When it picks the wrong mic or speaker |
