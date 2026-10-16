@@ -382,7 +382,7 @@ Popup {
                             SettingRow {
                                 icon: "sparkle"
                                 title: qsTr("Backdrop")
-                                detail: qsTr("Behind the clock on Ambient and Clock: the drifting gradient, or a sky of its own")
+                                detail: qsTr("Behind Ambient, Clock and the assistant: the drifting gradient, or a sky of its own")
                             }
                             ChipRow {
                                 Layout.fillWidth: true

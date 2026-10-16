@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "cn";
 import { BrandMark } from "@/components/Brand";
+import { MeshGradient } from "@/components/MeshGradient";
+import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Button } from "@/components/ui/button";
 import PromptBar from "@/components/reactbits/PromptBar";
 import ThoughtLine from "@/components/reactbits/ThoughtLine";
@@ -14,6 +16,7 @@ import { recognitionClass, type Recognition } from "@/components/voice/recogniti
 import { speakReply, stopSpeaking, storedVoice, useVoice } from "@/components/voice/speech";
 import { useAsk, type Turn } from "@/components/voice/useAsk";
 import { plainText } from "@/lib/markdown";
+import type { Backdrop } from "@/lib/sky";
 import { Markdown } from "./Markdown";
 
 // Ask McFly, full screen: room for the assistant to answer properly (read
@@ -22,7 +25,9 @@ import { Markdown } from "./Markdown";
 // out below it as it arrives; the page holds still while you read. Type, or
 // tap the mic and speak. The thread stays for the tab, and Today's Ask bar
 // hands its conversation over when it expands to here. /ask?q=… (a card's
-// "Ask about this") asks that question on arrival.
+// "Ask about this") asks that question on arrival. Behind it all, the
+// display's backdrop (Displays → Customize), as the display's assistant draws
+// it: the moving gradient or one of its skies, light or dark with the theme.
 
 const SPEAK_KEY = "mcfly.ask.speak"; // shared with Today's Ask bar
 const noSubscribe = () => () => {};
@@ -55,7 +60,7 @@ function exchanges(turns: Turn[]): Exchange[] {
   return out;
 }
 
-export function AskScreen({ suggestions, question }: { suggestions: string[]; question?: string }) {
+export function AskScreen({ suggestions, question, backdrop = "mesh" }: { suggestions: string[]; question?: string; backdrop?: Backdrop }) {
   const router = useRouter();
   const canListen = useSyncExternalStore(noSubscribe, () => !!recognitionClass(), () => false);
   const remembered = useSyncExternalStore(noSubscribe, storedSpeak, () => false);
@@ -223,6 +228,16 @@ export function AskScreen({ suggestions, question }: { suggestions: string[]; qu
 
   return (
     <main className="fixed inset-0 flex flex-col bg-background text-foreground">
+      {/* A sky at a little over half its strength: answers are read on it, and
+          in dark mode the console keeps the day's bright glows, where the
+          display's dark palette deepens them. */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        {backdrop === "mesh" ? (
+          <MeshGradient className="absolute inset-0" rings={2} resolution={0.5} maxFps={15} />
+        ) : (
+          <SkyBackdrop className="absolute inset-0" sky={backdrop} maxFps={15} brightness={0.55} />
+        )}
+      </div>
       <header className="relative z-10 flex items-center gap-3 border-b border-border/60 bg-background/80 px-5 py-3 backdrop-blur max-sm:px-4">
         <BrandMark className="size-8 rounded-[10px]" />
         <div className="grid min-w-0 leading-tight">

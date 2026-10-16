@@ -127,7 +127,7 @@ export function DisplaySettingsDialog({ device, action }: { device: Device; acti
                 />
                 <Choice
                   name="backdrop"
-                  label="Backdrop (Ambient and Clock)"
+                  label="Backdrop (Ambient, Clock and Ask)"
                   value={s.backdrop}
                   options={[
                     ["mesh", "Mesh (gradient, an aurora at night)"],

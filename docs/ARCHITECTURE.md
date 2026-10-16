@@ -121,7 +121,9 @@ events; the composition drifts every minute against burn-in), **Headlines**
 (today's stories one at a time, over their pictures, with the clock) or
 **Clock** (the time, the date, the latest brief and a
 line of the markets on the time-of-day gradient). Settings → Backdrop (or the
-console's Customize) picks what Ambient and Clock draw behind the words:
+console's Customize) picks what Ambient and Clock draw behind the words, and
+what the assistant panel and the console's Ask open over (the mesh there
+without the aurora, the console's skies at half strength):
 **Mesh**, the moving gradient with an aurora hanging over it at night, or one
 of five skies of their own, **Arc**, **Ribbons**, **Dawn**, **Silk** and
 **Pillars** (`Backdrop.qml`: one shader each in the glow colours, laid on the

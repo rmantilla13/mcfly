@@ -269,7 +269,7 @@ export type Device = {
 // 20261015000008, 20261016000001 and 20261016000003).
 export type DisplaySettings = Partial<{
   screensaver: "ambient" | "clock" | "headlines";
-  backdrop: "mesh" | "arc" | "ribbons" | "dawn" | "silk" | "pillars"; // behind Ambient and Clock: the gradient (an aurora at night), or a sky of its own
+  backdrop: "mesh" | "arc" | "ribbons" | "dawn" | "silk" | "pillars"; // behind Ambient, Clock and Ask: the gradient (the savers hang an aurora over it at night), or a sky of its own
   homeLayout: "today" | "bento" | "assistant"; // Home: the day as a timeline, a grid of tiles, or McFly's summary first
   darkMode: boolean;
   animatedTiles: boolean;

@@ -2,11 +2,11 @@ import QtQuick
 import McFly
 import McFly.Core
 
-// A sky for the screen savers: one of five moving backdrops in the glow
-// colours, each a fragment shader of its own (shaders/<style>.frag), laid on
-// the canvas by an OKLab mix so it is a pastel wash on the warm canvas by day
-// and a glow over the near-black one at night. Decorative; what goes on top
-// reads in `ink` and `inkMuted`.
+// A sky for the screen savers and the assistant: one of five moving
+// backdrops in the glow colours, each a fragment shader of its own
+// (shaders/<style>.frag), laid on the canvas by an OKLab mix so it is a pastel
+// wash on the warm canvas by day and a glow over the near-black one at night.
+// Decorative; what goes on top reads in `ink` and `inkMuted`.
 //
 //   Backdrop {
 //       anchors.fill: parent

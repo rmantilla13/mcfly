@@ -38,12 +38,32 @@ Rectangle {
     // Swallow taps so nothing underneath reacts.
     MouseArea { anchors.fill: parent }
 
-    // Glow behind the empty state; fades out once the conversation starts.
-    Glow {
+    // The display's backdrop (Settings → Backdrop, Device.backdrop), the one
+    // the screen savers draw: the moving gradient, or one of Backdrop's
+    // skies, light or dark with the theme. Only built while the panel shows,
+    // and its clock only runs while it is open.
+    Loader {
         anchors.fill: parent
-        anchors.topMargin: parent.height * 0.3
-        opacity: messages.count === 0 ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Theme.smooth } }
+        active: panel.visible
+        sourceComponent: Device.backdrop === "mesh" ? meshBackdrop : skyBackdrop
+    }
+    Component {
+        id: meshBackdrop
+        GradientTile {
+            radius: 0
+            colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
+            active: panel.open
+            maxFps: 15
+            rings: 2
+            ringScale: 1.3
+        }
+    }
+    Component {
+        id: skyBackdrop
+        Backdrop {
+            style: Device.backdrop
+            active: panel.open
+        }
     }
 
     ColumnLayout {
