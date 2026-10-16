@@ -15,7 +15,7 @@ ApplicationWindow {
     color: Theme.background
     font.family: Theme.fontFamily
 
-    readonly property var screenNames: ["home", "briefs", "markets", "news", "projects", "boards", "calendar"]
+    readonly property var screenNames: ["home", "briefs", "markets", "news", "projects", "boards", "calendar", "games"]
     property int currentScreen: Math.max(0, screenNames.indexOf(startScreen))
     readonly property real keyboardHeight: keyboard.item ? keyboard.item.visibleHeight : 0
     // "chat" while push-to-talk is feeding the assistant panel; the wake word
@@ -86,6 +86,7 @@ ApplicationWindow {
         news.closeStory()
         projects.closeDetail()
         calendar.closeDetail()
+        games.closeDetail()
     }
 
     // The frame and the size, from the window (docs/LAYOUTS.md).
@@ -254,6 +255,10 @@ ApplicationWindow {
         Page {
             anchors.fill: parent; index: 6; current: window.currentScreen
             CalendarScreen { id: calendar; anchors.fill: parent; shown: window.currentScreen === 6 && !assistant.open; isCurrent: window.currentScreen === 6 }
+        }
+        Page {
+            anchors.fill: parent; index: 7; current: window.currentScreen
+            GamesScreen { id: games; anchors.fill: parent; shown: window.currentScreen === 7 && !assistant.open; isCurrent: window.currentScreen === 7 }
         }
     }
 

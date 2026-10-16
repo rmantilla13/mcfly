@@ -84,6 +84,12 @@ target_compile_definitions(mcfly-display PRIVATE MCFLY_VERSION="${PROJECT_VERSIO
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(qml/Glass.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
+# Open-source games kept as their authors wrote them (display/games/README.md).
+# GamesScreen.qml loads them from the resources when one is opened.
+file(GLOB_RECURSE mcfly_vendored_games RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS
+    games/samegame/*.qml games/samegame/*.js games/samegame/qmldir games/samegame/*.png
+    games/maroon/*.qml games/maroon/*.js games/maroon/*.png games/maroon/*.wav)
+
 qt_add_qml_module(mcfly-display
     URI McFly
     VERSION 1.0
@@ -145,8 +151,16 @@ qt_add_qml_module(mcfly-display
         qml/screensaver/ClockSaver.qml
         qml/screensaver/HeadlinesSaver.qml
         qml/screensaver/AmbientSaver.qml
+        qml/screens/GamesScreen.qml
+        qml/games/Game2048.qml
+        qml/games/TrafficJam.qml
+        qml/games/TicTacToe.qml
+        games/2048/game.js
+        games/traffic/rush.js
+        games/traffic/puzzles.js
     RESOURCES
         resources/demo/feed.json
+        ${mcfly_vendored_games}
         # The on-screen keyboard is optional at run time, so these are not
         # compiled: KeyboardPanel loads them only when the module is there.
         qml/components/KeyboardPanel.qml

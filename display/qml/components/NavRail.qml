@@ -28,8 +28,13 @@ Rectangle {
         { icon: "news",     label: qsTr("News") },
         { icon: "chores",   label: qsTr("Projects") },
         { icon: "grid",     label: qsTr("Boards") },
-        { icon: "calendar", label: qsTr("Calendar") }
+        { icon: "calendar", label: qsTr("Calendar") },
+        { icon: "games",    label: qsTr("Games") }
     ]
+    // The bar's slots: 64 px where they fit, narrower where they don't (the
+    // 720 px Touch Display 2), so every item, the divider and the three
+    // buttons share the width with room for the active item's label.
+    readonly property real barSlot: Math.max(44, Math.min(64, Math.floor((width - 16 - 17 - 3 * 64 - (items.length + 3) * 2 - 72) / items.length)))
 
     color: Theme.surface
 
@@ -185,8 +190,9 @@ Rectangle {
             delegate: NavItem {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Theme.compact ? 80 : 96
-                // Seven items and the three buttons fit the 800 px compact panel.
-                Layout.preferredHeight: Theme.compact ? 66 : 88
+                // Eight items, a touch target tall, and the three buttons fit
+                // the 800 px compact panel; 84 on a 1080 px wall.
+                Layout.preferredHeight: Theme.compact ? 64 : 84
             }
         }
 
@@ -220,9 +226,11 @@ Rectangle {
         }
     }
 
-    // ---- The bar: 64 px slots that abut, the active one wide enough for its
-    // label, a divider, then the three buttons in their own slots. About 704 px
-    // in all, so it fits the 720-wide Touch Display 2 and sits centred on 800.
+    // ---- The bar: slots that abut (barSlot, 64 px where there is room), the
+    // active one wide enough for its label, a divider, then the three buttons
+    // in their own 64 px slots. Never more than the bar is wide: on the
+    // 720-wide Touch Display 2 the slots narrow to about 50 px, and the bar
+    // sits centred on 800.
     Row {
         id: barRow
         visible: rail.horizontal
@@ -233,7 +241,7 @@ Rectangle {
             id: barItems
             model: rail.horizontal ? rail.items : []
             delegate: NavItem {
-                width: active ? Math.min(136, 64 + labelWidth + 8) : 64
+                width: active ? Math.min(rail.barSlot + 72, rail.barSlot + labelWidth + 8) : rail.barSlot
                 height: 64
                 Behavior on width { NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
             }

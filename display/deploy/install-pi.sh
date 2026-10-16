@@ -51,6 +51,9 @@ sudo dpkg --configure -a
 # Boot video: the ffmpeg package includes ffplay, which draws on the KMS/DRM
 # screen before the app starts. ffmpeg itself is the framebuffer fallback.
 # qt6-base-private-dev: lets the app switch the HDMI panel off when it sleeps.
+# Games (display/games/README.md): particles for Same Game and Maroon,
+# LocalStorage and SQLite for the scores, QtMultimedia for Maroon's sounds
+# (on Trixie its FFmpeg backend comes with libqt6multimedia6).
 # A Pi on weak Wi-Fi drops downloads: retry each one, and MCFLY_FORCE_IPV4=1
 # skips IPv6 where the network advertises it but doesn't route it.
 apt_opts=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30)
@@ -64,6 +67,8 @@ sudo apt-get "${apt_opts[@]}" install -y \
     qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
     qml6-module-qtquick-shapes \
     qml6-module-qtquick-virtualkeyboard qt6-virtualkeyboard-plugin \
+    qml6-module-qtquick-particles qml6-module-qtquick-localstorage libqt6sql6-sqlite \
+    qml6-module-qtmultimedia \
     pipewire pipewire-pulse wireplumber libasound2-plugins alsa-utils \
     fonts-inter fonts-noto-color-emoji \
     ffmpeg curl

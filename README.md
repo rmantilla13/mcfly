@@ -10,7 +10,7 @@ A voice assistant (Claude or Grok) answers questions about all of it.
 | Part | What it is |
 |---|---|
 | `backend/` | Supabase: Postgres with row-level security, the feed tables, agent keys, and the edge functions (`ingest`, `pair-device`, `admin`, `assistant`, `calendar-sync`, `google-calendar`, `bots`) |
-| `display/` | The wall screen: a Qt 6 / QML / C++ kiosk for a Raspberry Pi 5 with a touchscreen. Home, Briefs, Markets (and Metrics), News, Projects, Boards, Calendar, screen savers, voice |
+| `display/` | The wall screen: a Qt 6 / QML / C++ kiosk for a Raspberry Pi 5 with a touchscreen. Home, Briefs, Markets (and Metrics), News, Projects, Boards, Calendar, Games, screen savers, voice |
 | `apple/` | The iPhone and Mac app (SwiftUI): the same feeds, pairing a display, voice with the color-spectrum glow |
 | `admin/` | The console at mcfly.bot (Next.js + shadcn/ui): agents and their keys, the feeds, displays, settings, audit |
 | `voice/` | The on-device voice service for the Pi: wake word, speech in and out |

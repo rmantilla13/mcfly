@@ -144,7 +144,8 @@
       "news",
       "projects",
       "boards",
-      "calendar"
+      "calendar",
+      "games"
     ],
     "buttons": [
       "ask",
@@ -153,6 +154,8 @@
     ],
     "bar": {
       "slot": 64,
+      "slotAt720": 50,
+      "slotAt800": 60,
       "activeSlotMax": 136,
       "buttonSize": 56,
       "pillInset": 4

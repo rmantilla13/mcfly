@@ -118,6 +118,8 @@ jobs:
             qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
             qml6-module-qtquick-shapes \
             qml6-module-qtquick-virtualkeyboard qt6-virtualkeyboard-plugin \
+            qml6-module-qtquick-particles qml6-module-qtquick-localstorage libqt6sql6-sqlite \
+            qml6-module-qtmultimedia \
             fonts-inter
       - uses: actions/checkout@v4
       - name: Build

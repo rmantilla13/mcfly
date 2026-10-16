@@ -37,7 +37,7 @@ scale = shortSide < 600 ? s : m     (l is reserved; today m is used above 600)
 | Pictures on pages | yes | yes | no (tinted initials) | yes |
 | Home | fills the screen; only the day list scrolls | same | same, by dropping the ask bar | a feed that scrolls |
 
-A rail needs about 720 px of height for seven items and three buttons at
+A rail needs about 770 px of height for eight items and three buttons at
 64 px targets; that, not taste, is why Mini (480 tall) gets the bar. Tall
 gets it because a rail would eat a fifth of a 720 px width.
 
@@ -73,10 +73,11 @@ Order everywhere: Home · Briefs · Markets · News · Projects · Boards ·
 Calendar, then Ask (sparkle), Settings (gear) and Sleep (moon).
 
 `NavRail.qml` has one model and two shapes. `horizontal: Theme.navMode ===
-"bar"` lays the same items out along the bottom: icon-only 64 px slots, the
-active slot widening to fit its label (the pill animates `x` and `width`),
-a divider, then the three round buttons in 64 px slots. The slots abut; the
-pill is inset 4 px. At 720 wide the bar is about 704 px of slots, centred.
+"bar"` lays the same items out along the bottom: icon-only slots (`barSlot`,
+64 px where eight fit), the active slot widening to fit its label (the pill
+animates `x` and `width`), a divider, then the three round buttons in 64 px
+slots. The slots abut; the pill is inset 4 px. At 720 wide the item slots
+narrow to 50 px and the bar is about 700 px, centred; at 800 they are 60.
 
 The controls are glass (`Lens.qml`, drawn by `shaders/lens.frag`; what they
 share is `Glass.qml`). The rail shows the aura (the glow's colour fields,
@@ -115,6 +116,7 @@ offline pill moves to the top centre so it never covers a header's controls.
 | Projects | board 3, a progress ring per card \| pane 460: tile with a ring 132, then next and the updates as a thread | board 2 \| pane 400, ring 108 | board 2 × 124, ring 50 → push, ring 84 | board 2 × 170, one line of summary → push |
 | Boards | bento of 6: first metric a 2×2 hero tile, statuses in a row one health strip (up to 6 a row, then it wraps a row taller), charts 4×2, progress a ring | bento of 4, same (4 a row) | bento of 2: no hero, charts 2×2, 3 statuses a row; chips scroll | bento of 2, same |
 | Calendar | 14 days \| agenda \| day tile 420: the day's hours with its events, now gliding down them, then its calendars | 10 days \| agenda \| tile 360, same | 7 days; agenda | 7 days; tile 230 (two rows); agenda |
+| Games | cards 3 × 2 \| open: how to play 380 \| the game, as large as fits (Same Game and Maroon scaled from 320 × 480) | cards 3, how to play 300, same | cards 3, no taglines \| open: back, name and (i) in one row; the board left, its controls beside it | cards 2 \| open: back, name and (i) in one row; the game under it |
 | Assistant | as today | as today | subtitle dropped; bubbles 85 % | bubbles 85 % |
 | QuickAnswer | 880 wide | 760 | page − 32, orb 120×88, 4 lines | 680, 6 lines |
 | Setup | card ≤ 1240, 2 columns | ≤ 1120, 2 columns | page − 32, 2 columns, digits 56×76, QR 120 | page − 40, 1 column, scrolls |

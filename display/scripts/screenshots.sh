@@ -23,7 +23,7 @@ fi
 app="${MCFLY_SHOT_APP:-$root/build/display/mcfly-display}"
 mkdir -p "$out"
 sizes="${MCFLY_SHOT_SIZES:-1280x800 1920x1080 800x480 720x1280}"
-screens="${MCFLY_SHOT_SCREENS:-home briefs markets news projects boards calendar setup saver ask settings}"
+screens="${MCFLY_SHOT_SCREENS:-home briefs markets news projects boards calendar games setup saver ask settings}"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic
 for size in $sizes; do
     for screen in $screens; do
