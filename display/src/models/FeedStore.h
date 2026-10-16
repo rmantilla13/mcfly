@@ -206,6 +206,7 @@ private:
     void startPairing();
     void pollPairing();
     void rebuild();
+    QVariantList publishedState() const;
     void rebuildProductivity(const QHash<QString, QVariantMap> &agentById);
     void rebuildTimeline(const QHash<QString, QVariantMap> &agentById);
     void armReminders();
@@ -258,6 +259,7 @@ private:
     QVariantList m_rawAgents, m_rawBriefs, m_rawQuotes, m_rawSymbols, m_rawReports;
     QVariantList m_rawQuoteData; // quotes_latest: symbol, agent_id, as_of, data
     QVariantList m_rawMemories, m_memories;
+    QVariantList m_published; // what the last dataChanged announced (publishedState)
     QVariantList m_rawCalendarSources, m_calendarSources;
     QVariantMap m_deviceSettings;
     bool m_deviceSettingsSeen = false;

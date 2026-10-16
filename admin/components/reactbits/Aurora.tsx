@@ -30,8 +30,9 @@
  *
  * Changes for McFly: each mount makes its own canvas (the cleanup loses the
  * WebGL context, so a remount reusing the old canvas drew nothing); props reach
- * the render loop from an effect (not during render); `maxFps` caps the
- * redraws; with reduced motion it draws one still frame and stops instead of
+ * the render loop from an effect (not during render), and only when one
+ * changed; `maxFps` caps the redraws, sleeping on a timer between them as
+ * MeshGradient does; with reduced motion it draws one still frame and stops instead of
  * redrawing a frozen picture every frame; `glowStops` reads McFly's --glow-*
  * tokens, since a CSS variable isn't a canvas colour.
  *
@@ -440,9 +441,15 @@ const Aurora = ({
   };
   const settingsRef = useRef(settings);
 
-  // New props reach the running loop here, and an idle loop redraws once.
+  // New props reach the running loop here, and an idle loop redraws once,
+  // only when one of them changed: a parent that re-renders every second
+  // (Ambient's clock) must not redraw a paused aurora every second.
+  const keyRef = useRef("");
   useEffect(() => {
     settingsRef.current = settings;
+    const key = JSON.stringify(settings);
+    if (key === keyRef.current) return;
+    keyRef.current = key;
     wakeRef.current?.();
   });
 
@@ -538,6 +545,7 @@ const Aurora = ({
       light: start.lightMode ? 1 : 0,
     };
     let raf = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let last = 0;
     let visible = true;
 
@@ -586,12 +594,30 @@ const Aurora = ({
       return state.light !== light || glide.mix < 1 || state.appear < 1;
     };
 
+    // The frame after the one at `now`, `slot` ms on (MeshGradient's): a
+    // capped loop sleeps on a timer until just before its slot and then takes
+    // the next refresh, so at 15 frames a second it wakes about 15 times a
+    // second rather than at every refresh to skip it.
+    const next = (slot: number, now: number) => {
+      if (slot >= 14) {
+        timer = setTimeout(
+          () => {
+            timer = undefined;
+            raf = requestAnimationFrame(frame);
+          },
+          Math.max(0, slot - 4 - (performance.now() - now)),
+        );
+      } else raf = requestAnimationFrame(frame);
+    };
+
     const frame = (now: number) => {
       raf = 0;
       if (!visible || document.hidden) return;
       const s = settingsRef.current;
-      // A capped frame rate skips frames until the next slot is due.
-      if (s.maxFps > 0 && last && now - last < 1000 / s.maxFps - 2) {
+      const slot = s.maxFps > 0 ? 1000 / s.maxFps : 0;
+      // Early for its slot (by more than half a refresh after the timer, or
+      // at all for a cap near the refresh rate, which has no timer): skip.
+      if (slot && last && now - last < slot - (slot >= 14 ? 8 : 2)) {
         raf = requestAnimationFrame(frame);
         return;
       }
@@ -618,12 +644,12 @@ const Aurora = ({
       }
       const settling = settle(s, dt);
       render();
-      if (!still || settling) raf = requestAnimationFrame(frame);
+      if (!still || settling) next(slot, now);
       else last = 0;
     };
 
     const wake = () => {
-      if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame);
+      if (!raf && timer === undefined && visible && !document.hidden) raf = requestAnimationFrame(frame);
     };
 
     // `resolution` is a share of the device's pixels; `dpr` an absolute ratio.
@@ -699,12 +725,13 @@ const Aurora = ({
         resize();
         return;
       }
-      if (!raf) render();
+      if (!raf && timer === undefined) render();
       wake();
     };
 
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(timer);
       wakeRef.current = null;
       resizeObserver.disconnect();
       intersection.disconnect();

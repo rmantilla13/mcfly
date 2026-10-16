@@ -86,6 +86,14 @@ Item {
         width: lens.width + 2 * pad
         height: lens.height + 2 * pad
         visible: !lens.fallback && lens.width > 0 && lens.height > 0
+        // Cached: the glass is drawn again only when what it shows changes
+        // (it moves, the palette fades), not on every frame something else
+        // moves (Home's ticker runs at the display's rate). That is rare, so
+        // the one extra frame Qt draws after a layer changes costs nothing
+        // here. A texel a pixel.
+        // Not a wash: the rail caches that one whole, at a quarter size.
+        layer.enabled: !lens._wash
+        layer.textureSize: Qt.size(Math.max(1, Math.ceil(width * dpr)), Math.max(1, Math.ceil(height * dpr)))
         // Uniforms (names match shaders/lens.frag).
         readonly property size size: Qt.size(width, height)
         readonly property real radius: lens.radius

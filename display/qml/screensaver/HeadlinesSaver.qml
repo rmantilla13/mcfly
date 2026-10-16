@@ -46,6 +46,8 @@ Item {
             // The colour field behind a story without a picture; a picture
             // covers it, so then it isn't drawn at all.
             GradientTile {
+                // Full screen: shaded at half its pixels (GradientTile.resolution).
+                resolution: 0.5
                 anchors.fill: parent
                 visible: picture.status !== Image.Ready
                 radius: 0
@@ -63,7 +65,11 @@ Item {
                 source: shown.imageUrl || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                sourceSize.width: 1920
+                // Enough to cover the slot (the window) through the Ken Burns
+                // push, and no more: sourceSize is logical, so the old fixed
+                // 1920 decoded 2880 px wide on the Pi's panel at scale 1.5.
+                // With a crop fill, Qt sizes the decode to cover both sides.
+                sourceSize: Qt.size(Math.max(1, Math.round(width * 1.1)), Math.max(1, Math.round(height * 1.1)))
                 visible: status === Image.Ready
                 transformOrigin: Item.Center
                 scale: 1

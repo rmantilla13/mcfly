@@ -30,7 +30,8 @@
  * Changes for McFly: the type is the surrounding text's (size, weight,
  * colour) unless given — the original drew itself at 100 px — and the refs
  * that mirror the settings are written in a layout effect, not during
- * render.
+ * render. The numerals are promoted to layers of their own (will-change)
+ * only while they roll: at rest, a page of counters kept hundreds of them.
  */
 "use client";
 
@@ -92,6 +93,7 @@ interface Item {
   blur: SVGFEGaussianBlurElement | null;
   filter: string;
   blurred: boolean;
+  layered: boolean; // its numerals carry will-change: transform (while rolling)
 }
 
 interface Engine {
@@ -113,7 +115,7 @@ const DIGIT =
 const SIZER = "invisible";
 const WINDOW = "pointer-events-none absolute top-[calc(var(--counter-fade,0em)*-1)] right-0 bottom-[calc(var(--counter-fade,0em)*-1)] left-0 overflow-hidden";
 const STRIP = "absolute inset-0";
-const NUMERAL = "absolute inset-0 flex items-center justify-center will-change-transform";
+const NUMERAL = "absolute inset-0 flex items-center justify-center";
 const SYMBOL = "relative inline-flex justify-center mx-[calc(var(--counter-gap,0px)/2*var(--counter-shown,1))] opacity-[var(--counter-shown,1)] [clip-path:inset(-0.5em_0)]";
 const SYMBOL_TEXT = "inline-block whitespace-pre";
 const BLUR = "absolute h-0 w-0 overflow-hidden";
@@ -220,6 +222,7 @@ const makeItem = (slot: Slot, position: number, shown: number): Item => ({
   blur: null,
   filter: "",
   blurred: false,
+  layered: false,
 });
 
 export default function Counter({
@@ -300,9 +303,12 @@ export default function Counter({
     const shown = clamp(item.shown, 0, 1);
     const resting = item.pos === item.target && item.vel === 0;
     if (item.kind === "digit") {
+      const layered = !resting;
       item.numerals?.forEach((numeral, n) => {
         numeral.style.transform = `translateY(${(wrap(n - item.pos) * 100).toFixed(3)}%)`;
+        if (layered !== item.layered) numeral.style.willChange = layered ? "transform" : "";
       });
+      item.layered = layered;
       if (shown >= 1 && (s.tabular || resting)) {
         el.style.width = "";
       } else {

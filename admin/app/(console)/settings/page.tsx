@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { updateSettingsAction } from "@/app/(console)/actions";
 import { BackendStatusCard } from "@/components/BackendStatusCard";
 import { PageHeader } from "@/components/PageHeader";
 import { SettingsForm } from "@/components/SettingsForm";
 import { Time } from "@/components/bits";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getBackendStatus, getSettings, requireAdmin } from "@/lib/data";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   await requireAdmin();
-  const [settings, backend] = await Promise.all([getSettings(), getBackendStatus()]);
+  const settings = await getSettings();
 
   return (
     <>
@@ -33,9 +35,33 @@ export default async function SettingsPage() {
           <SettingsForm action={updateSettingsAction} settings={settings} />
         </CardContent>
       </Card>
+      {/* The backend's state is a round of edge-function probes (up to 8 s
+          each): the form shows at once and the card follows. */}
       <div className="mt-5">
-        <BackendStatusCard status={backend} />
+        <Suspense fallback={<BackendStatusPending />}>
+          <BackendStatus />
+        </Suspense>
       </div>
     </>
+  );
+}
+
+async function BackendStatus() {
+  return <BackendStatusCard status={await getBackendStatus()} />;
+}
+
+function BackendStatusPending() {
+  return (
+    <Card className="max-w-3xl" aria-busy="true">
+      <CardHeader>
+        <CardTitle>Backend</CardTitle>
+        <CardDescription>Checking McFly&apos;s Supabase project…</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-5 w-full" />
+        ))}
+      </CardContent>
+    </Card>
   );
 }

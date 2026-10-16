@@ -355,6 +355,9 @@ Item {
                     source: Theme.pictures && home.story && home.story.imageUrl ? home.story.imageUrl : ""
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
+                    // Decoded to cover the tile, not at the source's size: with
+                    // a crop fill, Qt sizes the decode to cover both sides.
+                    sourceSize: Qt.size(Math.max(1, Math.round(width * 1.2)), Math.max(1, Math.round(height * 1.2)))
                 }
             }
             ColumnLayout {

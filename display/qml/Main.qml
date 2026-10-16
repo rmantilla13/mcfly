@@ -178,6 +178,11 @@ ApplicationWindow {
 
     readonly property bool inSetup: (Store.mode === "pairing" || window.forceSetup) && !sleepCover.covering
     readonly property bool navBar: Theme.navMode === "bar"
+    // Under the screen saver (once it has faded all the way in) or the sleep
+    // cover nothing of the nav or the pages shows. Opacity 0 leaves them out
+    // of every frame the saver draws; `visible` stays as it was, so what
+    // binds to it (Home's clock, the day list) carries on underneath.
+    readonly property bool covered: saverLayer.opacity === 1 || sleepCover.covering
 
     // The nav: a rail down the left, or a bar along the bottom. Plain
     // geometry, not anchors: an anchor that once set the height would
@@ -185,6 +190,7 @@ ApplicationWindow {
     NavRail {
         id: nav
         visible: !window.inSetup
+        opacity: window.covered ? 0 : 1
         horizontal: window.navBar
         x: 0
         y: window.navBar ? window.height - Theme.navHeight : 0
@@ -208,6 +214,7 @@ ApplicationWindow {
     Item {
         id: pages
         visible: !window.inSetup
+        opacity: window.covered ? 0 : 1
         anchors.fill: parent
         anchors.leftMargin: Theme.navWidth
         anchors.bottomMargin: Theme.navHeight

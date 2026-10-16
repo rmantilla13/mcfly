@@ -190,37 +190,55 @@ Item {
         return Qt.vector4d(c[0], c[1], c[2], 0)
     }
 
-    // Clock: elapsed time from the frame clock (monotonic, so a step of the
-    // wall clock can't run it backwards), applied on wall-clock slots of
-    // 1/maxFps s, the same slots GradientTile and AuroraGlow use, so a
-    // saver's layers change on the same frames. It starts from the wall
-    // clock, within the hour: each showing opens on a different sky, and the
-    // time stays small enough for the shader's 32-bit floats to step evenly.
+    // Clock: capped (maxFps > 0), a Timer on wall-clock slots of 1/maxFps s,
+    // the same slots GradientTile, AuroraGlow and SpectrumGlow use, so a
+    // saver's layers change on the same frames and the render loop sleeps in
+    // between (a FrameAnimation skipping frames kept it drawing at the
+    // display's rate). A step is never negative and at most 0.25 s, so a
+    // jump of the wall clock can't run it backwards. Uncapped: every frame.
+    // It starts from the wall clock, within the hour: each showing opens on a
+    // different sky, and the time stays small enough for the shader's 32-bit
+    // floats to step evenly.
     property real _time: 0
-    property real _pending: 0
-    property real _slot: -1
+    function _advance(dt) {
+        _time += Math.max(0, Math.min(dt, 0.25)) * speed
+        _sample()
+    }
+    property real _last: 0
+    readonly property bool _slotted: playing && maxFps > 0
+    on_SlottedChanged: _arm(true)
+    onMaxFpsChanged: _arm(false)
+    function _arm(fresh) {
+        if (fresh)
+            _last = Date.now()
+        if (!_slotted) {
+            slots.stop()
+            return
+        }
+        const slot = 1000 / maxFps
+        slots.interval = Math.max(1, Math.ceil(slot - Date.now() % slot))
+        slots.restart()
+    }
+    Timer {
+        id: slots
+        onTriggered: {
+            const now = Date.now()
+            sky._advance((now - sky._last) / 1000)
+            sky._last = now
+            sky._arm(false)
+        }
+    }
     FrameAnimation {
         id: clock
-        running: sky.playing
-        onRunningChanged: if (running) sky._pending = 0
-        onTriggered: {
-            sky._pending += Math.max(0, Math.min(clock.frameTime, 0.25))
-            if (sky.maxFps > 0) {
-                const slot = Math.floor(Date.now() * sky.maxFps / 1000)
-                if (slot === sky._slot) return
-                sky._slot = slot
-            }
-            const dt = Math.min(sky._pending, 0.25)
-            sky._pending = 0
-            sky._time += dt * sky.speed
-            sky._sample()
-        }
+        running: sky.playing && sky.maxFps <= 0
+        onTriggered: sky._advance(clock.frameTime)
     }
 
     Component.onCompleted: {
         _dkEase = dark ? 1 : 0
         _time = (Date.now() / 1000 % 3600) * speed + seed * 37
         _sample()
+        _arm(true)
     }
 
     ShaderEffect {

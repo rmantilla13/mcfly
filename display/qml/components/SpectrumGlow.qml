@@ -51,8 +51,6 @@ Item {
     property real _high: 0
     property real _process: 0
     property real _time: 0
-    property real _acc: 0
-    property real _slot: -1
     // The spoken rhythm: a syllable's strength and how long it has left.
     property real _syllable: 0
     property real _syllableLeft: 0
@@ -208,28 +206,45 @@ Item {
     Component.onCompleted: {
         _time = (Date.now() / 1000) % 10000   // a different glow each time it opens
         _update()
+        _arm(true)
     }
     onWidthChanged: _update()
     onHeightChanged: _update()
     onKindChanged: _update()
 
-    FrameAnimation {
-        running: glow.playing && glow._changing
-        onRunningChanged: if (running) glow._acc = 0
-        onTriggered: {
-            glow._acc += Math.max(0, Math.min(frameTime, 0.25))
-            // Idling: wall-clock slots of 1/maxFps s, the same slots the tiles
-            // and the aurora keep, so anything beside it moving 10 or 20 times
-            // a second changes on the same frames.
-            if (glow.maxFps > 0 && !glow._lively) {
-                const slot = Math.floor(Date.now() * glow.maxFps / 1000)
-                if (slot === glow._slot) return
-                glow._slot = slot
-            }
-            const dt = Math.min(glow._acc, 0.1)
-            glow._acc = 0
-            glow._tick(dt)
+    // Idling: a Timer on wall-clock slots of 1/maxFps s, the same slots the
+    // tiles and the aurora keep, so anything beside it moving 10 or 20 times
+    // a second changes on the same frames, and the render loop sleeps in
+    // between (a FrameAnimation skipping frames kept it drawing at the
+    // display's rate). Listening, speaking or thinking: every frame. A step
+    // is never negative and at most 0.1 s.
+    property real _last: 0
+    readonly property bool _slotted: playing && _changing && !_lively && maxFps > 0
+    on_SlottedChanged: _arm(true)
+    onMaxFpsChanged: _arm(false)
+    function _arm(fresh) {
+        if (fresh)
+            _last = Date.now()
+        if (!_slotted) {
+            slots.stop()
+            return
         }
+        const slot = 1000 / maxFps
+        slots.interval = Math.max(1, Math.ceil(slot - Date.now() % slot))
+        slots.restart()
+    }
+    Timer {
+        id: slots
+        onTriggered: {
+            const now = Date.now()
+            glow._tick(Math.max(0, Math.min((now - glow._last) / 1000, 0.1)))
+            glow._last = now
+            glow._arm(false)
+        }
+    }
+    FrameAnimation {
+        running: glow.playing && glow._changing && (glow._lively || glow.maxFps <= 0)
+        onTriggered: glow._tick(Math.max(0, Math.min(frameTime, 0.1)))
     }
 
     ShaderEffect {

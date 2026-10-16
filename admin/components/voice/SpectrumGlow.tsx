@@ -281,6 +281,7 @@ export function SpectrumGlow({
     let last = performance.now();
     let frame = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let onScreen = true;
 
     const stop = () => {
       cancelAnimationFrame(frame);
@@ -303,7 +304,7 @@ export function SpectrumGlow({
 
     const draw = (now: number) => {
       frame = 0;
-      if (!gpu) return;
+      if (!gpu || !onScreen) return;
       const inp = input.current;
       let level = inp?.level ?? 0;
       let low = inp?.low ?? level;
@@ -412,9 +413,21 @@ export function SpectrumGlow({
     el.addEventListener("webglcontextlost", onLost);
     el.addEventListener("webglcontextrestored", onRestored);
 
+    // Scrolled out of view (Today's assistant card under the cards): no
+    // frames until it is back. A hidden tab already gets none.
+    const seen = new IntersectionObserver((entries) => {
+      onScreen = entries.some((entry) => entry.isIntersecting);
+      if (onScreen && !frame && timer === undefined && gpu) {
+        last = performance.now();
+        frame = requestAnimationFrame(draw);
+      }
+    });
+    seen.observe(host);
+
     frame = requestAnimationFrame(draw);
     return () => {
       stop();
+      seen.disconnect();
       // Off first, so losing the context here doesn't ask for it back.
       el.removeEventListener("webglcontextlost", onLost);
       el.removeEventListener("webglcontextrestored", onRestored);

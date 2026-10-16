@@ -1,5 +1,6 @@
 import { ActivityIcon } from "lucide-react";
-import { AgentLabel, EmptyState, StatusBadge, Time, numCell } from "@/components/bits";
+import { AgentLabel, EmptyState, Time, numCell } from "@/components/bits";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatNumber } from "@/lib/format";

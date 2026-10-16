@@ -38,6 +38,8 @@ Item {
 
     // The colour field.
     GradientTile {
+        // Full screen: shaded at half its pixels (GradientTile.resolution).
+        resolution: 0.5
         id: field
         anchors.fill: parent
         radius: 0
@@ -60,12 +62,12 @@ Item {
             opacity: 0
             x: setup.width * (0.08 + 0.15 * index)
             SequentialAnimation on y {
-                running: setup.visible
+                running: setup.visible && !Device.idle && Device.animatedTiles
                 loops: Animation.Infinite
                 NumberAnimation { from: setup.height + 100; to: -200; duration: 26000 + index * 5000; easing.type: Easing.InOutSine }
             }
             SequentialAnimation on opacity {
-                running: setup.visible
+                running: setup.visible && !Device.idle && Device.animatedTiles
                 loops: Animation.Infinite
                 PauseAnimation { duration: index * 1800 }
                 NumberAnimation { to: 0.22; duration: 4000 }
@@ -98,7 +100,7 @@ Item {
         Behavior on height { NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
         // A gentle float.
         SequentialAnimation on anchors.verticalCenterOffset {
-            running: setup.visible && Device.animatedTiles && setup.keyboardHeight === 0
+            running: setup.visible && !Device.idle && Device.animatedTiles && setup.keyboardHeight === 0
             loops: Animation.Infinite
             NumberAnimation { to: -16; duration: 5000; easing.type: Easing.InOutSine }
             NumberAnimation { to: -4; duration: 5000; easing.type: Easing.InOutSine }

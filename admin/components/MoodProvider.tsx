@@ -25,7 +25,10 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 
 function apply() {
   const zone = entries.findLast((e) => e.timeZone)?.timeZone;
-  document.documentElement.dataset.mood = moodAt(Date.now(), zone);
+  const mood = moodAt(Date.now(), zone);
+  // Written only when it turns: every minute's same value would still fire
+  // each backdrop's attribute watcher and restyle the page.
+  if (document.documentElement.dataset.mood !== mood) document.documentElement.dataset.mood = mood;
 }
 
 function schedule() {

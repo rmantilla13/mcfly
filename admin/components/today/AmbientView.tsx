@@ -4,6 +4,7 @@ import { cn } from "cn";
 import { SparklesIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { dateFormat } from "@/lib/events";
 import type { TodayData } from "@/lib/today-data";
 import { isNight } from "@/lib/mood";
 import { formatClock, railWindow, stampLabel, untilLabel } from "@/lib/today";
@@ -85,8 +86,10 @@ export function AmbientView({ data }: { data: TodayData }) {
     return () => window.removeEventListener("keydown", wake);
   }, [router]);
 
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(now));
-  const dayOf = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(iso));
+  // One formatter for the zone (lib/events.ts keeps it): this runs every second.
+  const ymd = dateFormat("en-CA", { timeZone: tz });
+  const today = ymd.format(new Date(now));
+  const dayOf = (iso: string) => ymd.format(new Date(iso));
   const todays = data.events.filter((e) => !e.all_day && Date.parse(e.ends_at) > minute && dayOf(e.starts_at) === today);
   const next = todays[0];
   const later = todays.slice(1, 3);

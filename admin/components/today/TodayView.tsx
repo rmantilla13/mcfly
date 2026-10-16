@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import BlurText from "@/components/reactbits/BlurText";
-import { dayKey } from "@/lib/events";
+import { dateFormat, dayKey } from "@/lib/events";
 import { buildSuggestions, SUMMARIZE_DAY } from "@/lib/suggestions";
 import type { TodayData } from "@/lib/today-data";
 import { formatClock, greeting, upNext } from "@/lib/today";
@@ -87,7 +87,7 @@ export function useLiveRefresh(everyMs = 60_000) {
 
 export function clockParts(ms: number, timeZone: string) {
   const [time, ampm] = formatClock(ms, timeZone).split(" ");
-  const date = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "long", month: "long", day: "numeric" }).format(new Date(ms));
+  const date = dateFormat("en-US", { timeZone, weekday: "long", month: "long", day: "numeric" }).format(new Date(ms));
   return { time, ampm: ampm.toUpperCase(), date };
 }
 

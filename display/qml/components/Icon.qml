@@ -4,6 +4,12 @@ import McFly
 
 // Line icons drawn as vector paths (24×24 grid, round strokes) so they stay
 // crisp at any scale and can take any color.
+//
+// The curve renderer antialiases the strokes itself, so the icon's layer
+// needs no multisampling: a plain texture, a quarter of the memory of the
+// 4× one it had and no resolve pass when a colour fades. The layer stays so
+// an icon fading or dimmed with its button (opacity) is composited whole,
+// without darker spots where its strokes overlap.
 Item {
     id: icon
     property string name: ""
@@ -14,7 +20,6 @@ Item {
     implicitWidth: size
     implicitHeight: size
     layer.enabled: true
-    layer.samples: 4
 
     readonly property var paths: ({
         "home":     "M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z",
@@ -71,6 +76,7 @@ Item {
         transformOrigin: Item.TopLeft
         Shape {
             anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
             ShapePath {
                 strokeColor: icon.color
                 strokeWidth: icon.strokeWidth

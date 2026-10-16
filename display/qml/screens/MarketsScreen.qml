@@ -29,8 +29,9 @@ Item {
     // A value this display saw change in the last few seconds slides in.
     function justChanged(row) { return !!row && row.changedMs > 0 && Date.now() - row.changedMs < 3000 }
     // The end dot pings for a couple of minutes after a value moves, not for
-    // as long as the feed is live. Read at each sync's rebuild, which is enough.
-    function justMoved(row) { return !!row && row.changedMs > 0 && Date.now() - row.changedMs < 120000 }
+    // as long as the feed is live. Store.nowAngle moves each minute, so it is
+    // asked again then (a sync that brings nothing new rebuilds no rows).
+    function justMoved(row) { return Store.nowAngle >= 0 && !!row && row.changedMs > 0 && Date.now() - row.changedMs < 120000 }
     // The detail's line, drawn on again for each symbol picked.
     property real detailIn: 1
     NumberAnimation { id: detailAnim; target: markets; property: "detailIn"; from: 0; to: 1; duration: Theme.revealDuration; easing.type: Easing.OutCubic }

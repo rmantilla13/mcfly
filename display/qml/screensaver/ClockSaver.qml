@@ -43,6 +43,8 @@ Item {
     Component {
         id: meshBackdrop
         GradientTile {
+            // Full screen: shaded at half its pixels (GradientTile.resolution).
+            resolution: 0.5
             radius: 0
             colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
             whileIdle: true

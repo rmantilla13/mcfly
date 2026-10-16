@@ -11,6 +11,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
+#include <QMetaMethod>
+#include <QMetaProperty>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QTimeZone>
@@ -917,9 +919,22 @@ void FeedStore::loadLive()
         };
         auto sync = std::make_shared<Sync>();
         using Apply = std::function<void(const QJsonDocument &)>;
-        auto load = [this, onError, generation, sync](const QString &table, const QUrlQuery &q, Apply apply) {
+        // One rebuild per sync, once the last answer is in (the optional
+        // tables' too): a rebuild re-reads every list.
+        auto finish = [this, sync]() {
+            if (--sync->pending > 0)
+                return;
+            if (sync->failed) {
+                retrySoon();
+            } else {
+                stopRetrying();
+                m_lastSync = now();
+            }
+            rebuild();
+        };
+        auto load = [this, onError, generation, sync, finish](const QString &table, const QUrlQuery &q, Apply apply) {
             ++sync->pending;
-            m_client->select(table, q, [this, table, apply, onError, generation, sync](const QJsonDocument &doc, const QString &error) {
+            m_client->select(table, q, [this, table, apply, onError, generation, sync, finish](const QJsonDocument &doc, const QString &error) {
                 if (generation != m_generation)
                     return;
                 if (!error.isEmpty()) {
@@ -929,15 +944,7 @@ void FeedStore::loadLive()
                     setOnline(true);
                     apply(doc);
                 }
-                if (--sync->pending > 0)
-                    return;
-                if (sync->failed) {
-                    retrySoon();
-                } else {
-                    stopRetrying();
-                    m_lastSync = now();
-                }
-                rebuild();
+                finish();
             });
         };
 
@@ -956,16 +963,16 @@ void FeedStore::loadLive()
         load("agents", QUrlQuery("select=*&order=created_at"), [this](const QJsonDocument &d) { m_rawAgents = toList(d); });
         // Memory arrived later than the other tables: a backend without it
         // must not make every sync fail, so its errors are only logged.
+        ++sync->pending;
         m_client->select("memories", QUrlQuery("select=text,pinned,updated_at&agent_id=is.null&order=pinned.desc,updated_at.desc&limit=100"),
-                         [this, generation](const QJsonDocument &doc, const QString &error) {
+                         [this, generation, finish](const QJsonDocument &doc, const QString &error) {
                              if (generation != m_generation)
                                  return;
-                             if (!error.isEmpty()) {
+                             if (!error.isEmpty())
                                  qInfo() << "memories not available:" << error;
-                                 return;
-                             }
-                             m_rawMemories = toList(doc);
-                             rebuild();
+                             else
+                                 m_rawMemories = toList(doc);
+                             finish();
                          });
         // This display's own settings (newer too): optional. Sent on only when
         // the first read or a change arrives, so a sync with nothing new
@@ -989,15 +996,15 @@ void FeedStore::loadLive()
                              });
         }
         // Calendar subscriptions (newer too): same, optional.
-        m_client->rpc("list_calendar_sources", QJsonObject(), [this, generation](const QJsonDocument &doc, const QString &error) {
+        ++sync->pending;
+        m_client->rpc("list_calendar_sources", QJsonObject(), [this, generation, finish](const QJsonDocument &doc, const QString &error) {
             if (generation != m_generation)
                 return;
-            if (!error.isEmpty()) {
+            if (!error.isEmpty())
                 qInfo() << "calendar subscriptions not available:" << error;
-                return;
-            }
-            m_rawCalendarSources = toList(doc);
-            rebuild();
+            else
+                m_rawCalendarSources = toList(doc);
+            finish();
         });
         // Todos and reminders (newer too): same, optional. The open ones; a
         // reminder whose time passed before yesterday is over.
@@ -1007,15 +1014,15 @@ void FeedStore::loadLive()
         todos.addQueryItem("or", "(kind.eq.todo,due_at.gte." + QDateTime(m_today.addDays(-1), QTime(0, 0)).toUTC().toString(Qt::ISODate) + ")");
         todos.addQueryItem("order", "due_at.nullslast,created_at");
         todos.addQueryItem("limit", "200");
-        m_client->select("todos", todos, [this, generation](const QJsonDocument &doc, const QString &error) {
+        ++sync->pending;
+        m_client->select("todos", todos, [this, generation, finish](const QJsonDocument &doc, const QString &error) {
             if (generation != m_generation)
                 return;
-            if (!error.isEmpty()) {
+            if (!error.isEmpty())
                 qInfo() << "todos not available:" << error;
-                return;
-            }
-            m_rawTodos = toList(doc);
-            rebuild();
+            else
+                m_rawTodos = toList(doc);
+            finish();
         });
         load("briefs", QUrlQuery("select=*&order=published_at.desc&limit=100"),
              [this](const QJsonDocument &d) { m_rawBriefs = toList(d); });
@@ -1676,7 +1683,29 @@ void FeedStore::rebuild()
         m.insert("updatedLabel", at.isValid() ? (at.date() == m_today ? timeLabel(at) : dayLabel(at.date())) : QString());
         m_memories << m;
     }
+    // Nothing new (most syncs: the same rows a minute later): say nothing.
+    // QML can't tell an equal list from a new one, so a dataChanged rebuilds
+    // the delegates of every Store model on all seven screens.
+    QVariantList published = publishedState();
+    if (published == m_published)
+        return;
+    m_published = std::move(published);
     emit dataChanged();
+}
+
+// What dataChanged announces: every property it is the NOTIFY of, read
+// through the meta-object so a property added later is counted too.
+QVariantList FeedStore::publishedState() const
+{
+    QVariantList state;
+    const QMetaMethod changed = QMetaMethod::fromSignal(&FeedStore::dataChanged);
+    const QMetaObject *meta = metaObject();
+    for (int i = meta->propertyOffset(); i < meta->propertyCount(); ++i) {
+        const QMetaProperty property = meta->property(i);
+        if (property.hasNotifySignal() && property.notifySignal() == changed)
+            state << property.read(this);
+    }
+    return state;
 }
 
 namespace {

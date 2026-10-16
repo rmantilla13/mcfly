@@ -428,20 +428,25 @@ Item {
         Repeater {
             model: home.tickers
             delegate: Row {
+                id: tick
                 required property var modelData
                 readonly property color tone: modelData.flat ? Theme.textMuted : modelData.up ? Theme.gain : Theme.loss
                 anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                 spacing: Theme.mini ? 8 : 10
                 Label { text: modelData.symbol; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.Bold }
                 Label { text: modelData.priceLabel; color: Theme.textMuted; font.pixelSize: Theme.fontSm; font.features: ({ "tnum": 1 }) }
-                Sparkline {
-                    visible: Theme.wide && (modelData.history || []).length > 1
+                // Wide only: elsewhere none is made (two tapes, one per symbol each).
+                Loader {
+                    active: Theme.wide && (tick.modelData.history || []).length > 1
+                    visible: active
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 64
-                    height: 26
-                    points: modelData.history || []
-                    color: parent.tone
-                    lineWidth: 2
+                    sourceComponent: Sparkline {
+                        width: 64
+                        height: 26
+                        points: tick.modelData.history || []
+                        color: tick.tone
+                        lineWidth: 2
+                    }
                 }
                 Label {
                     text: (modelData.flat ? "" : modelData.up ? "\u25B2 " : "\u25BC ") + modelData.pctLabel
@@ -472,8 +477,12 @@ Item {
         readonly property real speed: Theme.mini ? 42 : 56   // px a second: read in passing, not chased
         property real offset: 0
 
+        // Not while idle: under the screen saver or the sleep cover it would
+        // redraw the whole window every frame, the saver's full-screen
+        // backdrop included. (With Animated tiles off it still runs: the tape
+        // is how the symbols past the strip's width get shown at all.)
         FrameAnimation {
-            running: home.shown && strip.visible && strip.lap > 0
+            running: home.shown && !Device.idle && strip.visible && strip.lap > 0
             onTriggered: strip.offset = (strip.offset + frameTime * strip.speed) % strip.lap
         }
 

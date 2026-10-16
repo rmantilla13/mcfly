@@ -4,7 +4,7 @@
 // tests/today.test.mjs can check it.
 
 import type { Brief, EventRow, MetricRow, NewsItem, NewsReportRow, ProjectRow, QuoteRow } from "@/lib/types";
-import { dayKey, dayLabel, zonedMidnightUtc } from "./events.ts";
+import { dateFormat, dayKey, dayLabel, zonedMidnightUtc } from "./events.ts";
 import { changeDirection, cssColor, formatChange, formatPrice } from "./format.ts";
 import { goodDirection } from "./insights.ts";
 import type { SeriesPoint } from "./series.ts";
@@ -67,7 +67,7 @@ export const STATUS_COLOR: Record<string, string> = {
 };
 
 function clock(ms: number, timeZone: string): { time: string; ampm: string } {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(ms));
+  const parts = dateFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(ms));
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return { time: `${get("hour")}:${get("minute")}`, ampm: get("dayPeriod").toLowerCase() };
 }
@@ -185,7 +185,7 @@ export function nextDay(day: string): string {
 // Tomorrow's weekday ("Friday") in the display's zone, for the preview's heading.
 export function tomorrowLabel(nowMs: number, timeZone: string): string {
   const day = nextDay(dayKey(new Date(nowMs), timeZone));
-  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long" }).format(new Date(`${day}T00:00:00Z`));
+  return dateFormat("en-US", { timeZone: "UTC", weekday: "long" }).format(new Date(`${day}T00:00:00Z`));
 }
 
 // A row's clock face: "3:30" over "pm", or "All day".
@@ -267,7 +267,7 @@ export function upNext<T extends { all_day: boolean; ends_at: string; starts_at:
 }
 
 export function greeting(nowMs: number, timeZone: string, name?: string): string {
-  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(new Date(nowMs)));
+  const hour = Number(dateFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(new Date(nowMs)));
   const part = hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   return name && name !== "McFly" ? `${part}, ${name}` : part;
 }

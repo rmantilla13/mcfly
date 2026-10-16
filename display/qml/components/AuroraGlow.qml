@@ -188,43 +188,59 @@ Item {
         return 0.07 * (0.7 * _noise1(pace * 0.03 + layer * 3.1) + 0.3 * _noise1(pace * 0.071 + 7.7 + layer * 1.3))
     }
 
-    // Clock, intro and fade-in. Elapsed time comes from the frame clock
-    // (monotonic, so a step of the wall clock can't run it backwards), applied
-    // on wall-clock slots of 1/maxFps s: the same slots GradientTile uses, so a
-    // saver's backdrop and its aurora change on the same frames and the ones
-    // between redraw nothing. Everything that eases moves on those ticks too.
+    // Clock, intro and fade-in. Capped (maxFps > 0), a Timer on wall-clock
+    // slots of 1/maxFps s: the same slots GradientTile uses, so a saver's
+    // backdrop and its aurora change on the same frames and the render loop
+    // sleeps between them (a FrameAnimation skipping frames kept it drawing at
+    // the display's rate). A step is never negative and at most 0.25 s, so a
+    // jump of the wall clock can't run it backwards. Uncapped: every frame.
+    // Everything that eases moves on those ticks too.
     // The clock starts from the wall clock, within the hour
     // (Component.onCompleted): each showing opens on a different curtain, and
     // the time stays small enough for the shader's 32-bit floats to step evenly.
     property real _time: 0
     property real _reveal: intro ? 0 : 1
     property real _appear: 1               // the fade-in, when there's no intro
-    property real _pending: 0
-    property real _slot: -1
     readonly property real _shownReveal: animated ? 1 - Math.pow(1 - _reveal, 3) : 1
+    function _advance(step) {
+        const dt = Math.max(0, Math.min(step, 0.25))
+        _time += dt * speed
+        _retarget(dt)
+        if (_lightProgress < 1) {
+            _lightProgress = Math.min(1, _lightProgress + dt / 0.6)
+            _light = _lightFrom + ((lightMode ? 1 : 0) - _lightFrom) * _ease(_lightProgress)
+        }
+        if (_appear < 1) _appear = Math.min(1, _appear + dt / 1.2)
+        if (_reveal < 1) _reveal = Math.min(1, _reveal + dt / 2.4)
+    }
+    property real _last: 0
+    readonly property bool _slotted: playing && maxFps > 0
+    on_SlottedChanged: _arm(true)
+    onMaxFpsChanged: _arm(false)
+    function _arm(fresh) {
+        if (fresh)
+            _last = Date.now()
+        if (!_slotted) {
+            slots.stop()
+            return
+        }
+        const slot = 1000 / maxFps
+        slots.interval = Math.max(1, Math.ceil(slot - Date.now() % slot))
+        slots.restart()
+    }
+    Timer {
+        id: slots
+        onTriggered: {
+            const now = Date.now()
+            aurora._advance((now - aurora._last) / 1000)
+            aurora._last = now
+            aurora._arm(false)
+        }
+    }
     FrameAnimation {
         id: clock
-        running: aurora.playing
-        onRunningChanged: if (running) aurora._pending = 0
-        onTriggered: {
-            aurora._pending += Math.max(0, Math.min(clock.frameTime, 0.25))
-            if (aurora.maxFps > 0) {
-                const slot = Math.floor(Date.now() * aurora.maxFps / 1000)
-                if (slot === aurora._slot) return
-                aurora._slot = slot
-            }
-            const dt = Math.min(aurora._pending, 0.25)
-            aurora._pending = 0
-            aurora._time += dt * aurora.speed
-            aurora._retarget(dt)
-            if (aurora._lightProgress < 1) {
-                aurora._lightProgress = Math.min(1, aurora._lightProgress + dt / 0.6)
-                aurora._light = aurora._lightFrom + ((aurora.lightMode ? 1 : 0) - aurora._lightFrom)
-                                * aurora._ease(aurora._lightProgress)
-            }
-            if (aurora._appear < 1) aurora._appear = Math.min(1, aurora._appear + dt / 1.2)
-            if (aurora._reveal < 1) aurora._reveal = Math.min(1, aurora._reveal + dt / 2.4)
-        }
+        running: aurora.playing && aurora.maxFps <= 0
+        onTriggered: aurora._advance(clock.frameTime)
     }
 
     // The clock stopped (hidden, idle, Animated tiles off): colours and light
@@ -250,6 +266,7 @@ Item {
         _lightProgress = 1
         _light = lightMode ? 1 : 0
         _appear = animated && !intro ? 0 : 1
+        _arm(true)
     }
 
     ShaderEffect {

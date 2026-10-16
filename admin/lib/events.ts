@@ -13,9 +13,23 @@ export function safeTimeZone(tz: string | null | undefined): string {
   }
 }
 
+// Formatters by locale, options and zone, each made once: building one is
+// far dearer than using it, and Today's clock and Ambient ask every second
+// (Ambient once per event), buildTimeline once per row.
+const FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+export function dateFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let f = FORMATTERS.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(locale, options);
+    FORMATTERS.set(key, f);
+  }
+  return f;
+}
+
 function parts(date: Date, timeZone: string): Record<string, number> {
   const out: Record<string, number> = {};
-  const f = new Intl.DateTimeFormat("en-US", {
+  const f = dateFormat("en-US", {
     timeZone,
     hourCycle: "h23",
     year: "numeric",

@@ -716,6 +716,43 @@ private slots:
         QCOMPARE(rig->store.news().value("slug").toString(), QStringLiteral("2026-10-14"));
     }
 
+    // Every list is a model on some screen, and all seven screens are built:
+    // a dataChanged rebuilds each of their delegates. A sync that brings the
+    // same rows says nothing, and one that brings something new says it once,
+    // after its last answer (the optional tables included), not once each.
+    void aSyncSaysWhatChangedOnce()
+    {
+        auto title = std::make_shared<QString>(QStringLiteral("Remember the milk"));
+        m_server.route("/rest/v1/memories", [title](const Request &) {
+            return json(rows(QJsonArray{QJsonObject{{"text", *title}, {"pinned", false}, {"updated_at", QJsonValue::Null}}}));
+        });
+        m_server.route("/rest/v1/todos", [](const Request &) { return json("[]"); });
+        m_server.route("/rest/v1/rpc/list_calendar_sources", [](const Request &) { return json("[]"); });
+        startLive();
+        QTRY_COMPARE(rig->store.memories().size(), 1);
+        QTRY_COMPARE(m_server.pending(), 0);
+        QTest::qWait(100);
+        QSignalSpy data(&rig->store, &FeedStore::dataChanged);
+
+        // The same rows twice: nothing to say.
+        for (int i = 0; i < 2; ++i) {
+            const qsizetype before = m_server.requests("GET", "/rest/v1/todos").size();
+            rig->store.refresh();
+            QTRY_COMPARE(m_server.requests("GET", "/rest/v1/todos").size(), before + 1);
+            QTRY_COMPARE(m_server.pending(), 0);
+            QTest::qWait(100);
+        }
+        QCOMPARE(data.count(), 0);
+
+        // A new memory (an optional table) and the rest the same: once.
+        *title = QStringLiteral("Buy the almanac");
+        rig->store.refresh();
+        QTRY_COMPARE(rig->store.memories().value(0).toMap().value("text").toString(), QStringLiteral("Buy the almanac"));
+        QTRY_COMPARE(m_server.pending(), 0);
+        QTest::qWait(100);
+        QCOMPARE(data.count(), 1);
+    }
+
     void aFailedTableRetriesSoon()
     {
         m_server.route("/rest/v1/briefs", [](const Request &) { return json("{\"message\":\"boom\"}", 500); });

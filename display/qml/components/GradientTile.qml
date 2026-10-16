@@ -61,6 +61,13 @@ Item {
     property bool active: true         // false while the tile's page isn't showing
     property real seed: 0              // per-tile variation (layout mirror + phase)
     property int period: 48000         // ms per orbit of the drift, before the seed's 0.85-1.15x
+    // ---- Cost
+    // The share of its physical pixels the shader runs at, scaled up after.
+    // 1 for tiles; a full-screen one (the savers, setup) at 0.5 shades a
+    // quarter of the pixels and loses nothing: the picture is soft, its
+    // corners square. Its grain is then a texel, smoothed as it is scaled
+    // up: softer, but still dithering the gradient.
+    property real resolution: 1.0
     property int maxFps: 30            // motion updates per second (0 = every frame); slow
                                        // drift needs no more, and it halves GPU work while
                                        // nothing else on screen moves
@@ -207,34 +214,50 @@ Item {
     readonly property color _strongD: Qt.hsla(_h, _ramp(_s, 0.40, 0.62), 0.72, 1)
 
     // Drift clock: seconds of drift as a plain double that never wraps,
-    // started from the wall clock. It adds up FrameAnimation's monotonic frame
-    // time (never negative, so a clock step can't throw it backwards), and
-    // night runs a little slower. Updates land on wall-clock slots of
-    // 1/maxFps s, the same slots for every tile and the aurora, so they all
-    // change on the same frames and, when nothing else moves, the frames in
-    // between have nothing to redraw.
+    // started from the wall clock; night runs a little slower. Capped
+    // (maxFps > 0), a Timer wakes on wall-clock slots of 1/maxFps s, the same
+    // slots for every tile, sky, aurora and glow, so they all change on the
+    // same frames, and in between the render loop sleeps. (A FrameAnimation
+    // that skipped frames kept it drawing at the display's rate all the
+    // same: the saver's 10 updates a second cost 60 full-screen frames.) A
+    // step is never negative and at most 0.25 s, so a jump of the wall clock
+    // can't throw the drift backwards or far ahead. Uncapped: every frame.
     readonly property real _period: period * (0.85 + 0.30 * _wrap(seed * 0.618034 + 0.3))
     property real _t: 0
-    property real _acc: 0
-    property real _slot: -1
-    FrameAnimation {
-        running: tile.playing
-        onRunningChanged: if (running) tile._acc = 0
-        onTriggered: {
-            tile._acc += Math.max(0, Math.min(frameTime, 0.25))
-            if (tile.maxFps > 0) {
-                const slot = Math.floor(Date.now() * tile.maxFps / 1000)
-                if (slot === tile._slot) return
-                tile._slot = slot
-            }
-            tile._t += Math.min(tile._acc, 0.25) * (1 - 0.35 * tile._dk)
-            tile._acc = 0
+    function _advance(dt) { _t += Math.max(0, Math.min(dt, 0.25)) * (1 - 0.35 * _dk) }
+    property real _last: 0
+    readonly property bool _slotted: playing && maxFps > 0
+    on_SlottedChanged: _arm(true)
+    onMaxFpsChanged: _arm(false)
+    function _arm(fresh) {
+        if (fresh)
+            _last = Date.now()
+        if (!_slotted) {
+            slots.stop()
+            return
         }
+        const slot = 1000 / maxFps
+        slots.interval = Math.max(1, Math.ceil(slot - Date.now() % slot))
+        slots.restart()
+    }
+    Timer {
+        id: slots
+        onTriggered: {
+            const now = Date.now()
+            tile._advance((now - tile._last) / 1000)
+            tile._last = now
+            tile._arm(false)
+        }
+    }
+    FrameAnimation {
+        running: tile.playing && tile.maxFps <= 0
+        onTriggered: tile._advance(frameTime)
     }
 
     Component.onCompleted: {
         _t = (Date.now() / 1000) % 1000000
         _dkEase = dark ? 1 : 0
+        _arm(true)
     }
 
     // A slow wobble: three sines at incommensurate rates. Never repeats.
@@ -282,14 +305,23 @@ Item {
         }
     }
 
+    readonly property real _screenDpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    readonly property bool _reduced: resolution > 0 && resolution < 1
     ShaderEffect {
         id: fx
         anchors.fill: parent
         visible: !tile.fallback
+        // Run smaller and scaled up when asked (`resolution`): the texture's
+        // pixel ratio is then the shader's, so edges and grain are a texel.
+        // Only then: a layer that changes asks Qt for one more frame after
+        // it, so a tile caching its own 30 updates a second would draw 60.
+        layer.enabled: tile._reduced
+        layer.textureSize: Qt.size(Math.max(1, Math.ceil(width * dpr)), Math.max(1, Math.ceil(height * dpr)))
+        layer.smooth: true
         // Uniforms (names match shaders/gradienttile.frag).
         readonly property size size: Qt.size(width, height)
         readonly property real radius: Math.min(tile.radius, width / 2, height / 2)
-        readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+        readonly property real dpr: tile._reduced ? tile._screenDpr * tile.resolution : tile._screenDpr
         readonly property real rings: tile.rings
         readonly property real r1: tile._geo.r1
         readonly property real glass: 1.0 - 0.65 * tile._dk

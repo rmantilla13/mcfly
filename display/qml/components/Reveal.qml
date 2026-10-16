@@ -12,8 +12,8 @@ import McFly.Core
 //   Reveal { id: rv; shown: screen.isCurrent }
 //   delegate: Item { opacity: rv.at(index); transform: Translate { y: rv.rise(index) } }
 //
-// A delegate made later (a sync rebuilds them all every minute) reads 1 and
-// is simply there; nothing replays from a delegate's onCompleted. Off with
+// A delegate made later (a sync that brings new rows rebuilds them) reads 1
+// and is simply there; nothing replays from a delegate's onCompleted. Off with
 // Settings → Animated tiles: everything is in place at once.
 Item {
     id: reveal

@@ -36,7 +36,9 @@
  * light scheme and the dark one through `dark:` classes; its colour defaults
  * to the page's --foreground, which is light on dark and dark on light as
  * the original's palettes were. SpotlightCard itself is the original card,
- * drawn with Spotlight inside it.
+ * drawn with Spotlight inside it. A light out of reach of the pointer stays
+ * asleep (a move far away wakes nothing), and one that has gone dark stops
+ * at once rather than gliding unseen after the pointer.
  */
 "use client";
 
@@ -153,6 +155,7 @@ function useSpotlight(
     let raf = 0;
     let last = 0;
     let alive = true;
+    let dark = false;
 
     const gradient = (s: Settings, size: number, x: number, y: number, stops: string) => {
       if (s.shape === "beam") {
@@ -230,6 +233,16 @@ function useSpotlight(
       const press = state.pressed && s.flare && !reduce ? 1 : 0;
       state.flare += (press - state.flare) * (1 - Math.exp(-dt / (press ? 0.05 : 0.28)));
       if (Math.abs(press - state.flare) < 0.002) state.flare = press;
+      // Dark and staying dark: nothing to draw or follow. Stand where the
+      // light would be and stop, after one paint that puts it out.
+      if (target === 0 && state.presence === 0 && state.flare === 0) {
+        state.x = tx;
+        state.y = ty;
+        if (!dark) paint(s);
+        dark = true;
+        return;
+      }
+      dark = false;
       paint(s);
       const moving = Math.abs(tx - state.x) > 0.1 || Math.abs(ty - state.y) > 0.1;
       const settled = !moving && state.presence === target && state.flare === press;
@@ -243,11 +256,22 @@ function useSpotlight(
     };
     wakeRef.current = wake;
 
+    // Whether a pointer at (x, y) could light it: on it, or within
+    // `proximity`. Read in the event, while layout is still clean, so a move
+    // across the page doesn't wake every light into a frame of its own.
+    const inReach = (x: number, y: number) => {
+      const s = settingsRef.current;
+      if (s.ambient) return true;
+      if (s.proximity <= 0) return false;
+      const r = root.getBoundingClientRect();
+      return Math.hypot(Math.max(0, r.left - x, x - r.right), Math.max(0, r.top - y, y - r.bottom)) < s.proximity;
+    };
+
     const onMove = (event: PointerEvent) => {
       pointer.x = event.clientX;
       pointer.y = event.clientY;
       pointer.active = true;
-      if (state.presence > 0 || settingsRef.current.proximity > 0 || root.contains(event.target as Node | null)) wake();
+      if (state.presence > 0 || root.contains(event.target as Node | null) || inReach(pointer.x, pointer.y)) wake();
     };
     const onOut = (event: PointerEvent) => {
       if (event.relatedTarget) return;
@@ -278,7 +302,7 @@ function useSpotlight(
       wake();
     };
     const onScroll = () => {
-      if (pointer.active || state.presence > 0) wake();
+      if (state.presence > 0 || (pointer.active && inReach(pointer.x, pointer.y))) wake();
     };
 
     const observer = new IntersectionObserver((entries) => {

@@ -120,6 +120,8 @@ Item {
             readonly property color ink: tile.ink
             readonly property color inkMuted: tile.inkMuted
             GradientTile {
+                // Full screen: shaded at half its pixels (GradientTile.resolution).
+                resolution: 0.5
                 id: tile
                 anchors.fill: parent
                 radius: 0
