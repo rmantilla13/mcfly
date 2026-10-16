@@ -147,7 +147,9 @@ jobs:
       - name: Prepare a Pi-like system (sudo user, no systemd)
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends sudo ca-certificates git curl
+          # procps: ps, which a Pi has and the bare image doesn't. The boot
+          # video's stop helper uses it to find a player left behind.
+          apt-get install -y --no-install-recommends sudo ca-certificates git curl procps
           useradd -m -s /bin/bash pi
           echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/pi
       - uses: actions/checkout@v4
