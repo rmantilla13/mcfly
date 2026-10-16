@@ -30,8 +30,10 @@ _DEVICE = {"types": (str, int)}
 
 # Kokoro-82M's voices that McFly offers: Homestead's four. Heart is the default.
 KOKORO_VOICES = ("af_heart", "af_bella", "am_michael", "am_fenrir")
-# openWakeWord's built-in models a display may switch between.
-BUILTIN_WAKEWORDS = ("hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy")
+# The wake words a display may switch between: McFly's own "Hey McFly" (the
+# default, trained for it and shipped in mcfly_voice/wakewords), then
+# openWakeWord's built-in models, which --download-models fetches.
+BUILTIN_WAKEWORDS = ("hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy")
 
 
 @dataclass
@@ -53,7 +55,7 @@ class AudioConfig:
 @dataclass
 class WakewordConfig:
     enabled: bool = True
-    model: str = "hey_jarvis"
+    model: str = "hey_mcfly"
     name: str = ""
     threshold: float = 0.5
     refractory: float = 2.0

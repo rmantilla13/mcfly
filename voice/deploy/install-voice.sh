@@ -78,6 +78,8 @@ fi
 if [ "$skip_models" -eq 0 ]; then
     step "Fetching models (once; about 340 MB)"
     # Into ~/.local/share/mcfly-voice (data_dir); the service never downloads.
+    # The "Hey McFly" wake word comes with the package and is copied into its
+    # wakeword folder, replacing an older copy; the other wake words are fetched.
     if ! "$venv/bin/python" -m mcfly_voice --config "$config" --download-models; then
         echo "Some models couldn't be fetched. The service still runs without them" >&2
         echo "(see the log); retry with: $venv/bin/python -m mcfly_voice --download-models" >&2

@@ -101,7 +101,7 @@ Put the Supabase URL and anon key in `apple/Config/Local.xcconfig` (see
 
 ### Voice (optional, on the Pi)
 
-`./display/deploy/install-pi.sh --with-voice`, then say the wake word; see
+`./display/deploy/install-pi.sh --with-voice`, then say "Hey McFly"; see
 [VOICE.md](docs/VOICE.md).
 
 ## Checks, all in one place

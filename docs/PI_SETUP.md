@@ -220,7 +220,7 @@ every boot, as the same user as the display. Spoken replies use the screen
 speakers: the gear menu's **Screen speakers** switch and **Volume** apply to
 them. Without a microphone yet, check the speakers with
 `/opt/mcfly-voice/bin/python -m mcfly_voice --say "Hello from McFly"`.
-Once a USB mic is plugged in, say "Hey Jarvis" and ask a question. You can
+Once a USB mic is plugged in, say "Hey McFly" and ask a question. You can
 also install voice together with the display:
 `./display/deploy/install-pi.sh --with-voice` (add `--skip-models` to fetch the
 models later). Details and voice troubleshooting: [VOICE.md](VOICE.md).

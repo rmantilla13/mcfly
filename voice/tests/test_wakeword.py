@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+import tomllib
+import types
+from pathlib import Path
+
 import pytest
 
+from mcfly_voice import wakeword
+from mcfly_voice.config import BUILTIN_WAKEWORDS, Config
 from mcfly_voice.wakeword import WakeGate, display_name, resolve_model
 
 
@@ -105,6 +112,9 @@ def test_set_busy_is_idempotent():
     ("hey_home_oh_ess.onnx", "", "Hey Home Oh Ess"),
     ("hey_home_oh_ess.onnx", "Hey McFly", "Hey McFly"),
     ("alexa", "  ", "Alexa"),
+    ("hey_mcfly", "", "Hey McFly"),
+    ("/home/pi/.local/share/mcfly-voice/wakeword/hey_mcfly.onnx", "", "Hey McFly"),
+    ("HEY_MCFLY_v2", "", "Hey McFly"),
 ])
 def test_display_name(model, override, expected):
     assert display_name(model, override) == expected
@@ -125,3 +135,61 @@ def test_resolve_model(tmp_path):
         str(wake_dir / "hey_mcfly.tflite"), "tflite", True)
     custom = tmp_path / "elsewhere.onnx"
     assert resolve_model(str(custom), "tflite", tmp_path) == (str(custom), "onnx", True)
+
+
+def ship(tmp_path, monkeypatch, data: bytes = b"v1") -> Path:
+    """A stand-in for the package's wakewords folder holding hey_mcfly.onnx."""
+    shipped = tmp_path / "package"
+    shipped.mkdir(exist_ok=True)
+    (shipped / "hey_mcfly.onnx").write_bytes(data)
+    monkeypatch.setattr(wakeword, "BUNDLED_DIR", shipped)
+    return shipped
+
+
+def test_resolve_model_falls_back_to_the_shipped_wake_word(tmp_path, monkeypatch):
+    shipped = ship(tmp_path, monkeypatch)
+    data = tmp_path / "data"
+    assert resolve_model("hey_mcfly", "onnx", data) == (
+        str(shipped / "hey_mcfly.onnx"), "onnx", True)
+    # The copy --download-models puts in the data dir wins.
+    (data / "wakeword").mkdir(parents=True)
+    (data / "wakeword" / "hey_mcfly.onnx").write_bytes(b"copy")
+    assert resolve_model("hey_mcfly", "onnx", data)[0] == str(data / "wakeword" / "hey_mcfly.onnx")
+    # It ships only as .onnx; tflite is left to openWakeWord, which doesn't know it.
+    assert resolve_model("hey_mcfly", "tflite", data) == ("hey_mcfly", "tflite", False)
+
+
+def test_download_models_copies_the_shipped_wake_word(tmp_path, monkeypatch):
+    shipped = ship(tmp_path, monkeypatch)
+    (shipped / "hey_mcfly.yaml").write_text("training config, not a model")
+    fetched = []
+    utils = types.ModuleType("openwakeword.utils")
+    utils.download_models = lambda model_names, target_directory: fetched.append(
+        (model_names, target_directory))
+    monkeypatch.setitem(sys.modules, "openwakeword", types.ModuleType("openwakeword"))
+    monkeypatch.setitem(sys.modules, "openwakeword.utils", utils)
+    data = tmp_path / "data"
+    wake_dir = data / "wakeword"
+
+    wakeword.download_models("hey_mcfly", data)
+    assert [p.name for p in wake_dir.iterdir()] == ["hey_mcfly.onnx"]
+    assert (wake_dir / "hey_mcfly.onnx").read_bytes() == b"v1"
+    # openWakeWord still brings the feature models every wake word needs.
+    assert fetched == [(["hey_mcfly"], str(wake_dir))]
+    # An update with a retrained model replaces the copy; an unchanged one stays.
+    (shipped / "hey_mcfly.onnx").write_bytes(b"v2")
+    assert wakeword.install_bundled("hey_mcfly", wake_dir) == [wake_dir / "hey_mcfly.onnx"]
+    assert (wake_dir / "hey_mcfly.onnx").read_bytes() == b"v2"
+    assert wakeword.install_bundled("hey_mcfly", wake_dir) == []
+    # openWakeWord's own are fetched, never copied.
+    assert wakeword.install_bundled("hey_jarvis", wake_dir) == []
+
+
+def test_hey_mcfly_ships_with_the_package():
+    assert Config().wakeword.model == "hey_mcfly" == BUILTIN_WAKEWORDS[0]
+    assert (wakeword.BUNDLED_DIR / "hey_mcfly.onnx").is_file()
+    # And with a wheel install (install-voice.sh), not only from the repo.
+    pyproject = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
+    patterns = pyproject["tool"]["setuptools"]["package-data"]["mcfly_voice"]
+    model = (wakeword.BUNDLED_DIR / "hey_mcfly.onnx").relative_to(wakeword.BUNDLED_DIR.parent)
+    assert any(model.match(p) for p in patterns)

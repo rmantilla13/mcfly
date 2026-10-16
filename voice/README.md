@@ -25,14 +25,16 @@ and keeps its models in `~/.local/share/mcfly-voice`.
 
 ## The wake word
 
-The default is openWakeWord's built-in `hey_jarvis` ("Hey Jarvis"). To use
-another one, set `wakeword.model` in `/etc/mcfly/voice.toml` to one of the
-other built-ins (`alexa`, `hey_mycroft`, `hey_rhasspy`) or to a `.onnx` file of
-your own, fetch it, and restart:
+The default is "Hey McFly" (`hey_mcfly`), McFly's own model, trained for it
+and shipped in `mcfly_voice/wakewords/`. The web console's display settings
+switch between it and openWakeWord's built-ins (`hey_jarvis`, `alexa`,
+`hey_mycroft`, `hey_rhasspy`) while the service runs. To start with another
+one, or with a `.onnx` file of your own, set `wakeword.model` in
+`/etc/mcfly/voice.toml`, fetch it, and restart:
 
 ```toml
 [wakeword]
-model = "hey_mycroft"      # a built-in, or "hey_mcfly.onnx" from ~/.local/share/mcfly-voice/wakeword
+model = "hey_mycroft"      # one of those, or "my_phrase.onnx" from ~/.local/share/mcfly-voice/wakeword
 name = ""                  # what the display shows; empty derives it ("Hey Mycroft")
 ```
 
@@ -41,8 +43,8 @@ name = ""                  # what the display shows; empty derives it ("Hey Mycr
 sudo systemctl restart mcfly-voice
 ```
 
-Training a custom phrase such as "Hey McFly" takes an hour in a Colab
-notebook, no recordings needed; docs/VOICE.md walks through it, along with
+Retraining "Hey McFly", or training another phrase, takes about an hour on a
+Mac with no recordings needed; docs/VOICE.md walks through it, along with
 tuning `wakeword.threshold` for your room.
 
 | Module | Job |

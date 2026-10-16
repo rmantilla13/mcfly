@@ -441,7 +441,7 @@ class VoiceService:
         self.broadcast(self.hello())
 
     async def set_wakeword_model(self, model: str, client: ServerConnection | None = None) -> None:
-        """Switches the wake word (a built-in openWakeWord model)."""
+        """Switches the wake word (one of BUILTIN_WAKEWORDS)."""
         switch = getattr(self.backend, "set_wakeword_model", None)
         if switch is None:
             return

@@ -41,10 +41,13 @@
 # Listen for the wake word. The display can switch it off; that choice is
 # remembered in data_dir and wins over this setting.
 #enabled = true
-# A built-in openWakeWord model (hey_jarvis, alexa, hey_mycroft, hey_rhasspy)
-# or a .onnx/.tflite file. A bare file name is looked up in <data_dir>/wakeword.
-#model = "hey_jarvis"
-# The name the display shows. Empty derives it from the model ("Hey Jarvis").
+# "hey_mcfly" (McFly's own, shipped with the service), one of openWakeWord's
+# built-in models (hey_jarvis, alexa, hey_mycroft, hey_rhasspy), or a
+# .onnx/.tflite file. A bare file name is looked up in <data_dir>/wakeword. The
+# web console switches between the named ones while running; that choice is
+# remembered in data_dir and wins over this setting.
+#model = "hey_mcfly"
+# The name the display shows. Empty derives it from the model ("Hey McFly").
 #name = ""
 # Score (0-1) that counts as the wake word. Higher means fewer false wakes and
 # more missed ones.

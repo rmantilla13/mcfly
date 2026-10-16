@@ -261,7 +261,8 @@ export type Device = {
 };
 
 // A display's own settings, kept on the server so the console and the screen
-// edit the same thing (migration 20261015000004, clean_device_settings).
+// edit the same thing (clean_device_settings: migrations 20261015000004 and
+// 20261015000008).
 export type DisplaySettings = Partial<{
   screensaver: "ambient" | "clock" | "headlines";
   darkMode: boolean;
@@ -274,7 +275,7 @@ export type DisplaySettings = Partial<{
   assistantProvider: "" | "claude" | "grok";
   speakReplies: boolean;
   wakeword: boolean;
-  wakewordModel: "hey_jarvis" | "alexa" | "hey_mycroft" | "hey_rhasspy";
+  wakewordModel: "hey_mcfly" | "hey_jarvis" | "alexa" | "hey_mycroft" | "hey_rhasspy"; // hey_mcfly: McFly's own
   voice: "af_heart" | "af_bella" | "am_michael" | "am_fenrir"; // Kokoro: Homestead's voices
   voiceSpeed: number;
   volume: number;

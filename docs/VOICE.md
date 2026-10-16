@@ -1,6 +1,6 @@
 # Voice
 
-Say the wake word, ask a question, and the display answers out loud. The
+Say "Hey McFly", ask a question, and the display answers out loud. The
 voice service (`voice/`, the Python package `mcfly_voice`) runs on the Pi
 next to the display. It listens for the wake word, records what you say,
 turns it into text, and speaks the reply. The display does everything else:
@@ -77,8 +77,10 @@ The script:
   Whisper model from Hugging Face
   ([rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices),
   [Systran/faster-whisper-base.en](https://huggingface.co/Systran/faster-whisper-base.en)),
-  and the wake-word model from openWakeWord's
-  [GitHub release v0.5.1](https://github.com/dscripka/openWakeWord/releases/tag/v0.5.1)
+  and openWakeWord's feature models and built-in wake words from its
+  [GitHub release v0.5.1](https://github.com/dscripka/openWakeWord/releases/tag/v0.5.1).
+  The "Hey McFly" wake word comes with the package; it is copied into
+  `~/.local/share/mcfly-voice/wakeword`, replacing an older copy
 - installs and starts the `mcfly-voice` service, as the same user as the
   display, and enables it for every boot. It waits a few seconds at startup
   for that user's PipeWire socket, then listens whether or not a microphone
@@ -178,7 +180,7 @@ defaults. The ones you're most likely to touch:
 | Setting | Default | When to change it |
 |---|---|---|
 | `wakeword.threshold` | `0.5` | Raise (0.6–0.7) if it wakes on TV chatter; lower (0.3–0.4) if it misses you |
-| `wakeword.model` / `name` | `hey_jarvis` | After training "Hey McFly" (below) |
+| `wakeword.model` / `name` | `hey_mcfly` | To start with another wake word: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` or a `.onnx` of your own. The web console's display settings switch between the named ones while it runs, and that choice wins over this setting |
 | `vad.silence` | `0.7` s | Raise to 1.0 if it cuts people off mid-sentence |
 | `vad.aggressiveness` | `2` | 3 in a noisy kitchen (stricter about what counts as speech) |
 | `vad.no_speech` | `4.0` s | How long it waits for you to start after the wake word |
@@ -208,39 +210,73 @@ If webrtcvad isn't installed, end-of-speech falls back to a loudness
 detector (`vad.engine = "energy"`, tuned by `vad.energy_threshold`). It
 works in a quiet room but treats any steady sound as speech for a moment.
 
-## A custom "Hey McFly" wake word
+## The "Hey McFly" wake word
 
-The default wake word is openWakeWord's built-in "Hey Jarvis". openWakeWord
-can train new phrases from synthetic speech, with no recordings needed. Its
-repository ([dscripka/openWakeWord](https://github.com/dscripka/openWakeWord),
-"Training New Models" in the README) has a Google Colab notebook,
-`notebooks/automatic_model_training.ipynb`, that does it in about an hour.
+"Hey McFly" (`hey_mcfly`) is McFly's own wake word and the default. It is an
+openWakeWord model like the built-in ones and runs on the same feature
+models, but it ships inside the package (`voice/mcfly_voice/wakewords/`,
+under 1 MB) instead of being downloaded: `--download-models` copies it into
+`~/.local/share/mcfly-voice/wakeword`, replacing an older copy, and the
+service falls back to the package's copy when that folder doesn't have one.
+The web console's display settings (Displays → Customize) switch a display
+between it and the built-ins.
 
-1. Open the notebook in Colab and pick a GPU runtime.
-2. Set the target phrase. Spell it the way it's said, since the samples come
-   from a text-to-speech voice: `hey mcfly`. Name the model `hey_mcfly`
-   (that file name stays; the display shows "Hey McFly").
-3. Run the cells. They generate thousands of spoken examples with Piper
-   voices, mix in noise and room echo, add near-miss phrases ("mcfly",
-   "hello"), train a small model, and export `hey_mcfly.onnx` (and
-   `.tflite`). More examples and steps give a sturdier model; the notebook's
-   defaults are a fine first try.
-4. Copy the `.onnx` file to the Pi and point the config at it:
+It was trained from synthetic speech, with no recordings, using
+[livekit-wakeword](https://github.com/livekit/livekit-wakeword) 0.3.0 on a
+Mac's GPU, through `voice/training/train.py` with the settings in
+`voice/training/hey_mcfly.yaml`:
 
-   ```bash
-   scp hey_mcfly.onnx pi@mcfly.local:.local/share/mcfly-voice/wakeword/
-   ```
+- 33,600 clips of "hey mcfly" (and "hey mick fly"), in voices blended from
+  904 LibriTTS speakers at five speaking rates; in 30% of them the voice
+  pauses after "hey", as people do
+- 40,800 near misses that must not wake it: about 8,000 generated
+  sound-alikes, and a fifth of the clips from named ones such as "McFly"
+  alone, "Marty McFly", "hey Mickey", "hey Siri", "hey Jarvis", "hey, fly"
+  and "make it fly"
+- room echo (MIT impulse responses) and background noise (MUSAN) mixed in
+- 2,000 hours of general audio (ACAV100M features) as examples of what isn't
+  the wake word
 
-   ```toml
-   [wakeword]
-   model = "hey_mcfly.onnx"    # looked up in ~/.local/share/mcfly-voice/wakeword
-   name = "Hey McFly"          # what the display shows
-   ```
+The shipped model came from three rounds (the pauses and the named near
+misses were added as gaps showed up); a fresh run of the YAML gives a
+comparable model, not an identical one.
 
-5. Restart the service and tune `threshold` as above. Test from where people
-   actually stand, with the room's usual noise, and leave the TV on for an
-   evening to count false wakes. If it misses some voices (children's are
-   often hardest), train again with more examples.
+How it did, scored by McFly's own detector at the default threshold (0.5):
+
+| Test | Result |
+|---|---|
+| Held-out synthetic "Hey McFly", with noise and echo | 91% caught; 61% when there's a pause after "hey" |
+| 21 macOS voices it never trained on (as "hey Mick Fly": macOS reads "Mc" as the letters M C) | 62 of 63 caught; 35 of 63 with a pause |
+| openWakeWord's validation set, ~11 h of general audio | A few false wakes, about as many as "Hey Jarvis" (the trainer also tunes against this set, so it's not held out) |
+| 26 near-miss phrases, not in training, in 21 voices | Fires on close sound-alikes ("hey flies", "hey Clyde", "hey McCoy"): 76 of 546 clips; 1 of 189 everyday "hey, ..." lines |
+
+Say it in one breath for the surest wake; with a pause after "hey" it wakes
+a little over half the time. Real rooms differ: if it wakes on the TV or on
+sound-alikes, set `wakeword.threshold = 0.6` (in these tests that cut its
+firing on sound-alikes by a sixth and cost about 1 point of recall, 4 with a
+pause); if it misses you, try 0.4.
+
+**Retraining** it, or training another phrase, takes about three hours and
+19 GB of downloads on an Apple-silicon Mac (it needs `espeak-ng`, from
+Homebrew):
+
+```bash
+repo=$(pwd)                                    # the McFly checkout
+mkdir -p ~/wake-train && cd ~/wake-train       # data and output land here (~25 GB)
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install 'livekit-wakeword[train,eval,export]==0.3.0'
+uv pip install --no-deps 'openwakeword>=0.6,<0.7'
+python "$repo/voice/training/train.py" "$repo/voice/training/hey_mcfly.yaml" all
+cp output/hey_mcfly/hey_mcfly.onnx "$repo/voice/mcfly_voice/wakewords/"
+```
+
+Its last stage, `check`, scores held-out clips through McFly's own
+detector, the way the Pi will. For another phrase, copy the YAML and change
+`model_name`, `target_phrases` (spelled the way it's said, since the clips
+come from text to speech) and the near misses, then set `wakeword.model` to
+the new `.onnx` file. A retrained `hey_mcfly.onnx`, once committed, reaches
+a Pi with `git pull` and `./voice/deploy/install-voice.sh`, which copies it
+over the old one.
 
 ## Protocol
 
@@ -250,7 +286,7 @@ behind it.
 
 | Server → client | When |
 |---|---|
-| `{"type":"hello","version":"1","wakeword":bool,"wakeword_name":str,"tts":bool,"stt":bool}` | On connect, and again to everyone after `set` or when the mic is plugged in or unplugged |
+| `{"type":"hello","version":"1","wakeword":bool,"wakeword_name":str,"wakeword_model":str,"tts":bool,"stt":bool,"mic":str,"voice":str,"speed":num}` | On connect, and again to everyone after `set` or when the mic is plugged in or unplugged |
 | `{"type":"state","state":"idle\|listening\|transcribing\|speaking"}` | On connect (right after `hello`) and on every change |
 | `{"type":"wake","source":"wakeword\|button"}` | A session starts; always followed by `listening` |
 | `{"type":"level","rms":0.0-1.0}` | While listening, at most 15/s |
@@ -264,7 +300,8 @@ behind it.
 | `{"type":"cancel"}` | Ends the session without a transcript, stops speech, and goes `idle` |
 | `{"type":"speak","text":str,"id":str}` | Queues speech. Waits for a session in progress to finish. `id` is optional (one is made up) and at most 200 characters. Text past 2,000 characters is cut at a word break. With 16 replies already waiting, it's refused with an `error` and an immediate `spoken` |
 | `{"type":"stop_speaking"}` | Stops speech and drops anything queued; each pending id gets `spoken` |
-| `{"type":"set","wakeword_enabled":bool}` | Switches the wake word; answered with a fresh `hello` to every client |
+| `{"type":"set","wakeword_enabled":bool}` | Switches the wake word on or off; answered with a fresh `hello` to every client |
+| `{"type":"set","wakeword_model":str,"voice":str,"speed":num}` | Any of them: the wake word (`hey_mcfly`, `hey_jarvis`, `alexa`, `hey_mycroft` or `hey_rhasspy`), Kokoro's voice (`af_heart`, `af_bella`, `am_michael`, `am_fenrir`) and the speaking rate (0.5–2). Remembered across restarts; answered with a fresh `hello` to every client, or an `error` if the wake word can't load |
 
 - A frame over 64 KiB closes the connection (code 1009); a handshake with
   an `Origin` header not in `server.allowed_origins` is refused with 403.
@@ -309,6 +346,11 @@ delay the commands so the display is connected first:
 ```bash
 (sleep 8; echo "wake what's for dinner"; cat) | python -m mcfly_voice --simulate
 ```
+- In `hello`, `wakeword_model` is the wake word in use (`hey_mcfly`) and
+  `wakeword_name` what the display shows ("Hey McFly"); `mic` is the open
+  microphone's name (`""` when there's none), `voice` Kokoro's voice (`""`
+  when another engine speaks) and `speed` the speaking rate. Clients ignore
+  keys they don't know.
 
 Closing stdin doesn't stop the service; Ctrl+C or `quit` does.
 

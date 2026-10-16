@@ -39,7 +39,7 @@ class SimBackend:
     mic_name = "Simulated mic"
     voice = "af_heart"
     speed = 1.0
-    wakeword_model = "hey_jarvis"
+    wakeword_model = "hey_mcfly"
 
     def set_voice(self, voice: str | None, speed: float | None) -> None:
         if voice:
@@ -54,7 +54,7 @@ class SimBackend:
 
     def __init__(
         self,
-        wakeword_name: str = "Hey Jarvis",
+        wakeword_name: str = "Hey McFly",
         *,
         listen_text: str = "What's for dinner tonight?",
         levels: Sequence[float] = FAKE_LEVELS,

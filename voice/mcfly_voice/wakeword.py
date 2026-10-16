@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import time
 from collections.abc import Callable
@@ -13,6 +14,11 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 MODEL_SUFFIXES = (".onnx", ".tflite")
+# McFly's own wake words ("Hey McFly"), shipped with the package. A copy in
+# <data_dir>/wakeword, which --download-models makes, takes precedence.
+BUNDLED_DIR = Path(__file__).parent / "wakewords"
+# Words display_name can't capitalize by rule.
+_SPELLINGS = {"mcfly": "McFly"}
 
 
 class WakeGate:
@@ -94,20 +100,23 @@ class WakeGate:
 
 
 def display_name(model: str, override: str = "") -> str:
-    """What the display shows: 'hey_jarvis_v0.1.onnx' → 'Hey Jarvis'."""
+    """What the display shows: 'hey_jarvis_v0.1.onnx' → 'Hey Jarvis',
+    'hey_mcfly' → 'Hey McFly'."""
     if override.strip():
         return override.strip()
     stem = Path(model).name
     for suffix in MODEL_SUFFIXES:
         stem = stem.removesuffix(suffix)
     stem = re.sub(r"_v\d+(\.\d+)*$", "", stem)
-    return " ".join(w.capitalize() for w in re.split(r"[_\-\s]+", stem) if w)
+    words = (w for w in re.split(r"[_\-\s]+", stem) if w)
+    return " ".join(_SPELLINGS.get(w.lower(), w.capitalize()) for w in words)
 
 
 def resolve_model(model: str, framework: str, data_dir: Path) -> tuple[str, str, bool]:
     """(path or built-in name, inference framework, is_path). A file name
-    without a directory is looked up in <data_dir>/wakeword; a built-in name
-    prefers a copy downloaded there by --download-models."""
+    without a directory is looked up in <data_dir>/wakeword. A name prefers a
+    copy there (put there by --download-models), then one of McFly's own in
+    the package; any other name is openWakeWord's to find."""
     wake_dir = data_dir / "wakeword"
     path = Path(model).expanduser()
     if path.suffix in MODEL_SUFFIXES:
@@ -118,6 +127,9 @@ def resolve_model(model: str, framework: str, data_dir: Path) -> tuple[str, str,
     found = sorted(wake_dir.glob(f"{model}_v*{ext}")) + sorted(wake_dir.glob(f"{model}{ext}"))
     if found:
         return str(found[-1]), framework, True
+    bundled = BUNDLED_DIR / f"{model}{ext}"
+    if bundled.exists():
+        return str(bundled), framework, True
     return model, framework, False
 
 
@@ -133,6 +145,9 @@ class WakeWordDetector:
         target, framework, is_path = resolve_model(model, framework, data_dir)
         if is_path and not Path(target).exists():
             raise FileNotFoundError(f"wake word model not found: {target}")
+        if not is_path and any(p.suffix in MODEL_SUFFIXES for p in BUNDLED_DIR.glob(f"{model}.*")):
+            raise FileNotFoundError(f"wake word model {model} comes only as .onnx "
+                                    "(set wakeword.inference_framework = \"onnx\")")
         if not is_path:
             bundled = [p for p in openwakeword.get_pretrained_model_paths(framework)
                        if model in Path(p).name]
@@ -163,14 +178,38 @@ class WakeWordDetector:
         self._model.reset()
 
 
+def install_bundled(model: str, target: Path) -> list[Path]:
+    """Copy McFly's own wake word `model` from the package into `target`,
+    replacing a copy that differs (a retrained model arrives with an update).
+    Returns the files written; there are none for openWakeWord's models."""
+    written = []
+    for src in sorted(BUNDLED_DIR.glob(f"{model}.*")):
+        if src.suffix not in MODEL_SUFFIXES:
+            continue
+        dest = target / src.name
+        data = src.read_bytes()
+        if dest.exists() and dest.read_bytes() == data:
+            continue
+        tmp = dest.with_name(dest.name + ".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, dest)
+        written.append(dest)
+    return written
+
+
 def download_models(model: str, data_dir: Path) -> None:
-    """Fetch a built-in openWakeWord model and its feature models into
-    <data_dir>/wakeword. Custom model files are left alone."""
+    """Put wake word `model` in <data_dir>/wakeword, with the feature models
+    every model needs: McFly's own is copied from the package, a built-in
+    openWakeWord model is fetched. Custom model files are left alone."""
     if Path(model).suffix in MODEL_SUFFIXES:
         log.info("wake word model %s is a file; nothing to download", model)
         return
-    from openwakeword.utils import download_models as oww_download
-
     target = data_dir / "wakeword"
     target.mkdir(parents=True, exist_ok=True)
+    for path in install_bundled(model, target):
+        log.info("installed wake word model %s", path)
+    from openwakeword.utils import download_models as oww_download
+
+    # For a name openWakeWord doesn't know (McFly's own) this fetches only the
+    # feature models.
     oww_download(model_names=[model], target_directory=str(target))

@@ -28,7 +28,7 @@ const DEFAULTS: Required<Omit<DisplaySettings, "volume">> = {
   assistantProvider: "",
   speakReplies: true,
   wakeword: true,
-  wakewordModel: "hey_jarvis",
+  wakewordModel: "hey_mcfly",
   voice: "af_heart",
   voiceSpeed: 1,
 };
@@ -155,7 +155,13 @@ export function DisplaySettingsDialog({ device, action }: { device: Device; acti
                   name="wakewordModel"
                   label="Wake word"
                   value={s.wakewordModel}
-                  options={[["hey_jarvis", "“Hey Jarvis”"], ["alexa", "“Alexa”"], ["hey_mycroft", "“Hey Mycroft”"], ["hey_rhasspy", "“Hey Rhasspy”"]]}
+                  options={[
+                    ["hey_mcfly", "“Hey McFly”"],
+                    ["hey_jarvis", "“Hey Jarvis”"],
+                    ["alexa", "“Alexa”"],
+                    ["hey_mycroft", "“Hey Mycroft”"],
+                    ["hey_rhasspy", "“Hey Rhasspy”"],
+                  ]}
                 />
                 <Choice
                   name="voiceSpeed"

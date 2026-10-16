@@ -25,13 +25,13 @@ async def test_hello_then_state_on_connect():
             "type": "hello",
             "version": "1",
             "wakeword": True,
-            "wakeword_name": "Hey Jarvis",
+            "wakeword_name": "Hey McFly",
             "tts": True,
             "stt": True,
             "mic": "Simulated mic",
             "voice": "af_heart",
             "speed": 1.0,
-            "wakeword_model": "hey_jarvis",
+            "wakeword_model": "hey_mcfly",
         }
         assert await c.recv() == IDLE
 
@@ -449,6 +449,9 @@ def test_set_messages_are_checked():
         "type": "set", "voice": "af_bella"}
     assert protocol.parse_client_message(json.dumps({"type": "set", "speed": 2, "wakeword_enabled": True})) == {
         "type": "set", "speed": 2.0, "wakeword_enabled": True}
+    for model in ("hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"):
+        message = {"type": "set", "wakeword_model": model}
+        assert protocol.parse_client_message(json.dumps(message)) == message
     for bad in ({"type": "set"}, {"type": "set", "voice": "robot"}, {"type": "set", "speed": 3},
                 {"type": "set", "speed": True}, {"type": "set", "wakeword_model": "computer"}):
         with pytest.raises(protocol.ProtocolError):

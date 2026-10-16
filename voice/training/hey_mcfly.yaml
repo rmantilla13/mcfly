@@ -1,0 +1,93 @@
+# "Hey McFly" for McFly's voice service: livekit-wakeword 0.3.0's settings for
+# voice/mcfly_voice/wakewords/hey_mcfly.onnx. Train with train.py (beside this
+# file; docs/VOICE.md). Paths are relative to the directory it runs in.
+model_name: hey_mcfly
+
+# "mcfly" is M AH0 K F L AY1 in CMUdict ("muhk-FLY"); "mick fly" covers a
+# stressed first syllable. The phrases are used in turn, so repeats weight
+# them. A comma or full stop makes the voice pause after "hey" (train.py keeps
+# it), as people do: 30% of the clips pause.
+target_phrases:
+  - "hey mcfly"
+  - "hey mcfly"
+  - "hey mick fly"
+  - "hey mcfly"
+  - "hey, mcfly"
+  - "hey mcfly"
+  - "hey mick fly"
+  - "hey. mcfly"
+  - "hey mcfly"
+  - "hey, mick fly"
+
+n_samples: 28000
+n_samples_val: 5600
+n_background_samples: 1500
+n_background_samples_val: 300
+tts_batch_size: 100
+
+# Near misses that must not wake it. train.py gives these a quarter of the
+# negative clips; ~8k generated sound-alikes make up the rest. The paused "fly"
+# ones stop "hey, ... fly" from passing for "hey, mcfly".
+custom_negative_phrases:
+  - "mcfly"
+  - "marty mcfly"
+  - "back to the future"
+  - "hey fly"
+  - "hey mick"
+  - "hey mickey"
+  - "hey mike"
+  - "hey michael"
+  - "hey macy"
+  - "hey molly"
+  - "hey bradley"
+  - "hey buddy"
+  - "hey there"
+  - "hey man"
+  - "hey you"
+  - "hey siri"
+  - "hey jarvis"
+  - "alexa"
+  - "okay google"
+  - "make it fly"
+  - "hey my fly"
+  - "butterfly"
+  - "firefly"
+  - "hey mic check"
+  - "mcdonald's"
+  - "hey mcdonald's"
+  - "okay fine"
+  - "hey, mickey"
+  - "hey. mike"
+  - "hey, buddy"
+  - "hey. my fly"
+  - "hey, fly"
+  - "hey. fly"
+  - "hey, a fly"
+  - "hey, the fly"
+  - "hey, i fly"
+  - "hey, flight"
+  - "hey, why"
+  - "go fly"
+  - "they fly"
+
+length_scales: [0.75, 0.9, 1.0, 1.15, 1.3]
+
+data_dir: data
+output_dir: output
+
+augmentation:
+  clip_duration: 2.0
+  rounds: 2
+  background_paths: [data/backgrounds]
+  rir_paths: [data/rirs]
+
+model:
+  model_type: conv_attention
+  model_size: medium
+
+steps: 50000
+# The trainer doubles its penalty on false wakes for each later phase whose
+# validation (near misses included) is above this. 0.2 doubled it twice and
+# cost recall; measured the way the Pi listens, 0.6 still gives under half a
+# false wake an hour of general audio.
+target_fp_per_hour: 0.6

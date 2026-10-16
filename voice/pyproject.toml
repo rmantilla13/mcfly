@@ -38,6 +38,10 @@ mcfly-voice = "mcfly_voice.__main__:main"
 [tool.setuptools]
 packages = ["mcfly_voice"]
 
+[tool.setuptools.package-data]
+# McFly's own wake word, "Hey McFly" (docs/VOICE.md).
+mcfly_voice = ["wakewords/*.onnx"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

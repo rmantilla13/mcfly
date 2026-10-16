@@ -77,9 +77,31 @@ def test_missing_wakeword_model_is_a_clear_error(tmp_path):
         WakeWordDetector("hey_mcfly.onnx", data_dir=tmp_path)
     with pytest.raises(ValueError, match="unknown wake word model 'hey_toaster'"):
         WakeWordDetector("hey_toaster", data_dir=tmp_path)
-    # The wheel ships no models; built-ins arrive with --download-models.
+    # openWakeWord's built-ins arrive with --download-models.
     with pytest.raises(FileNotFoundError, match="isn't downloaded"):
         WakeWordDetector("hey_jarvis", data_dir=tmp_path)
+    # McFly's own ships with the package, as .onnx only.
+    with pytest.raises(FileNotFoundError, match="comes only as .onnx"):
+        WakeWordDetector("hey_mcfly", framework="tflite", data_dir=tmp_path)
+    try:
+        WakeWordDetector("hey_mcfly", data_dir=tmp_path)
+    except FileNotFoundError as e:  # found the model; the feature models are a download
+        assert "feature models" in str(e)
+
+
+def test_hey_mcfly_is_an_openwakeword_classifier():
+    """openWakeWord feeds a classifier 16 frames of its 96-number speech
+    embedding and reads back one score."""
+    np = pytest.importorskip("numpy")
+    ort = pytest.importorskip("onnxruntime")
+    from mcfly_voice.wakeword import BUNDLED_DIR
+
+    session = ort.InferenceSession(str(BUNDLED_DIR / "hey_mcfly.onnx"),
+                                   providers=["CPUExecutionProvider"])
+    (inp,), (out,) = session.get_inputs(), session.get_outputs()
+    assert inp.shape[1:] == [16, 96] and out.shape[1:] == [1]
+    score = session.run(None, {inp.name: np.zeros((1, 16, 96), np.float32)})[0]
+    assert score.shape == (1, 1) and 0.0 <= float(score[0][0]) <= 1.0
 
 
 def test_sounddevice_calls():

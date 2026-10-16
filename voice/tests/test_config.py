@@ -24,7 +24,7 @@ def test_defaults_match_the_spec(monkeypatch):
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     cfg = Config()
     assert (cfg.server.host, cfg.server.port) == ("127.0.0.1", 8765)
-    assert cfg.wakeword.model == "hey_jarvis"
+    assert cfg.wakeword.model == "hey_mcfly"
     assert cfg.wakeword.threshold == 0.5 and cfg.wakeword.refractory == 2.0
     assert cfg.vad.aggressiveness == 2
     assert (cfg.vad.silence, cfg.vad.max_length, cfg.vad.no_speech) == (0.7, 8.0, 4.0)

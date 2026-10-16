@@ -421,7 +421,7 @@ export async function syncCalendarSourceAction(_prev: ActionResult, fd: FormData
 // ───────────────────────────── Display settings ─────────────────────────────
 
 const SAVERS = ["ambient", "clock", "headlines"] as const;
-const WAKEWORDS = ["hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"] as const;
+const WAKEWORDS = ["hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"] as const;
 const KOKORO_VOICES = ["af_heart", "af_bella", "am_michael", "am_fenrir"] as const;
 
 // "HH:MM" → minutes after midnight.
