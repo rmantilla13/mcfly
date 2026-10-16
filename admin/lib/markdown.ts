@@ -10,6 +10,12 @@
 // to the end of its line, a table's header shows as a paragraph until its
 // divider row arrives, an open fence runs to the end. Pure, so
 // tests/markdown.test.mjs can check it.
+//
+// Two shapes are the assistant's own (its `layout` skill, docs/ASSISTANT.md):
+// a list item opening with `[Mon]` or `[Blocked]` carries that as its `tag`
+// (a chip), and a fence marked `stats` is a "stats" block of label | value |
+// tone lines (tiles), not code. McFlyKit's Markdown.swift reads them the
+// same way.
 
 export type Inline =
   | { t: "text"; v: string }
@@ -17,8 +23,11 @@ export type Inline =
   | { t: "code"; v: string }
   | { t: "br" };
 
-export type ListItem = { c: Inline[]; sub: Block | null };
+// `tag` is there only when the item opened with one: `[Mon]`, `[Blocked]`.
+export type ListItem = { c: Inline[]; sub: Block | null; tag?: string };
 export type Align = "left" | "center" | "right" | null;
+export type Tone = "up" | "down" | "watch" | null;
+export type Stat = { label: string; value: string; tone: Tone };
 
 export type Block =
   | { t: "heading"; level: 1 | 2 | 3 | 4; c: Inline[] }
@@ -27,13 +36,17 @@ export type Block =
   | { t: "table"; align: Align[]; head: Inline[][]; rows: Inline[][][] }
   | { t: "quote"; c: Inline[] }
   | { t: "code"; v: string }
+  | { t: "stats"; items: Stat[] }
   | { t: "hr" };
 
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const HR = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
 const BULLET = /^(\s*)([-*+•])\s+(.*)$/;
 const NUMBERED = /^(\s*)(\d{1,9})[.)]\s+(.*)$/;
-const FENCE = /^\s*(```|~~~)/;
+const FENCE = /^\s*(```|~~~)\s*([A-Za-z0-9]*)/;
+// `[Mon] words`: a tag of 1 to 24 characters, then a space and some words.
+// `[words](address)` is a link, which keeps its words instead.
+const TAG = /^\[([^\[\]\n]{1,24})\][ \t]+(\S[^]*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
 const DIVIDER_CELL = /^\s*:?-{1,}:?\s*$/;
 
@@ -57,7 +70,8 @@ export function parseMarkdown(source: string): Block[] {
       i++;
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++]);
       i++; // the closing fence, if it has arrived
-      blocks.push({ t: "code", v: body.join("\n") });
+      if (fence[2].toLowerCase() === "stats") blocks.push({ t: "stats", items: body.map(stat).filter((s): s is Stat => s !== null) });
+      else blocks.push({ t: "code", v: body.join("\n") });
       continue;
     }
 
@@ -121,6 +135,17 @@ function startsBlock(lines: string[], i: number): boolean {
     FENCE.test(line) || HEADING.test(line) || HR.test(line) || QUOTE.test(line) ||
     BULLET.test(line) || NUMBERED.test(line) || isTableStart(lines, i)
   );
+}
+
+// ───────────────────────────── Stats ─────────────────────────────
+
+// `Open edits | 5 | watch`: a label and a value, and a tone when the third
+// cell names one. A line with no pipe isn't a stat.
+function stat(line: string): Stat | null {
+  const parts = line.split("|").map((p) => p.trim());
+  if (parts.length < 2 || !parts[0] || !parts[1]) return null;
+  const tone = (parts[2] ?? "").toLowerCase();
+  return { label: parts[0], value: parts[1], tone: tone === "up" || tone === "down" || tone === "watch" ? tone : null };
 }
 
 // ───────────────────────────── Tables ─────────────────────────────
@@ -225,7 +250,11 @@ function buildList(entries: ListLine[], from: number, to: number): Block {
     const e = entries[k];
     let end = k + 1;
     while (end < to && entries[end].indent > base) end++;
-    items.push({ c: parseInline(e.text), sub: end > k + 1 ? buildList(entries, k + 1, end) : null });
+    const tag = TAG.exec(e.text);
+    const text = tag ? tag[2] : e.text;
+    const item: ListItem = { c: parseInline(text), sub: end > k + 1 ? buildList(entries, k + 1, end) : null };
+    if (tag && tag[1].trim()) item.tag = tag[1].trim();
+    items.push(item);
     k = end;
   }
   return { t: "list", ordered: first.ordered, start: first.ordered ? first.n : 1, items };
@@ -348,7 +377,7 @@ export function plainText(source: string): string {
   };
   const list = (b: Extract<Block, { t: "list" }>) => {
     for (const item of b.items) {
-      parts.push(sentence(inline(item.c)));
+      parts.push(sentence(item.tag ? `${item.tag}: ${inline(item.c)}` : inline(item.c)));
       if (item.sub) walk([item.sub]);
     }
   };
@@ -364,6 +393,7 @@ export function plainText(source: string): string {
           parts.push(sentence(cells.map((c, k) => (k && head[k] ? `${head[k]} ${c}` : c)).filter((c) => c.trim()).join(", ")));
         }
       } else if (b.t === "code") parts.push(b.v);
+      else if (b.t === "stats") for (const s of b.items) parts.push(sentence(`${s.label} ${s.value}`));
     }
   };
   walk(parseMarkdown(source));

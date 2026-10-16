@@ -6,6 +6,11 @@ import Foundation
 /// indent), tables, quotes, rules and fenced code; a block's words stay
 /// Markdown source for `inline(_:)` to style.
 ///
+/// Two shapes are the assistant's own (its `layout` skill, docs/ASSISTANT.md):
+/// a list item opening with `[Mon]` or `[Blocked]` carries that as its `tag`
+/// (a chip), and a fence marked `stats` is a `.stats` block of label | value
+/// | tone lines (tiles), not code.
+///
 /// It is fed a reply while it streams, so half of anything is fine: a table's
 /// header is a paragraph until its divider row arrives, an open fence runs to
 /// the end, an unclosed `**` is bold to the end of its line.
@@ -27,11 +32,30 @@ public enum Markdown {
 
     public struct ListItem: Equatable, Sendable {
         public var text: String
+        /// `[Mon]`, `[Blocked]`: the bracketed word or two the item opened
+        /// with, taken off `text`. One to 24 characters, no link after it.
+        public var tag: String?
         public var sub: List?
 
-        public init(_ text: String, sub: List? = nil) {
+        public init(_ text: String, tag: String? = nil, sub: List? = nil) {
             self.text = text
+            self.tag = tag
             self.sub = sub
+        }
+    }
+
+    /// A key figure in a stats block.
+    public struct Stat: Equatable, Sendable {
+        public enum Tone: String, Equatable, Sendable { case up, down, watch }
+
+        public var label: String
+        public var value: String
+        public var tone: Tone?
+
+        public init(label: String, value: String, tone: Tone? = nil) {
+            self.label = label
+            self.value = value
+            self.tone = tone
         }
     }
 
@@ -58,6 +82,9 @@ public enum Markdown {
         case table(Table)
         case quote(String)
         case code(String)
+        /// A ```stats fence: its `label | value | tone` lines, lines without a
+        /// pipe (or still arriving) left out.
+        case stats([Stat])
         case rule
     }
 
@@ -84,7 +111,7 @@ public enum Markdown {
                     i += 1
                 }
                 i += 1  // the closing fence, if it has arrived
-                blocks.append(.code(body.joined(separator: "\n")))
+                blocks.append(fenceInfo(line) == "stats" ? .stats(body.compactMap(stat)) : .code(body.joined(separator: "\n")))
                 continue
             }
 
@@ -159,6 +186,22 @@ public enum Markdown {
         if t.hasPrefix("```") { return "```" }
         if t.hasPrefix("~~~") { return "~~~" }
         return nil
+    }
+
+    /// The word after an opening fence (` ```stats `), lower-cased; "" without one.
+    private static func fenceInfo(_ line: String) -> String {
+        let t = line.drop(while: \.isWhitespace).dropFirst(3)
+        return String(t.prefix(while: { $0.isLetter || $0.isNumber })).lowercased()
+    }
+
+    // MARK: Stats
+
+    /// `Open edits | 5 | watch`: a label and a value, and a tone when the
+    /// third cell names one. A line with no pipe isn't a stat.
+    static func stat(_ line: String) -> Stat? {
+        let parts = line.split(separator: "|", omittingEmptySubsequences: false).map { trimmed(String($0)) }
+        guard parts.count >= 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+        return Stat(label: parts[0], value: parts[1], tone: parts.count > 2 ? Stat.Tone(rawValue: parts[2].lowercased()) : nil)
     }
 
     /// `## Title`: one to six #s, then a space. A closing run of #s goes.
@@ -334,10 +377,25 @@ public enum Markdown {
         while k < range.upperBound {
             var end = k + 1
             while end < range.upperBound && entries[end].indent > base { end += 1 }
-            items.append(ListItem(entries[k].text, sub: end > k + 1 ? buildList(entries, (k + 1)..<end) : nil))
+            let (tag, text) = splitTag(entries[k].text)
+            items.append(ListItem(text, tag: tag, sub: end > k + 1 ? buildList(entries, (k + 1)..<end) : nil))
             k = end
         }
         return List(ordered: first.ordered, start: first.ordered ? first.number : 1, items: items)
+    }
+
+    /// `[Mon] Armra proposal` → ("Mon", "Armra proposal"). The tag is 1 to 24
+    /// characters, none of them a bracket or a newline, followed by a space
+    /// and some words; `[words](address)` is a link, which keeps its words.
+    static func splitTag(_ text: String) -> (tag: String?, text: String) {
+        guard text.first == "[", let close = text.firstIndex(of: "]") else { return (nil, text) }
+        let tag = String(text[text.index(after: text.startIndex)..<close])
+        guard (1...24).contains(tag.count), !tag.contains("["), !tag.contains("\n"), !tag.allSatisfy(\.isWhitespace) else { return (nil, text) }
+        let after = text[text.index(after: close)...]
+        guard let first = after.first, first == " " || first == "\t" else { return (nil, text) }
+        let rest = String(after.drop(while: { $0 == " " || $0 == "\t" }))
+        guard !rest.isEmpty else { return (nil, text) }
+        return (trimmed(tag), rest)
     }
 
     // MARK: Inline

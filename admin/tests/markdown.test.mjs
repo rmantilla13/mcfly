@@ -109,12 +109,50 @@ test("quotes and fenced code, including a fence still open", () => {
   assert.deepEqual(parseMarkdown("```js\nlet a"), [{ t: "code", v: "let a" }]);
 });
 
-test("every prefix of an answer parses (what streaming feeds it)", () => {
-  const answer = "### Today\nYou have **three** things.\n\n- **9:00** Standup\n  - room 2\n1. Ship\n\n| A | B |\n|---|--:|\n| x | *1* |\n\n> note\n\n```\ncode\n```";
-  for (let n = 0; n <= answer.length; n++) assert.ok(Array.isArray(parseMarkdown(answer.slice(0, n))));
+test("a list item may open with a tag, for a chip", () => {
+  const [list] = parseMarkdown("- [Mon] **Armra proposal** — 2–3 proofs of concept\n- [Waiting] Jamie's scheduling\n- plain");
+  assert.deepEqual(list.items, [
+    { c: [{ t: "strong", c: [text("Armra proposal")] }, text(" — 2–3 proofs of concept")], sub: null, tag: "Mon" },
+    { c: [text("Jamie's scheduling")], sub: null, tag: "Waiting" },
+    { c: [text("plain")], sub: null },
+  ]);
+  // Numbered and nested items carry tags too; a link, an empty or long bracket, or one with nothing after it isn't a tag.
+  const [nested] = parseMarkdown("1. [Today] Ship\n   - [Done] tests");
+  assert.equal(nested.items[0].tag, "Today");
+  assert.equal(nested.items[0].sub.items[0].tag, "Done");
+  for (const line of ["- [the brief](https://x) now", "- [] x", "- [a tag that goes on and on and on] x", "- [Mon]", "- [Mon]x"]) {
+    assert.equal(parseMarkdown(line)[0].items[0].tag, undefined, line);
+  }
+  assert.deepEqual(parseMarkdown("- [Due Mon 3 PM]  Armra")[0].items[0], { c: [text("Armra")], sub: null, tag: "Due Mon 3 PM" });
+  assert.equal(parseMarkdown("- [Wednesday 10:30 AM] **Dentist**")[0].items[0].tag, "Wednesday 10:30 AM");
 });
 
-test("plainText: words for the voice, rows and items as sentences", () => {
-  const md = "### Markets\nNVDA is **up**.\n\n- Standup at 9\n- Lunch\n\n| Symbol | Price |\n|---|---|\n| NVDA | $120 |";
-  assert.equal(plainText(md), "Markets.\nNVDA is up.\nStandup at 9.\nLunch.\nNVDA, Price $120.");
+test("a stats fence is tiles, not code", () => {
+  assert.deepEqual(parseMarkdown("```stats\nOpen edits | 5\nDue Monday | 1 | watch\nPortfolio | $118.4k | up\nno pipe here\n| 3\n```\nafter"), [
+    {
+      t: "stats",
+      items: [
+        { label: "Open edits", value: "5", tone: null },
+        { label: "Due Monday", value: "1", tone: "watch" },
+        { label: "Portfolio", value: "$118.4k", tone: "up" },
+      ],
+    },
+    { t: "p", c: [text("after")] },
+  ]);
+  // An unknown tone is no tone; the fence's word is read however it's cased; other fences stay code.
+  assert.deepEqual(parseMarkdown("```Stats\nA | 1 | loud"), [{ t: "stats", items: [{ label: "A", value: "1", tone: null }] }]);
+  assert.deepEqual(parseMarkdown("```json\nA | 1"), [{ t: "code", v: "A | 1" }]);
+  // While streaming, an open stats fence shows what has arrived.
+  assert.deepEqual(parseMarkdown("```stats\nOpen edits | 5\nDue Mon")[0].items, [{ label: "Open edits", value: "5", tone: null }]);
+});
+
+test("every prefix of an answer parses (what streaming feeds it)", () => {
+  const answer = "### Today\nYou have **three** things.\n\n```stats\nOpen | 3 | watch\n```\n\n- [9:00] **Standup**\n  - room 2\n1. Ship\n\n| A | B |\n|---|--:|\n| x | *1* |\n\n> note\n\n```\ncode\n```";
+  for (let n = 0; n <= answer.length; n++) assert.ok(Array.isArray(parseMarkdown(answer.slice(0, n))));
+  assert.deepEqual(parseMarkdown(answer).map((b) => b.t), ["heading", "p", "stats", "list", "list", "table", "quote", "code"]);
+});
+
+test("plainText: words for the voice, rows, items, tags and stats as sentences", () => {
+  const md = "### Markets\nNVDA is **up**.\n\n```stats\nOpen | 3\n```\n\n- [9:00] Standup\n- Lunch\n\n| Symbol | Price |\n|---|---|\n| NVDA | $120 |";
+  assert.equal(plainText(md), "Markets.\nNVDA is up.\nOpen 3.\n9:00: Standup.\nLunch.\nNVDA, Price $120.");
 });

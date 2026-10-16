@@ -229,7 +229,7 @@ final class AppModel {
         }
         let feeds = feeds
         return { message, mode, _, provider, onEvent in
-            let reply = mode == .read ? Self.demoReadReply(feeds: feeds, provider: provider)
+            let reply = mode == .read ? Self.demoReadReply(to: message, feeds: feeds, provider: provider)
                 : Self.demoReply(to: message, mode: mode, feeds: feeds, provider: provider)
             for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
                 try await Task.sleep(for: .milliseconds(45))
@@ -264,12 +264,51 @@ final class AppModel {
         return "This is the demo. Connect a Supabase project to talk to the real McFly."
     }
 
-    /// The full-screen Ask's answer in the demo, shaped as the real one is:
-    /// the headline, then headings, a table, bold figures and lists, from the feeds.
-    private static func demoReadReply(feeds: FeedStore, provider: AssistantProvider?) -> String {
-        var lead = "Here's where everything stands, from your feeds" + (provider == .grok ? " (Grok, in the demo)." : ".")
-        if let blocked = feeds.blockedProjects.first { lead += " **\(blocked.name)** is blocked and needs you first." }
+    /// The full-screen Ask's answer in the demo, shaped as the real one is
+    /// (the assistant's `brief` and `layout` skills, docs/ASSISTANT.md): the
+    /// answer in a line, the figures as tiles, what needs you first as tagged
+    /// items, a table only where it is narrow, the brief's point as a quote.
+    /// Asked for a table, it draws the projects as a wide one with a sentence
+    /// in each row, as answers did before the skills: on a phone each row
+    /// becomes a card.
+    private static func demoReadReply(to message: String, feeds: FeedStore, provider: AssistantProvider?) -> String {
+        if message.lowercased().contains("table") {
+            let rows = feeds.projectsByAttention.prefix(6).map { p in
+                "| \(p.name) | \(p.status.label) | \(p.nextStep ?? (p.summary.isEmpty ? "Nothing planned yet" : p.summary)) |"
+            }
+            return (["Every open project, side by side.", "### Waiting on action", "| Project | Status | What's needed |", "|:--|:--|:--|"]
+                + rows + ["", "This is the demo. Connect a Supabase project to ask the real McFly."]).joined(separator: "\n")
+        }
+        var lead = "Here's where everything stands" + (provider == .grok ? " (Grok, in the demo)." : ".")
+        let blocked = feeds.blockedProjects
+        if let first = blocked.first { lead += " **\(first.name)** is blocked and needs you first." }
         var parts = [lead]
+
+        let projects = feeds.projectsByAttention
+        let events = feeds.upcomingEvents(limit: 3)
+        var stats = ["```stats", "Projects | \(projects.count)"]
+        stats.append("Blocked | \(blocked.count) | " + (blocked.isEmpty ? "up" : "down"))
+        if !events.isEmpty { stats.append("Coming up | \(events.count) | watch") }
+        if !feeds.series.isEmpty { stats.append("Watchlist | \(feeds.series.count)") }
+        stats.append("```")
+        parts.append(stats.joined(separator: "\n"))
+
+        if !blocked.isEmpty {
+            parts.append("### Needs you")
+            parts.append(blocked.prefix(5).map { p in
+                "- [Blocked] **\(p.name)**" + (p.nextStep.map { " — \($0)" } ?? "")
+            }.joined(separator: "\n"))
+        }
+        if !events.isEmpty {
+            parts.append("### Coming up")
+            // The tag is the day in a word, as the skill asks; the time follows the name.
+            parts.append(events.map { e in
+                let day = Calendar.current.isDateInToday(e.startsAt) ? "Today"
+                    : Calendar.current.isDateInTomorrow(e.startsAt) ? "Tomorrow"
+                    : e.startsAt.formatted(.dateTime.weekday(.abbreviated))
+                return "- [\(day)] **\(e.title)** — \(Format.time(e.startsAt))"
+            }.joined(separator: "\n"))
+        }
         let series = feeds.series.prefix(5)
         if !series.isEmpty {
             parts.append("### Markets")
@@ -278,25 +317,11 @@ final class AppModel {
                 return "| **\(s.symbol)** | \(Format.price(q.price, currency: q.currency)) | \(Format.change(q.change, pct: q.changePct)) |"
             }).joined(separator: "\n"))
         }
-        let projects = feeds.projectsByAttention.prefix(4)
-        if !projects.isEmpty {
+        let moving = projects.filter { $0.status != .blocked }.prefix(4)
+        if !moving.isEmpty {
             parts.append("### Projects")
-            parts.append((["| Project | Status | Next step |", "|:--|:--|:--|"] + projects.map { p in
-                "| \(p.name) | \(p.status.label) | \(p.nextStep ?? "Nothing planned yet") |"
-            }).joined(separator: "\n"))
-        }
-        let blocked = feeds.blockedProjects
-        if !blocked.isEmpty {
-            parts.append("### Needs you")
-            parts.append(blocked.map { p in
-                "- **\(p.name)** is blocked" + (p.nextStep.map { ": \($0)" } ?? ".")
-            }.joined(separator: "\n"))
-        }
-        let events = feeds.upcomingEvents(limit: 3)
-        if !events.isEmpty {
-            parts.append("### Coming up")
-            parts.append(events.enumerated().map { i, e in
-                "\(i + 1). **\(Format.dayLabel(e.startsAt)), \(Format.time(e.startsAt))**: \(e.title)"
+            parts.append(moving.map { p in
+                "- [\(p.status.label)] **\(p.name)**" + (p.nextStep.map { " — \($0)" } ?? "")
             }.joined(separator: "\n"))
         }
         if let brief = feeds.latestBrief {

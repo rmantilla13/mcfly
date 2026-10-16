@@ -63,8 +63,48 @@ final class MarkdownTests: XCTestCase {
         XCTAssertEqual(Markdown.blocks("```js\nlet a"), [.code("let a")])
     }
 
+    func testAListItemMayOpenWithATagForAChip() {
+        XCTAssertEqual(Markdown.blocks("- [Mon] **Armra proposal** — 2–3 proofs of concept\n- [Waiting] Jamie's scheduling\n- plain"), [
+            .list(.init(ordered: false, items: [
+                .init("**Armra proposal** — 2–3 proofs of concept", tag: "Mon"),
+                .init("Jamie's scheduling", tag: "Waiting"),
+                .init("plain"),
+            ])),
+        ])
+        // Numbered items and nested ones carry tags too.
+        XCTAssertEqual(Markdown.blocks("1. [Today] Ship\n   - [Done] tests"), [
+            .list(.init(ordered: true, items: [.init("Ship", tag: "Today", sub: .init(ordered: false, items: [.init("tests", tag: "Done")]))])),
+        ])
+        // Not a tag: a link, an empty or long bracket, brackets with nothing after, or one mid-line.
+        XCTAssertEqual(Markdown.splitTag("[the brief](https://x) now").tag, nil)
+        XCTAssertEqual(Markdown.splitTag("[] x").tag, nil)
+        XCTAssertEqual(Markdown.splitTag("[a tag that goes on and on and on] x").tag, nil)
+        XCTAssertEqual(Markdown.splitTag("[Wednesday 10:30 AM] **Dentist**").tag, "Wednesday 10:30 AM")
+        XCTAssertEqual(Markdown.splitTag("[Mon]").tag, nil)
+        XCTAssertEqual(Markdown.splitTag("[Mon]x").tag, nil)
+        XCTAssertEqual(Markdown.splitTag("see [Mon] x").tag, nil)
+        XCTAssertEqual(Markdown.splitTag("[Due Mon 3 PM]  Armra").tag, "Due Mon 3 PM")
+        XCTAssertEqual(Markdown.splitTag("[Due Mon 3 PM]  Armra").text, "Armra")
+    }
+
+    func testAStatsFenceIsTilesNotCode() {
+        XCTAssertEqual(Markdown.blocks("```stats\nOpen edits | 5\nDue Monday | 1 | watch\nPortfolio | $118.4k | up\nno pipe here\n| 3\n```\nafter"), [
+            .stats([
+                .init(label: "Open edits", value: "5"),
+                .init(label: "Due Monday", value: "1", tone: .watch),
+                .init(label: "Portfolio", value: "$118.4k", tone: .up),
+            ]),
+            .paragraph("after"),
+        ])
+        // An unknown tone is no tone; the fence's word is read however it's cased; other fences stay code.
+        XCTAssertEqual(Markdown.blocks("```Stats\nA | 1 | loud"), [.stats([.init(label: "A", value: "1")])])
+        XCTAssertEqual(Markdown.blocks("```json\nA | 1"), [.code("A | 1")])
+        // While streaming, an open stats fence shows what has arrived.
+        XCTAssertEqual(Markdown.blocks("```stats\nOpen edits | 5\nDue Mon"), [.stats([.init(label: "Open edits", value: "5")])])
+    }
+
     func testEveryPrefixOfAnAnswerParses() {
-        let answer = "### Today\nYou have **three** things.\n\n- **9:00** Standup\n  - room 2\n1. Ship\n\n| A | B |\n|---|--:|\n| x | *1* |\n\n> note\n\n```\ncode\n```\n\n---\n## Done ##"
+        let answer = "### Today\nYou have **three** things.\n\n```stats\nOpen | 3 | watch\n```\n\n- [9:00] **Standup**\n  - room 2\n1. Ship\n\n| A | B |\n|---|--:|\n| x | *1* |\n\n> note\n\n```\ncode\n```\n\n---\n## Done ##"
         var prefix = ""
         for ch in answer {
             prefix.append(ch)
@@ -74,7 +114,7 @@ final class MarkdownTests: XCTestCase {
             _ = Markdown.inline(prefix)
         }
         // Bullets turning into numbers at the same depth start a new list.
-        XCTAssertEqual(Markdown.blocks(answer).map(kind), ["heading", "paragraph", "list", "list", "table", "quote", "code", "rule", "heading"])
+        XCTAssertEqual(Markdown.blocks(answer).map(kind), ["heading", "paragraph", "stats", "list", "list", "table", "quote", "code", "rule", "heading"])
     }
 
     private func kind(_ block: Markdown.Block) -> String {
@@ -85,6 +125,7 @@ final class MarkdownTests: XCTestCase {
         case .table: return "table"
         case .quote: return "quote"
         case .code: return "code"
+        case .stats: return "stats"
         case .rule: return "rule"
         }
     }

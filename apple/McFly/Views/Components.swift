@@ -268,7 +268,10 @@ struct MarkdownText: View {
 /// An answer from the full-screen Ask, set for reading: `Markdown` in the kit
 /// parses it, this lays the blocks out (the console's components/ask/Markdown.tsx).
 /// Headings, lists, tables, quotes and code on the theme's colours; the words
-/// only ever land as text, never a link.
+/// only ever land as text, never a link. The assistant's own shapes (its
+/// `layout` skill, docs/ASSISTANT.md) are drawn to be taken in at a glance: a
+/// tagged item's tag is a chip, a stats block is a row of tiles, and a table
+/// is a grid only while it fits the page, each row a card otherwise.
 struct AnswerMarkdown: View {
     let text: String
 
@@ -302,6 +305,9 @@ private struct AnswerBlockView: View {
         case .table(let table):
             AnswerTable(table: table)
                 .padding(.vertical, 4)
+        case .stats(let stats):
+            AnswerStats(stats: stats)
+                .padding(.vertical, 2)
         case .quote(let text):
             HStack(alignment: .top, spacing: 12) {
                 Capsule().fill(Theme.accent.opacity(0.55)).frame(width: 3)
@@ -333,7 +339,9 @@ private struct AnswerText: View {
     }
 }
 
-/// Bullets in the accent, numbers muted; a sub-list sits under its item.
+/// Bullets in the accent, numbers muted; a sub-list sits under its item. An
+/// item with a tag ([Mon], [Blocked]) wears it as a chip in place of the
+/// bullet, coloured by what the word means.
 private struct AnswerList: View {
     let list: Markdown.List
     let depth: Int
@@ -342,7 +350,11 @@ private struct AnswerList: View {
         VStack(alignment: .leading, spacing: 9) {
             ForEach(Array(list.items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    marker(index)
+                    if let tag = item.tag {
+                        AnswerChip(tag: tag)
+                    } else {
+                        marker(index)
+                    }
                     VStack(alignment: .leading, spacing: 9) {
                         AnswerText(text: item.text)
                         if let sub = item.sub { AnswerList(list: sub, depth: depth + 1) }
@@ -368,11 +380,74 @@ private struct AnswerList: View {
     }
 }
 
-/// A compact table on a card: the header on the sunken colour, a rule
-/// between rows, figures in even digits. Short cells (figures, names) keep
-/// to one line and longer ones wrap past a point; the first column takes
-/// what room is left. Wider than the page (a phone), it scrolls sideways
-/// rather than squeezing.
+/// The colour a tag's word (or a stat's tone) carries: what's late, blocked
+/// or down in the loss red, what's done or up in the gain green, what's
+/// waiting in the palette's warning ink (a dark amber by day, so it reads
+/// as text on white), and a day or a time in the accent.
+private enum AnswerTone {
+    static func color(for word: String) -> Color {
+        switch word.lowercased() {
+        case "down", "overdue", "late", "blocked", "missed", "off": return Theme.loss
+        case "up", "done", "paid", "sent", "shipped", "on": return Theme.gain
+        case "watch", "waiting", "pending", "soon", "risk": return Theme.warningInk
+        default: return Theme.accent
+        }
+    }
+}
+
+/// `[Mon]`, `[Blocked]`: the tag on a list item, as a small capsule.
+private struct AnswerChip: View {
+    let tag: String
+
+    var body: some View {
+        let color = AnswerTone.color(for: tag)
+        Text(tag)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.14), in: Capsule())
+            .foregroundStyle(color)
+            .offset(y: -1)
+    }
+}
+
+/// Key figures as tiles, two to a row on a phone: the label small and
+/// muted, the figure large, in the tone's colour when it has one.
+private struct AnswerStats: View {
+    let stats: [Markdown.Stat]
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8, alignment: .topLeading)], alignment: .leading, spacing: 8) {
+            ForEach(Array(stats.enumerated()), id: \.offset) { _, stat in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(stat.label)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(1)
+                    Text(Markdown.inline(stat.value))
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(stat.tone.map { AnswerTone.color(for: $0.rawValue) } ?? Theme.text)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous).stroke(Theme.divider, lineWidth: 1))
+            }
+        }
+    }
+}
+
+/// A table on a card. While it fits the page it is a grid: the header on
+/// the sunken colour, a rule between rows, figures in even digits, every
+/// cell on one line (a long one wraps past a point). Wider than the page, as
+/// on a phone, it is a stack of cards instead: each row's first cell is the
+/// card's title and the other cells sit under it with the header's words as
+/// labels, so nothing is squeezed, cut off or drawn over its neighbour.
 private struct AnswerTable: View {
     let table: Markdown.Table
 
@@ -385,11 +460,46 @@ private struct AnswerTable: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             grid
-            ScrollView(.horizontal, showsIndicators: false) { grid }
+            stacked
         }
         .background(Theme.surface)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous).stroke(Theme.divider, lineWidth: 1))
+    }
+
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
+                if index > 0 { Rectangle().fill(Theme.divider).frame(height: 1) }
+                VStack(alignment: .leading, spacing: 6) {
+                    if let title = row.first, !title.isEmpty {
+                        Text(Markdown.inline(title))
+                            .font(.subheadline.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(Array(row.enumerated().dropFirst()), id: \.offset) { column, text in
+                        if !text.isEmpty {
+                            let label = column < table.header.count ? table.header[column] : ""
+                            if text.count <= 24 {
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    Text(Markdown.inline(label)).font(.subheadline).foregroundStyle(Theme.muted)
+                                    Spacer(minLength: 8)
+                                    Text(Markdown.inline(text)).font(.subheadline).monospacedDigit().multilineTextAlignment(.trailing)
+                                }
+                            } else {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(Markdown.inline(label)).font(.caption.weight(.medium)).foregroundStyle(Theme.muted)
+                                    Text(Markdown.inline(text)).font(.subheadline).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+            }
+        }
     }
 
     private var grid: some View {
@@ -430,7 +540,7 @@ private struct AnswerTable: View {
             if text.count <= 24 {
                 words.fixedSize()
             } else {
-                words.fixedSize(horizontal: false, vertical: true).frame(maxWidth: 220, alignment: alignment.frame)
+                words.fixedSize(horizontal: false, vertical: true).frame(maxWidth: 260, alignment: alignment.frame)
             }
         }
         .padding(.horizontal, 14)

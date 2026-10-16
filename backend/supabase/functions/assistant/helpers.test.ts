@@ -39,6 +39,7 @@ import {
   type Turn,
   widgetLine,
 } from "./helpers.ts";
+import { BRIEF, LAYOUT, SKILLS, SPOKEN } from "./skills.ts";
 
 // 2026-10-14 20:52 UTC: 3:52 PM in Chicago (CDT), 5:52 AM the next day in Tokyo.
 const NOW = Date.UTC(2026, 9, 14, 20, 52, 0);
@@ -588,6 +589,39 @@ Deno.test("todos go in the snapshot with their ids, in local time", async () => 
   assert(text.indexOf("Todos and reminders") < text.indexOf("Daily Pulse"), "before the Daily Pulse, where the cut lands");
   assertStringIncludes(formatSnapshot({ ...empty, todos: [] }).text, "Todos and reminders (open, soonest first; [id] is for complete_todo):\n- (none)");
   assertStringIncludes(formatSnapshot({ ...empty, todos: null }).text, "the todo list couldn't be read");
+});
+
+Deno.test("the skills shape every mode: brief everywhere, layout on the full screen, spoken aloud", () => {
+  // Every mode is briefed: the answer first, what changes what they do, capped.
+  for (const mode of ["chat", "quick", "read"] as const) {
+    const text = systemPrompt("SNAP", mode)[0].text;
+    assertStringIncludes(text, BRIEF.text);
+    assertStringIncludes(text, "The answer first.");
+    assertStringIncludes(text, "Five things at most");
+  }
+  // Only the full screen is asked for shape: the Pi's chat bubble is plain
+  // text and quick mode is spoken, so neither prompt mentions bold or chips.
+  for (const mode of ["chat", "quick"] as const) {
+    const text = systemPrompt("SNAP", mode)[0].text;
+    assert(!text.includes("**"), `${mode} asks for no bold`);
+    assert(!text.includes(LAYOUT.text), `${mode} has no layout`);
+    assert(!text.includes("```"), `${mode} has no stats block`);
+  }
+  assert(!BRIEF.text.includes("**") && !BRIEF.text.includes("bold"), "the brief says what, not how it looks");
+  // The full screen gets the shapes its clients draw: chips, the stats block, narrow tables.
+  assertStringIncludes(READ_INSTRUCTIONS, LAYOUT.text);
+  assertStringIncludes(READ_INSTRUCTIONS, "```stats\nOpen edits | 5\n");
+  assertStringIncludes(READ_INSTRUCTIONS, "[Mon] **Armra proposal**");
+  assertStringIncludes(READ_INSTRUCTIONS, "at most three columns");
+  // Spoken: one breath, names over tickers, nothing unsayable.
+  assertEquals(QUICK_MODE, SPOKEN.text);
+  assertStringIncludes(QUICK_MODE, "company's name rather than its ticker");
+  assertStringIncludes(QUICK_MODE, "Three things at most");
+  assert(!INSTRUCTIONS.includes(SPOKEN.text) && !READ_INSTRUCTIONS.includes(SPOKEN.text));
+  // The skills sit before the tools' rules in every prompt.
+  for (const text of [INSTRUCTIONS, READ_INSTRUCTIONS]) assert(text.indexOf(BRIEF.text) < text.indexOf("add_event"));
+  assert(READ_INSTRUCTIONS.indexOf(BRIEF.text) < READ_INSTRUCTIONS.indexOf(LAYOUT.text));
+  assertEquals(SKILLS.map((s) => s.name), ["brief", "layout", "spoken"]);
 });
 
 Deno.test("the prompt says what the tools may do, and when", () => {

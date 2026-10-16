@@ -230,7 +230,14 @@ refresh at once.
 `quick` answers in one or two spoken sentences, no markdown; `chat` may use
 short lists; `read` (the console's full-screen Ask, `/ask`) answers at length
 in Markdown (headings, lists, bold, tables), with a larger token budget and
-medium effort instead of low. Model: `ASSISTANT_MODEL` secret, default `claude-sonnet-5-5`.
+medium effort instead of low. The prompt is composed from three skills
+(`assistant/skills.ts`, [ASSISTANT.md](ASSISTANT.md)): `brief` in every
+mode, `layout` in `read`, `spoken` in `quick`. `read` adds two shapes to
+Markdown, which the app and the console both draw: a list item opening with
+`[word or two]` (1–24 characters, then a space) carries it as a chip, and a
+fence marked `stats` holds `label | value | tone` lines (tone `up`, `down`,
+`watch` or none) drawn as tiles. A table that doesn't fit the page is drawn
+as a card per row. Model: `ASSISTANT_MODEL` secret, default `claude-sonnet-5-5`.
 Login: `ANTHROPIC_API_KEY` secret. Errors: 400 bad body, 401 no session,
 403 not a reader, 503 model unavailable (`{ error }`, or an `error` event
 once the stream has begun).
