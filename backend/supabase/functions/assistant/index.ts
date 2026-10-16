@@ -1,7 +1,8 @@
 // assistant: answers questions about what's on the display, spoken (the Pi's
-// quick-answer card, the phone) or typed.
+// quick-answer card, the phone), typed, or read on the console's full-screen
+// Ask (mode "read": longer, Markdown-shaped answers).
 //
-//   POST { message, mode?: "chat" | "quick", stream?: boolean,
+//   POST { message, mode?: "chat" | "quick" | "read", stream?: boolean,
 //          history?: [{ role, text }], provider?: "claude" | "grok" }
 //     stream false -> { reply, model, changed? }
 //     stream true  -> text/event-stream: delta…, then done { reply, model, changed? } (or error)
@@ -47,6 +48,7 @@ import {
   type AssistantRequest,
   chooseProvider,
   conversation,
+  EFFORT,
   formatSnapshot,
   grokChunk,
   grokModelName,
@@ -265,9 +267,10 @@ async function converseClaude({ claude, model, mode, snapshot, messages, tools, 
     const stream = claude.beta.messages.stream({
       model,
       max_tokens: MAX_TOKENS[mode] + TOOL_TOKENS,
-      // Conversational and latency-sensitive: low effort keeps answers quick.
+      // Talking is latency-sensitive: low effort keeps answers quick. The
+      // full-screen reader (read) spends a little more for a better answer.
       // Thinking stays at the model's default (adaptive).
-      output_config: { effort: "low" },
+      output_config: { effort: EFFORT[mode] },
       // If a safety classifier declines a benign question, the API re-runs it on
       // Anthropic's fallback model instead of failing the turn.
       betas: ["server-side-fallback-2026-07-01"],
