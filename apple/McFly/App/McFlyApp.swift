@@ -31,13 +31,9 @@ struct RootView: View {
         Group {
             switch app.phase {
             case .loading:
-                #if os(iOS)
-                LaunchView()
-                #else
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .screenBackground()
-                #endif
             case .unreachable:
                 UnreachableView()
             case .signedOut:
@@ -52,34 +48,6 @@ struct RootView: View {
         .showsAppErrors()
     }
 }
-
-#if os(iOS)
-/// The launch screen over again: Info.plist's colour and mark, the mark
-/// centred on the whole screen at its own size as iOS draws it, so the app
-/// takes over from the launch screen without a jump. A spinner joins it if
-/// the account check takes a while.
-private struct LaunchView: View {
-    @State private var spinner = false
-
-    var body: some View {
-        Image(.launchMark)
-            .accessibilityHidden(true)
-            .overlay(alignment: .bottom) {
-                ProgressView()
-                    .offset(y: 56)
-                    .opacity(spinner ? 1 : 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.launchBackground))
-            .ignoresSafeArea()
-            .task {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                withAnimation { spinner = true }
-            }
-    }
-}
-#endif
 
 /// A saved account that couldn't be checked: retry, or sign out.
 private struct UnreachableView: View {

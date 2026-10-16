@@ -52,8 +52,8 @@
 				<string>C617.1</string>
 			</array>
 		</dict>
-		<!-- The Mac app reads whether the system is in dark mode
-		     (AppleInterfaceStyle) to pick its palette. -->
+		<!-- The voice chosen in Settings (mcfly.voice), and on the Mac whether
+		     the system is in dark mode (AppleInterfaceStyle). -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>

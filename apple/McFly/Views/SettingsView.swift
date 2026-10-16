@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var provider: AssistantProvider = .claude
     @State private var saving = false
     @State private var saved = false
+    @State private var voice = VoiceChoice.current
+    @State private var sample = VoiceSpeaker()
 
     private var changed: Bool {
         guard let settings else { return false }
@@ -65,6 +67,29 @@ struct SettingsView: View {
                 Text("Assistant")
             } footer: {
                 Text("Which model answers Voice and Ask, here and on the display. Saved with the display settings above.")
+            }
+            Section {
+                Picker("Voice", selection: $voice) {
+                    ForEach(VoiceChoice.allCases) { Text($0.name).tag($0) }
+                }
+                Button(sample.isSpeaking ? "Stop" : "Hear it") {
+                    if sample.isSpeaking {
+                        sample.stop()
+                    } else {
+                        sample.speak("Hi, I'm McFly. This is how I'll read your answers.")
+                    }
+                }
+            } header: {
+                Text("Voice")
+            } footer: {
+                Text(BuiltInVoice.isBundled
+                     ? "Heart, Bella, Michael and Fenrir are the voices the display and the web speak with, made on this device. The first answer after an update takes a moment longer while the voice gets ready."
+                     : "This build doesn't include McFly's voices, so this device's voice reads answers.")
+            }
+            .onChange(of: voice) { _, choice in
+                VoiceChoice.current = choice
+                sample.stop()
+                sample.prepare()
             }
             Section("About") {
                 LabeledContent("Version", value: Config.appVersion)

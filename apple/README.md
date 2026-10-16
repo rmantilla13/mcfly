@@ -97,7 +97,8 @@ Before the first upload:
 1. `Config/Local.xcconfig` with `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
    `MCFLY_TEAM_ID`, and `mcfly://auth-callback` in Supabase's **Redirect
    URLs** (Configure, above): without it an emailed sign-in link opens the
-   console, not the app.
+   console, not the app. And McFly's voice, `McFlyVoice/scripts/fetch-kokoro.sh`
+   (Voice, below): the build carries it, about 190 MB.
 2. At [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list),
    **Identifiers → + → App IDs → App**: bundle ID `com.bot.mcfly` (explicit),
    with **Associated Domains** ticked. (The upload would register it too, but
@@ -207,7 +208,7 @@ because this app runs on iOS 17.
 |---|---|---|
 | Speech → text | `SpeechAnalyzer` + `SpeechTranscriber`, on device; the model is downloaded once by the system if missing | `SFSpeechRecognizer`, `requiresOnDeviceRecognition` where the device supports it (the status chip's lock means on device) |
 | Answer | `assistant`, `quick` mode, streamed over SSE with the last 10 turns as `history` | same |
-| Text → speech | `AVSpeechSynthesizer` with the best installed voice for the language (premium → enhanced → default) | same |
+| Text → speech | McFly's voice: Kokoro-82M on Core ML, in the app (below) | `AVSpeechSynthesizer` with the best installed voice for the language (premium → enhanced → default) |
 
 The loop is hands-free by default: a 1.3 s pause ends the question, the
 answer is spoken sentence by sentence as it streams (`SpokenText` cuts it),
@@ -215,6 +216,25 @@ and listening starts again when speech ends. "Tap to talk" turns the loop
 off. The mic button ends a question early or interrupts an answer; Space
 does the same on the Mac, Escape closes. The screen stays awake while the
 mode is open.
+
+**McFly's voice.** Answers are read in the voice the display (kokoro-onnx)
+and the web (kokoro-js) speak with: Kokoro-82M, here on Core ML in its own
+package, `McFlyVoice` (Homestead's, which ships the same voices; the
+pipeline is vendored from kokoro-coreml, Apache-2.0, see
+`McFlyVoice/ThirdParty`). Settings → Voice picks Heart (the default), Bella,
+Michael or Fenrir, or this device's voice, per device under `mcfly.voice`
+as on the web, with **Hear it** to try one. The model files (about 190 MB)
+aren't in git: `McFlyVoice/scripts/fetch-kokoro.sh` fetches them at a pinned
+revision and checks their hashes (`--from` copies another checkout's, such
+as Homestead's). Without them the app builds and speaks with the system
+voice, as CI's builds do; `scripts/release-ios.sh` refuses to ship without
+them. The models need iOS 18 or macOS 15, and the iOS Simulator can't load
+them (Core ML there turns their multifunction programs away), so they speak
+on a device or the Mac; anywhere else, or for a sentence they can't say,
+the system voice reads instead. The voice loads when voice mode opens, and
+the first answer after an install waits a few seconds while it compiles.
+`swift test --package-path McFlyVoice` checks it, synthesis included when
+the files are there.
 
 ## Kit tests
 

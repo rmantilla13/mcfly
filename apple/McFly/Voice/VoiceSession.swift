@@ -39,6 +39,8 @@ final class VoiceSession {
         self.answerer = answerer
         self.vocabulary = vocabulary
         speaker.onFinished = { [weak self] in self?.speechFinished() }
+        // The voice loads while the question is asked, not after it.
+        speaker.prepare()
     }
 
     /// The meter the glow should follow right now.

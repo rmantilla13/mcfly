@@ -15,6 +15,9 @@ settings:
 packages:
   McFlyKit:
     path: McFlyKit
+  # The Kokoro voice, apart from the kit so its tests and CI skip the models.
+  McFlyVoice:
+    path: McFlyVoice
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: 2.30.0
@@ -29,6 +32,8 @@ targets:
     dependencies:
       - package: McFlyKit
         product: McFlyKit
+      - package: McFlyVoice
+        product: McFlyVoice
       - package: Supabase
         product: Supabase
     info:
@@ -44,11 +49,8 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         # Standard HTTPS only, so App Store Connect skips the export question.
         ITSAppUsesNonExemptEncryption: false
-        # The mark, centred at its own size (scripts/render_launch_mark.py).
-        # RootView draws it in the same place until the app knows where to go.
         UILaunchScreen:
           UIColorName: LaunchBackground
-          UIImageName: LaunchMark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait

@@ -30,3 +30,9 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv/
+
+# McFly's voice: Kokoro model files (~190 MB), fetched and verified by
+# apple/McFlyVoice/scripts/fetch-kokoro.sh
+apple/McFlyVoice/Sources/McFlyVoice/Kokoro/*
+!apple/McFlyVoice/Sources/McFlyVoice/Kokoro/README.md
+apple/McFlyVoice/.build/

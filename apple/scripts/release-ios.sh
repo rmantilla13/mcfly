@@ -18,6 +18,7 @@
 # Needs, once (README.md, "TestFlight"):
 #   - Config/Local.xcconfig with the Supabase project's URL and anon key: a build
 #     without them only says it isn't connected, so this refuses to make one
+#   - McFly's voice, McFlyVoice/scripts/fetch-kokoro.sh (about 190 MB, not in git)
 #   - Xcode, signed in to the developer account (Xcode → Settings → Accounts). It
 #     makes the Apple Distribution certificate and the App Store profile itself.
 #     Or an App Store Connect API key instead: MCFLY_ASC_KEY_ID and
@@ -78,6 +79,15 @@ cleanup() { git worktree remove --force "$SRC" >/dev/null 2>&1 || true; rm -rf "
 trap cleanup EXIT
 git worktree add --detach --quiet "$SRC" "$REF"
 cp Config/Local.xcconfig "$SRC/apple/Config/Local.xcconfig"
+# McFly's voice: its model files aren't in git, so they come from this checkout,
+# checked against their pinned hashes on the way. A build without them would
+# quietly speak with the system voice.
+KOKORO="$PWD/McFlyVoice/Sources/McFlyVoice/Kokoro"
+if [[ ! -d "$KOKORO/coreml" ]]; then
+  echo "McFly's voice files are missing: run McFlyVoice/scripts/fetch-kokoro.sh first." >&2
+  exit 1
+fi
+(cd "$SRC/apple/McFlyVoice" && scripts/fetch-kokoro.sh --from "$KOKORO" >/dev/null)
 (cd "$SRC/apple" && xcodegen generate --quiet)
 
 # Built unsigned. Xcode would sign an archive for development, and a
@@ -120,6 +130,10 @@ codesign --force --sign - --entitlements "$ENTITLEMENTS" --generate-entitlement-
 # What App Store Connect would otherwise turn away after the upload.
 if ! plutil -lint -s "$APP/PrivacyInfo.xcprivacy"; then
   echo "The app has no valid privacy manifest (McFly/PrivacyInfo.xcprivacy)." >&2
+  exit 1
+fi
+if [[ ! -d "$APP/McFlyVoice_McFlyVoice.bundle/Kokoro/coreml" ]]; then
+  echo "The archive has no Kokoro voice (McFlyVoice_McFlyVoice.bundle/Kokoro)." >&2
   exit 1
 fi
 if ! codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "applinks:mcfly.bot"; then

@@ -1,8 +1,44 @@
 import AVFoundation
+import McFlyVoice
 import Observation
+import os
 
-/// Reads answers aloud with the system voice, sentence by sentence as they
-/// arrive, and drives a `LevelMeter` so the glow follows the voice.
+/// Which voice reads answers: one of Kokoro's, the voice the display and the web speak
+/// with, or this device's own. Kept per device under the web's key, Heart unless changed.
+enum VoiceChoice: String, CaseIterable, Identifiable {
+    case heart = "af_heart"
+    case bella = "af_bella"
+    case michael = "am_michael"
+    case fenrir = "am_fenrir"
+    case system
+
+    static let key = "mcfly.voice"
+
+    static var current: VoiceChoice {
+        get { UserDefaults.standard.string(forKey: key).flatMap(VoiceChoice.init(rawValue:)) ?? .heart }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: key) }
+    }
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .heart: return "Heart"
+        case .bella: return "Bella"
+        case .michael: return "Michael"
+        case .fenrir: return "Fenrir"
+        case .system: return "This device's voice"
+        }
+    }
+
+    /// The Kokoro voice, or nil for the system's.
+    var kokoro: KokoroVoice.Speaker? { KokoroVoice.Speaker(rawValue: rawValue) }
+}
+
+/// Reads answers aloud, sentence by sentence as they arrive, and drives a `LevelMeter`
+/// so the glow follows the voice. Kokoro speaks when it's the chosen voice and this build
+/// has it (`BuiltInVoice`); otherwise, or for a sentence Kokoro can't say (its models need
+/// iOS 18 or macOS 15), the system's most natural voice does.
 @MainActor
 @Observable
 final class VoiceSpeaker: NSObject {
@@ -11,19 +47,51 @@ final class VoiceSpeaker: NSObject {
     /// Called once everything queued has been spoken (not after `stop()`).
     var onFinished: (@MainActor () -> Void)?
 
-    private let synthesizer = AVSpeechSynthesizer()
-    /// Utterances queued and not yet finished.
-    private var pending = 0
-    private let voice = VoiceSpeaker.preferredVoice()
+    @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
+    @ObservationIgnored private let kokoro: KokoroSpeaker
+    /// System utterances queued and not yet finished.
+    @ObservationIgnored private var pending = 0
+    @ObservationIgnored private let voice = VoiceSpeaker.preferredVoice()
+    @ObservationIgnored private let log = Logger(subsystem: "bot.mcfly", category: "voice")
 
     override init() {
+        kokoro = KokoroSpeaker(meter: meter)
         super.init()
         synthesizer.delegate = self
+        kokoro.onFinished = { [weak self] in self?.finishIfDone() }
+        kokoro.onFailure = { [weak self] text in
+            self?.log.info("Kokoro couldn't say a sentence; the system voice says it")
+            self?.speakWithSystem(text)
+        }
+        kokoro.onPartPlayed = { [log] in log.info("Kokoro spoke a sentence") }
+    }
+
+    /// Loads Kokoro ahead of the first answer, if it's the voice that will speak.
+    func prepare() {
+        if VoiceChoice.current.kokoro != nil { BuiltInVoice.shared.prepare() }
     }
 
     func speak(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        isSpeaking = true
+        if let speaker = VoiceChoice.current.kokoro, BuiltInVoice.isBundled {
+            kokoro.speaker = speaker
+            kokoro.speak(text)
+        } else {
+            speakWithSystem(text)
+        }
+    }
+
+    func stop() {
+        pending = 0
+        isSpeaking = false
+        kokoro.stop()
+        synthesizer.stopSpeaking(at: .immediate)
+        meter.reset()
+    }
+
+    private func speakWithSystem(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.02
@@ -31,13 +99,6 @@ final class VoiceSpeaker: NSObject {
         pending += 1
         isSpeaking = true
         synthesizer.speak(utterance)
-    }
-
-    func stop() {
-        pending = 0
-        isSpeaking = false
-        synthesizer.stopSpeaking(at: .immediate)
-        meter.reset()
     }
 
     /// The most natural voice installed for the person's language: premium,
@@ -65,7 +126,11 @@ final class VoiceSpeaker: NSObject {
     fileprivate func utteranceFinished() {
         guard pending > 0 else { return }
         pending -= 1
-        guard pending == 0, isSpeaking else { return }
+        finishIfDone()
+    }
+
+    private func finishIfDone() {
+        guard isSpeaking, pending == 0, !kokoro.isSpeaking else { return }
         isSpeaking = false
         onFinished?()
     }
