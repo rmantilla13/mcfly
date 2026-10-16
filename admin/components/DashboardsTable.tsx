@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboardIcon, Trash2Icon } from "lucide-react";
+import { LayoutDashboardIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
 import { useId } from "react";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { FormAction } from "@/lib/action-result";
+import { findTemplate } from "@/lib/dashboard-sources";
 import { formatNumber } from "@/lib/format";
 import type { DashboardRow } from "@/lib/types";
 
@@ -23,7 +24,15 @@ export function DashboardsTable({ dashboards, setAction, deleteAction }: { dashb
   if (dashboards.length === 0) {
     return (
       <EmptyState title="No dashboards" icon={<LayoutDashboardIcon />}>
-        Dashboards an agent lays out (POST /ingest/dashboards) are listed here, in display order.
+        <span className="flex flex-col items-center gap-3">
+          <span>Make one from a template, or have an agent lay one out (POST /ingest/dashboards).</span>
+          <Button asChild size="sm">
+            <Link href="/feed/dashboards/new">
+              <PlusIcon data-icon="inline-start" />
+              New dashboard
+            </Link>
+          </Button>
+        </span>
       </EmptyState>
     );
   }
@@ -32,7 +41,7 @@ export function DashboardsTable({ dashboards, setAction, deleteAction }: { dashb
       <TableHeader>
         <TableRow>
           <TableHead className="pl-4">Dashboard</TableHead>
-          <TableHead>Agent</TableHead>
+          <TableHead>Made by</TableHead>
           <TableHead className={numCell}>Widgets</TableHead>
           <TableHead>Updated</TableHead>
           <TableHead>On the display</TableHead>
@@ -70,7 +79,13 @@ function DashboardRowItem({ d, setAction, deleteAction }: { d: DashboardRow; set
         </div>
       </TableCell>
       <TableCell>
-        <AgentLabel name={d.agent_name} color={d.agent_color} />
+        {d.sources ? (
+          <span className="text-sm">
+            You{findTemplate(d.template) ? <span className="text-muted-foreground"> · {findTemplate(d.template)?.label}</span> : null}
+          </span>
+        ) : (
+          <AgentLabel name={d.agent_name} color={d.agent_color} />
+        )}
       </TableCell>
       <TableCell className={numCell}>{formatNumber(d.widgets.length)}</TableCell>
       <TableCell>
@@ -101,7 +116,7 @@ function DashboardRowItem({ d, setAction, deleteAction }: { d: DashboardRow; set
           action={deleteAction}
           fields={{ dashboard_id: d.id, stay: "1" }}
           title={`Delete ${d.title}?`}
-          description="The dashboard leaves every display. The agent's next push brings it back."
+          description={d.sources ? "The dashboard leaves every display, and what it pulls from is forgotten." : "The dashboard leaves every display. The agent's next push brings it back."}
           confirmLabel="Delete dashboard"
           tone="danger"
           trigger={

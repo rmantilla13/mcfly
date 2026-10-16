@@ -50,7 +50,7 @@ Change it first when a shape changes.
 | `news_reports`, `news_items` | Daily Pulse reports: sections of sourced stories with takeaways and pictures. Several agents can push (several sources) |
 | `projects`, `project_updates` | What's in flight: status, progress, next step and a timeline of commits, PRs, CI runs, deploys, notes |
 | `metrics`, `metric_settings`, `metrics_latest` | Any number over time, grouped |
-| `dashboards` | Boards agents lay out: a title and a widgets array (metric, status, progress, chart, list, text) |
+| `dashboards` | Boards agents lay out: a title and a widgets array (metric, status, progress, chart, list, text). A board made in the console has `sources` too, the parts it pulls from, and the database draws its widgets from them and keeps them drawn |
 | `events` | Calendar events, per calendar; a push can replace a calendar whole |
 | `todos` | Todos (maybe due by a day or time) and reminders (announced at a time), from agents or added by asking McFly |
 | `admin_audit_log` | Every admin change |

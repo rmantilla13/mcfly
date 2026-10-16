@@ -284,7 +284,9 @@ public struct MetricGroup: Identifiable, Hashable, Sendable {
 
 // MARK: Dashboards
 
-/// An agent-built dashboard: a title and up to 40 widgets of six kinds.
+/// A dashboard: a title and up to 40 widgets of six kinds, laid out by an
+/// agent, or made in the app or the console from a recipe (`sources`) that the
+/// database draws into the widgets.
 public struct Dashboard: Decodable, Identifiable, Hashable, Sendable {
     public let id: UUID
     public var agentId: UUID
@@ -296,15 +298,22 @@ public struct Dashboard: Decodable, Identifiable, Hashable, Sendable {
     public var hidden: Bool
     public var createdAt: Date?
     public var updatedAt: Date?
+    /// A made board's template (`DashboardTemplate`), when it started from one.
+    public var template: String?
+    /// A made board's parts; nil when an agent lays the board out.
+    public var sources: [DashboardPart]?
+    public var isMade: Bool { sources != nil }
 
     public init(id: UUID, agentId: UUID, key: String, title: String, subtitle: String? = nil, widgets: [DashboardWidget],
-                sortOrder: Int = 1000, hidden: Bool = false, createdAt: Date? = nil, updatedAt: Date? = nil) {
+                sortOrder: Int = 1000, hidden: Bool = false, createdAt: Date? = nil, updatedAt: Date? = nil,
+                template: String? = nil, sources: [DashboardPart]? = nil) {
         self.id = id; self.agentId = agentId; self.key = key; self.title = title; self.subtitle = subtitle
         self.widgets = widgets; self.sortOrder = sortOrder; self.hidden = hidden; self.createdAt = createdAt; self.updatedAt = updatedAt
+        self.template = template; self.sources = sources
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, key, title, subtitle, widgets, hidden
+        case id, key, title, subtitle, widgets, hidden, template, sources
         case agentId = "agent_id"
         case sortOrder = "sort_order"
         case createdAt = "created_at"
@@ -323,6 +332,10 @@ public struct Dashboard: Decodable, Identifiable, Hashable, Sendable {
         hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
+        template = (try? c.decodeIfPresent(String.self, forKey: .template)) ?? nil
+        if c.contains(.sources), (try? c.decodeNil(forKey: .sources)) == false, let nested = try? c.superDecoder(forKey: .sources) {
+            sources = DashboardPart.lossy(from: nested)
+        }
     }
 }
 

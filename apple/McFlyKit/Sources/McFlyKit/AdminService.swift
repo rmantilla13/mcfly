@@ -17,10 +17,15 @@ public protocol AdminService: Sendable {
     func updateSettings(displayName: String?, timezone: String?, assistantProvider: AssistantProvider?) async throws -> PlatformSettings
     /// `admin_project_updates`: more of a project's timeline than the feed embeds.
     func projectUpdates(_ projectId: UUID, limit: Int) async throws -> [ProjectUpdate]
+    /// Made dashboards (DashboardBuilding.swift): what a part can pull from,
+    /// a recipe drawn without saving, and saving one (a new board without an id).
+    func dashboardSources() async throws -> DashboardSourceOptions
+    func previewDashboard(_ parts: [DashboardPart]) async throws -> [DashboardWidget]
+    func saveDashboard(id: UUID?, title: String, subtitle: String?, template: String?, parts: [DashboardPart]) async throws -> UUID
 }
 
 public struct SupabaseAdminService: AdminService {
-    private let client: SupabaseClient
+    let client: SupabaseClient
 
     public init(client: SupabaseClient) {
         self.client = client

@@ -762,7 +762,7 @@ private struct SuggestionChips: View {
 }
 
 /// Lays chips out in rows, wrapping where the next one wouldn't fit.
-private struct ChipFlow: Layout {
+struct ChipFlow: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

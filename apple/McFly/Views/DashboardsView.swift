@@ -19,6 +19,19 @@ struct DashboardsView: View {
     /// The content's width; 0 until it's known, and the grid waits for it.
     @State private var width: CGFloat = 0
     @State private var asking: String?
+    /// The builder, making a board or changing a made one.
+    @State private var building: Building?
+
+    private enum Building: Identifiable {
+        case new
+        case edit(Dashboard)
+        var id: String {
+            switch self {
+            case .new: return "new"
+            case .edit(let board): return board.id.uuidString
+            }
+        }
+    }
 
     /// Opens on `board` (a Home insight's, say) when it's given and still
     /// there; else on the first board.
@@ -58,7 +71,7 @@ struct DashboardsView: View {
                             .foregroundStyle(Theme.muted)
                     }
                 } else {
-                    EmptyCard(text: feeds.hasLoaded ? "No dashboards yet. An agent builds them from its widgets." : "Loading…",
+                    EmptyCard(text: feeds.hasLoaded ? "No dashboards yet. Make one from a template (+), or have an agent build one." : "Loading…",
                               systemImage: "rectangle.3.group")
                 }
             }
@@ -71,6 +84,24 @@ struct DashboardsView: View {
         .screenBackground()
         .refreshable { await feeds.refresh() }
         .navigationTitle("Dashboards")
+        .toolbar {
+            if let dashboard, dashboard.isMade {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { building = .edit(dashboard) } label: { Label("Edit dashboard", systemImage: "slider.horizontal.3") }
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { building = .new } label: { Label("New dashboard", systemImage: "plus") }
+            }
+        }
+        .sheet(item: $building) { building in
+            switch building {
+            case .new:
+                DashboardBuilderView { chosenId = $0 }.environment(app)
+            case .edit(let board):
+                DashboardBuilderView(editing: board) { chosenId = $0 }.environment(app)
+            }
+        }
         .feedQuestion($asking)
     }
 
@@ -118,7 +149,13 @@ private struct BoardHeader: View {
                     Text(subtitle).font(.subheadline).foregroundStyle(Theme.muted)
                 }
                 Spacer(minLength: 8)
-                AgentBadge(agent: agent)
+                if dashboard.isMade {
+                    Label("Made here", systemImage: "square.grid.2x2")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.muted)
+                } else {
+                    AgentBadge(agent: agent)
+                }
             }
         }
     }
@@ -173,7 +210,7 @@ private struct BoardChips: View {
 /// as a compact hero there, on the same gradient, so a phone gets one too.
 /// It's the same widget either way (the kit's hero is the first metric), so
 /// turning the device glides one tile rather than swapping two.
-private struct BoardGrid: View {
+struct BoardGrid: View {
     let dashboard: Dashboard
     let columns: Int
     /// The grid's width: a health strip spans it, and fits its statuses to it.

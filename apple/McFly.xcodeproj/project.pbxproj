@@ -29,6 +29,7 @@
 		7CE1E42A606557E789079024 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28DF0EF62E7B6986374243A /* Theme.swift */; };
 		803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333BC1BF2A56D73A429ED6E /* AgentsView.swift */; };
 		855A1069A25AE4905144CA99 /* NewsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9542FCF91E0153CF407BB112 /* NewsView.swift */; };
+		92FB8C31807C612B3C0CA2EE /* DashboardBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952ED6B6F9C72D0D5CEDE254 /* DashboardBuilderView.swift */; };
 		97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */; };
 		97F23CB091DDC90EBB70BA3C /* GlanceTiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9BAA4A7AC4466BEACD51860 /* GlanceTiles.swift */; };
 		9B155D7B3D0DAD5AAFDC992A /* GradientTile.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4EF7FF78E7284330ACF76157 /* GradientTile.metal */; };
@@ -76,6 +77,7 @@
 		7F63275D054EB81A93B798DB /* VoiceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceModeView.swift; sourceTree = "<group>"; };
 		82227595F1494D94F711C11A /* ScreenAwake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenAwake.swift; sourceTree = "<group>"; };
 		8F02A671863D160CFB9F6500 /* GradientTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GradientTile.swift; sourceTree = "<group>"; };
+		952ED6B6F9C72D0D5CEDE254 /* DashboardBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardBuilderView.swift; sourceTree = "<group>"; };
 		9542FCF91E0153CF407BB112 /* NewsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsView.swift; sourceTree = "<group>"; };
 		9B3CBF241787C44CC8F35BEC /* McFlyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyKit; path = McFlyKit; sourceTree = SOURCE_ROOT; };
 		A11303012ABFF57EB16B68DE /* Backdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backdrop.swift; sourceTree = "<group>"; };
@@ -165,6 +167,7 @@
 				04A13A583CBDB5AED68797C8 /* BriefsView.swift */,
 				D60CD29D7101DC7226714153 /* CalendarView.swift */,
 				0541DC6B569E5BE913765B74 /* Components.swift */,
+				952ED6B6F9C72D0D5CEDE254 /* DashboardBuilderView.swift */,
 				4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */,
 				1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */,
 				A9BAA4A7AC4466BEACD51860 /* GlanceTiles.swift */,
@@ -320,6 +323,7 @@
 				07583609CE7B9BA6A8D782CB /* CalendarView.swift in Sources */,
 				532E61DA43CF3A567D0E68B9 /* Components.swift in Sources */,
 				658E91D14231709945A117B6 /* Config.swift in Sources */,
+				92FB8C31807C612B3C0CA2EE /* DashboardBuilderView.swift in Sources */,
 				DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */,
 				A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */,
 				97F23CB091DDC90EBB70BA3C /* GlanceTiles.swift in Sources */,

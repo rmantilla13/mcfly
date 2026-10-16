@@ -139,6 +139,33 @@ channel_id, resource_id, token, expires_at)` (upsert by source; clears
 `watch_error`), `google_watch_failed(source, error)`,
 `google_watch_for_channel(channel)` → (source_id, token, enabled, last_synced_at).
 
+### 1.7 Made dashboards
+
+`dashboards.sources` (jsonb, null for an agent's board) is a board made in
+the console: a list of 1 to 20 parts, each `{ from, … }`
+([AGENTS.md](AGENTS.md), Dashboards you make in the console);
+`dashboards.template` names the console template it started from. The
+database draws the parts into `widgets` (`dashboard_widgets(sources)`, the
+same six widget types an agent pushes), so displays and apps read a made
+board like any other and need nothing new. It redraws them once at the end
+of any transaction that writes a table they pull from (a deferred
+constraint trigger on quotes, symbols, metrics, metric_settings, projects,
+events, todos, news_reports, news_items, briefs, agents and ingest_log;
+a failed redraw is a warning, never the writer's error), and pg_cron
+redraws every minute (`mcfly-dashboards`) for time-relative parts. Rows are
+written only when their widgets change. A made board belongs to
+`mcfly_agent()`; `ingest_dashboards` can't take one over.
+
+| Function | Returns |
+|---|---|
+| `admin_dashboard_sources()` | jsonb: symbols, metrics, projects, calendars, news_sections, agents (what parts can pull from), timezone |
+| `admin_preview_dashboard(sources)` | jsonb widgets, drawn now, nothing saved |
+| `admin_save_dashboard(dashboard, title, sources, subtitle, template)` | uuid; no `dashboard` makes one (its key from the title, made unique), else edits a made one |
+| `admin_list_dashboards()` | rows: id, key, title, subtitle, widgets, sort_order, hidden, updated_at, agent_name, agent_color, template, sources |
+
+Audit actions: create_dashboard, edit_dashboard (with set_dashboard and
+delete_dashboard, which treat a made board like any other).
+
 ## 2. Edge functions
 
 All answer JSON with the CORS headers; errors are `{ error }`. The gateway's
@@ -284,7 +311,12 @@ person's account (email + password or magic link, supabase-swift) and then:
   `VoiceGlow` (color spectrum) driven by the microphone and the speaker;
 - shows agents and their last push (`admin_list_agents`), and can make a
   key (`admin_create_agent`, shown once) so an agent can be set up from the
-  phone.
+  phone;
+- makes dashboards (Dashboards → +) and edits made ones, as the console
+  does (§1.7): the same templates (McFlyKit `DashboardTemplate`), the parts'
+  pickers from `admin_dashboard_sources`, a preview from
+  `admin_preview_dashboard`, saved with `admin_save_dashboard`. The demo
+  draws made boards itself (`DashboardDrawing`).
 
 ## 5. Voice service (Pi)
 

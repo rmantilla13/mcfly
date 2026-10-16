@@ -107,6 +107,8 @@ export type DemoDashboard = {
   sort_order: number;
   hidden: boolean;
   updated_at: string;
+  template?: string | null;
+  sources?: unknown[] | null; // a board made in the console; drawn when listed
 };
 
 export type DemoEvent = {

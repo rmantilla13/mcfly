@@ -1,4 +1,6 @@
+import { PlusIcon } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   deleteBriefAction,
@@ -31,7 +33,8 @@ import { FeedHeader } from "@/components/feed/bits";
 import { NewsReportCards } from "@/components/feed/NewsReportCards";
 import { ViewSwitch } from "@/components/feed/ViewSwitch";
 import { Alert, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getSettings,
   listBriefs,
@@ -81,12 +84,13 @@ async function histories(quotes: QuoteRow[], metrics: MetricRow[]) {
 
 // One flush card per tab: a header line, then the table. The tabs that have
 // cards keep their table here, under Manage.
-function Section({ title, description, children }: { title: string; description: ReactNode; children: ReactNode }) {
+function Section({ title, description, action, children }: { title: string; description: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="border-b py-4">
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
+        {action ? <CardAction>{action}</CardAction> : null}
       </CardHeader>
       <CardContent className="px-0 pt-2 pb-2">{children}</CardContent>
     </Card>
@@ -223,7 +227,18 @@ export default async function FeedPage({ searchParams }: Props) {
             label: "Dashboards",
             count: dashboards.length,
             content: (
-              <Section title="Dashboards" description="Laid out by the agents. Open one to see its widgets as the display draws them.">
+              <Section
+                title="Dashboards"
+                description="Made here from a template, or laid out by an agent. Open one to see it as the display draws it."
+                action={
+                  <Button asChild size="sm">
+                    <Link href="/feed/dashboards/new">
+                      <PlusIcon data-icon="inline-start" />
+                      New dashboard
+                    </Link>
+                  </Button>
+                }
+              >
                 <DashboardsTable dashboards={dashboards} setAction={setDashboardAction} deleteAction={deleteDashboardAction} />
               </Section>
             ),

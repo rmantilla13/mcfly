@@ -247,6 +247,33 @@ curl -X POST "$MCFLY_URL/functions/v1/ingest/dashboards" \
 1 to 40 widgets; charts, lists and notes are drawn two columns wide. The
 display shows the boards as pills (Boards); the console orders and hides them.
 
+### Dashboards you make in the console
+
+A board needn't come from an agent. Console → Feed → Dashboards → **New
+dashboard** (or Dashboards → **+** in the iPhone and Mac app) starts from a template (Today, Markets, Numbers, Projects, Week
+ahead, Agent health, Reading, Blank) and, for each part of the board, asks
+where it pulls from. McFly draws the parts into the same six widgets an
+agent sends, so every screen shows a made board like any other, and redraws
+it whenever what it pulls from changes (and every minute, for "today" and
+"next"). The board's recipe is `dashboards.sources`, a list of parts:
+
+| `from` | Pulls | Options |
+|---|---|---|
+| `quotes` | the newest quote per symbol: a tile each, or a 30-day chart | `symbols` (none: every visible symbol, in order), `show` tiles · chart, `limit` |
+| `metrics` | the newest value per metric, or its history | `keys` (none: every visible metric), `group`, `show` tiles · chart, `limit` |
+| `projects` | progress rings (a status when there's none), or one list with next steps | `projects` (ids; none: active and blocked ones), `show` progress · list, `limit` |
+| `calendar` | events that haven't ended, in the window | `calendars` (none: all), `days` (1 is today), `limit` |
+| `todos` | open todos and reminders, dated first | `kind` all · todo · reminder, `limit` |
+| `news` | headlines from the newest report | `section` (a section key), `limit` |
+| `brief` | the newest unexpired brief, whole | `kind`, `agent` |
+| `agents` | a status per agent: pushing, quiet, failed | `agents` (none: every agent with a key), `hours` until quiet |
+| `note` | your own words | `title`, `body` |
+
+Every part also takes a `title`. A part with nothing to show yet still gets
+its card, saying so. Made boards belong to McFly's own agent; a push to a
+made board's key is refused (`dashboard … is made in the console; push yours
+under another key`).
+
 ## Events (the calendar)
 
 ```bash

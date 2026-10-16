@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isKokoroVoice, type KokoroVoice } from "@/lib/account-voice";
 import type { ActionResult } from "@/lib/action-result";
+import { findTemplate, readParts, type DashboardPart } from "@/lib/dashboard-sources";
 import * as data from "@/lib/data";
 import { DataError } from "@/lib/errors";
 import { googleReturnTo } from "@/lib/google-calendars";
@@ -238,6 +239,58 @@ export async function deleteDashboardAction(_prev: ActionResult, fd: FormData): 
   );
   if (result?.ok && deleted && fd.get("stay") !== "1") redirect("/feed?tab=dashboards&deleted=dashboard");
   return result?.ok ? { ok: true, message: "Dashboard deleted." } : result;
+}
+
+// A made board's recipe, as the builder sends it: the parts as JSON.
+const dashboardParts = (fd: FormData): DashboardPart[] => {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text(fd, "sources", 60_000) || "[]");
+  } catch {
+    throw new DataError("The dashboard's parts didn't come through. Reload the page and try again.");
+  }
+  const parts = readParts(raw);
+  if (parts.length === 0) throw new DataError("Add at least one part, a note if nothing else.");
+  return parts;
+};
+
+// Makes a dashboard from the builder, or saves a made one, then opens it.
+export async function saveDashboardAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  let saved: string | null = null;
+  const result = await mutate(
+    async () => {
+      const title = text(fd, "title", 80);
+      if (!title) throw new DataError("Give the dashboard a title.");
+      const template = text(fd, "template", 40);
+      saved = await data.saveDashboard({
+        id: text(fd, "dashboard_id", 64) ? uuid(fd, "dashboard_id") : null,
+        title,
+        subtitle: text(fd, "subtitle", 200) || null,
+        template: findTemplate(template) ? template : null,
+        parts: dashboardParts(fd),
+      });
+    },
+    { rerender: false },
+  );
+  if (result?.ok && saved) redirect(`/feed/dashboards/${saved}`);
+  return result;
+}
+
+export type DashboardPreview = { ok: true; widgets: unknown[] } | { ok: false; error: string };
+
+// The builder's live preview: what the parts draw right now, from the real
+// feeds, without saving anything.
+export async function previewDashboardAction(raw: unknown): Promise<DashboardPreview> {
+  await data.requireAdmin();
+  const parts = readParts(raw);
+  if (parts.length === 0) return { ok: true, widgets: [] };
+  try {
+    return { ok: true, widgets: await data.previewDashboard(parts) };
+  } catch (err) {
+    if (err instanceof DataError) return { ok: false, error: sentence(err.message) };
+    console.error("dashboard preview failed:", err);
+    return { ok: false, error: "The preview didn't draw. Try again." };
+  }
 }
 
 export async function deleteEventAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {

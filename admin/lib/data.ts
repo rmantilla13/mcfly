@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { accountVoice, type KokoroVoice } from "@/lib/account-voice";
+import { EMPTY_OPTIONS, type DashboardPart, type DashboardSourceOptions } from "@/lib/dashboard-sources";
 import * as demo from "@/lib/demo/store";
 import { demoMode, supabaseConfig, supabaseProjectUrl } from "@/lib/env";
 import { DataError } from "@/lib/errors";
@@ -732,6 +733,8 @@ export async function listDashboards(): Promise<DashboardRow[]> {
     widgets: Array.isArray(d.widgets) ? d.widgets : [],
     sort_order: num(d.sort_order),
     hidden: d.hidden === true,
+    template: typeof d.template === "string" ? d.template : null,
+    sources: Array.isArray(d.sources) ? d.sources : null,
   }));
 }
 
@@ -751,6 +754,45 @@ export async function deleteDashboard(id: string): Promise<void> {
   const src = await source();
   if (src.demo) return demo.demoDeleteDashboard(id);
   await rpc(src.db, "admin_delete_dashboard", { dashboard: id });
+}
+
+// What a made board can pull from, for the builder's pickers.
+export async function getDashboardSourceOptions(): Promise<DashboardSourceOptions> {
+  const src = await source();
+  const raw = src.demo ? demo.demoDashboardSources() : record<Partial<DashboardSourceOptions>>(await rpc(src.db, "admin_dashboard_sources"), "admin_dashboard_sources");
+  const arr = <T,>(v: T[] | undefined) => (Array.isArray(v) ? v : []);
+  return {
+    symbols: arr(raw.symbols),
+    metrics: arr(raw.metrics),
+    projects: arr(raw.projects),
+    calendars: arr(raw.calendars).filter((c): c is string => typeof c === "string"),
+    news_sections: arr(raw.news_sections),
+    agents: arr(raw.agents),
+    timezone: typeof raw.timezone === "string" ? raw.timezone : EMPTY_OPTIONS.timezone,
+  };
+}
+
+// The widgets a recipe draws right now, before it is saved.
+export async function previewDashboard(parts: DashboardPart[]): Promise<unknown[]> {
+  const src = await source();
+  if (src.demo) return demo.demoPreviewDashboard(parts);
+  return list<unknown>(await rpc(src.db, "admin_preview_dashboard", { sources: parts }), "admin_preview_dashboard");
+}
+
+// Makes a board (no id) or changes a made one; the database draws it and
+// keeps it drawn. Returns its id.
+export async function saveDashboard(input: { id: string | null; title: string; subtitle: string | null; template: string | null; parts: DashboardPart[] }): Promise<string> {
+  const src = await source();
+  if (src.demo) return demo.demoSaveDashboard(input);
+  const id = await rpc<string>(src.db, "admin_save_dashboard", {
+    dashboard: input.id,
+    title: input.title,
+    sources: input.parts,
+    subtitle: input.subtitle,
+    template: input.template,
+  });
+  if (typeof id !== "string") throw new DataError("admin_save_dashboard didn't come back from the database. Apply the platform migrations (supabase db push).");
+  return id;
 }
 
 export async function listEvents(daysBack = 7, daysAhead = 60): Promise<EventRow[]> {

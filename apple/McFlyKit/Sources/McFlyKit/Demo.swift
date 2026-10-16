@@ -138,7 +138,7 @@ public struct DemoFeedSource: FeedSource {
     }
     public func loadMetrics(limit: Int) async throws -> [Metric] { Array(data.metrics.prefix(limit)) }
     public func loadMetricSettings() async throws -> [MetricSetting] { data.metricSettings }
-    public func loadDashboards() async throws -> [Dashboard] { data.dashboards }
+    public func loadDashboards() async throws -> [Dashboard] { data.dashboards + (await DemoDashboards.shared.boards(drawnFrom: data)) }
     public func loadEvents(from: Date, to: Date) async throws -> [CalendarEvent] {
         data.events.filter { $0.endsAt >= from && $0.startsAt <= to }
     }

@@ -1,4 +1,6 @@
 import "server-only";
+import { drawDashboard, type DrawData } from "@/lib/dashboard-draw";
+import { readParts, type DashboardPart, type DashboardSourceOptions } from "@/lib/dashboard-sources";
 import { buildDemoState, type DemoAgent, type DemoState } from "@/lib/demo/fixtures";
 import { DataError } from "@/lib/errors";
 import { dayKey, dayLabel, safeTimeZone } from "@/lib/events";
@@ -498,7 +500,10 @@ export function demoListDashboards(): DashboardRow[] {
       const agent = s.agents.find((a) => a.id === d.agent_id);
       const { agent_id: _agent, ...rest } = d;
       void _agent;
-      return { ...rest, agent_name: agent?.name ?? "?", agent_color: agent?.color ?? "#4F7CF7" };
+      // A made board is drawn as it is listed, the way the database keeps
+      // one drawn.
+      const widgets = d.sources ? drawDashboard(readParts(d.sources), drawData()) : d.widgets;
+      return { ...rest, widgets, template: d.template ?? null, sources: d.sources ?? null, agent_name: agent?.name ?? "?", agent_color: agent?.color ?? "#4F7CF7" };
     });
 }
 
@@ -517,6 +522,113 @@ export function demoDeleteDashboard(id: string) {
   if (!d) throw new DataError("dashboard not found");
   s.dashboards = s.dashboards.filter((x) => x.id !== id);
   audit("delete_dashboard", "dashboard", id, { key: d.key });
+}
+
+// ───────────────────────────── Made dashboards ─────────────────────────────
+
+// The demo has no todos of its own; a made board's todo part draws these.
+function demoTodos(now: number): DrawData["todos"] {
+  const at = (h: number) => new Date(now + h * HOUR).toISOString();
+  return [
+    { id: "demo-todo-1", kind: "todo", title: "Send the investor update", due_at: at(5), all_day: false, done_at: null, created_at: at(-20) },
+    { id: "demo-todo-2", kind: "todo", title: "Renew the domain", due_at: at(50), all_day: false, done_at: null, created_at: at(-40) },
+    { id: "demo-todo-3", kind: "todo", title: "Book flights to Austin", due_at: null, all_day: false, done_at: null, created_at: at(-8) },
+    { id: "demo-todo-4", kind: "reminder", title: "Call Mom", due_at: at(9), all_day: false, done_at: null, created_at: at(-3) },
+  ];
+}
+
+// The feeds as the database's drawing sees them.
+function drawData(): DrawData {
+  const s = state();
+  const now = Date.now();
+  const newest = [...s.reports].sort((a, b) => b.report_date.localeCompare(a.report_date) || b.published_at.localeCompare(a.published_at))[0];
+  const lastPush = (agentId: string) => {
+    const e = s.ingest.filter((x) => x.agent_id === agentId).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)[0];
+    return e ? { created_at: e.created_at, status: e.status, message: e.message } : null;
+  };
+  return {
+    now,
+    timeZone: safeTimeZone(s.settings.timezone),
+    symbols: s.symbols,
+    quotes: s.quotes,
+    metricSettings: s.metricSettings,
+    metrics: s.metrics,
+    projects: s.projects,
+    events: s.events,
+    todos: demoTodos(now),
+    news: newest ? s.items.filter((i) => i.report_id === newest.id) : [],
+    briefs: s.briefs,
+    agents: s.agents.map((a) => ({ id: a.id, name: a.name, has_key: !!a.key_prefix, revoked: !!a.revoked_at, last: lastPush(a.id) })),
+  };
+}
+
+export function demoDashboardSources(): DashboardSourceOptions {
+  const s = state();
+  const latestMetric = (key: string) => s.metrics.filter((m) => m.key === key).sort((a, b) => b.as_of.localeCompare(a.as_of) || b.id - a.id)[0];
+  const sections = new Map<string, { key: string; name: string; order: number }>();
+  for (const i of s.items) if (!sections.has(i.section_key)) sections.set(i.section_key, { key: i.section_key, name: i.section_name, order: i.section_order });
+  return {
+    symbols: [...s.symbols]
+      .sort((a, b) => Number(a.hidden) - Number(b.hidden) || a.sort_order - b.sort_order || a.symbol.localeCompare(b.symbol))
+      .map((x) => ({ symbol: x.symbol, name: x.name ?? latestQuote(x.symbol)?.name ?? null, hidden: x.hidden })),
+    metrics: [...s.metricSettings]
+      .sort((a, b) => Number(a.hidden) - Number(b.hidden) || a.sort_order - b.sort_order || a.key.localeCompare(b.key))
+      .map((m) => ({ key: m.key, label: m.label ?? latestMetric(m.key)?.label ?? m.key, group: m.group_name, unit: latestMetric(m.key)?.unit ?? null, hidden: m.hidden })),
+    projects: [...s.projects]
+      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+      .map((p) => ({ id: p.id, name: p.name, status: p.status, agent_name: s.agents.find((a) => a.id === p.agent_id)?.name ?? "?" })),
+    calendars: [...new Set(s.events.map((e) => e.calendar))].sort(),
+    news_sections: [...sections.values()].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)).map(({ key, name }) => ({ key, name })),
+    agents: s.agents
+      .filter((a) => !a.revoked_at)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((a) => ({ id: a.id, name: a.name, color: a.color, has_key: !!a.key_prefix })),
+    timezone: safeTimeZone(s.settings.timezone),
+  };
+}
+
+function checkParts(parts: DashboardPart[]) {
+  if (parts.length === 0) throw new DataError("a dashboard needs at least one part");
+  if (parts.length > 20) throw new DataError("at most 20 parts on a dashboard");
+}
+
+export function demoPreviewDashboard(parts: DashboardPart[]): unknown[] {
+  checkParts(parts);
+  return drawDashboard(parts, drawData());
+}
+
+// McFly's own agent, which owns made boards (mcfly_agent()): made on first use.
+function mcflyAgent(): DemoAgent {
+  const s = state();
+  let agent = s.agents.find((a) => a.slug === "mcfly-assistant");
+  if (!agent) {
+    agent = { id: crypto.randomUUID(), name: "McFly", slug: "mcfly-assistant", kind: "other", color: "#F2A33A", created_at: new Date().toISOString(), last_seen_at: null, revoked_at: null, key_prefix: null, key_created_at: null };
+    s.agents.push(agent);
+  }
+  return agent;
+}
+
+export function demoSaveDashboard(input: { id: string | null; title: string; subtitle: string | null; template: string | null; parts: DashboardPart[] }): string {
+  const s = state();
+  const title = input.title.trim().slice(0, 80);
+  if (!title) throw new DataError("give the dashboard a title");
+  checkParts(input.parts);
+  const now = new Date().toISOString();
+  if (input.id) {
+    const d = s.dashboards.find((x) => x.id === input.id);
+    if (!d) throw new DataError("dashboard not found");
+    if (!d.sources) throw new DataError("an agent lays this dashboard out; only a dashboard made here can be edited");
+    Object.assign(d, { title, subtitle: input.subtitle, template: input.template ?? d.template ?? null, sources: input.parts, updated_at: now });
+    audit("edit_dashboard", "dashboard", d.id, input.template ? { template: input.template } : {});
+    return d.id;
+  }
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56) || "board";
+  let key = base;
+  for (let n = 2; s.dashboards.some((d) => d.key === key); n++) key = `${base}-${n}`;
+  const id = crypto.randomUUID();
+  s.dashboards.push({ id, agent_id: mcflyAgent().id, key, title, subtitle: input.subtitle, widgets: [], sort_order: 1000, hidden: false, updated_at: now, template: input.template, sources: input.parts });
+  audit("create_dashboard", "dashboard", id, input.template ? { key, template: input.template } : { key });
+  return id;
 }
 
 export function demoListEvents(daysBack: number, daysAhead: number): EventRow[] {

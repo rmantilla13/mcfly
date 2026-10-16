@@ -220,6 +220,10 @@ export type DashboardRow = {
   updated_at: string;
   agent_name: string;
   agent_color: string;
+  // A board made here: the template it started from and its recipe (the
+  // parts lib/dashboard-sources.ts reads). Null when an agent lays it out.
+  template: string | null;
+  sources: unknown[] | null;
 };
 
 export type EventRow = {
