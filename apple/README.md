@@ -135,12 +135,12 @@ says which.
 | **Home** | The display's Home in its portrait layout: the greeting and a big clock, **Up next** (the event on now, else the next one, on its colour), the first blocked project, **Ask McFly** on the voice glow (tap to type, the mic to talk), the markets in one strip, then **Today**: one stream in time order of today's Pulse reports, briefs, project updates and events (`Timeline` in the kit, the same rules as the display's FeedStore and the web's `lib/today.ts`). Past events fade, the one on now is outlined, the next is marked; each row opens its story, brief, project or event. Pull to refresh; coming back to the app after a minute refreshes too. |
 | **Ambient** | The moon on Home: the display's ambient screen saver full screen, for a stand or a nightstand. The moving gradient, the clock, the date, what's next and what follows, and a rail of cards (the latest brief, the markets, a blocked project, today's top story, later events). It drifts a few points a minute, keeps the screen awake, and a tap goes back. |
 | **Briefs** | Grouped by day; a reader lays out paragraphs and `- ` bullets. |
-| **Markets** | A tile per visible symbol in the console's order, with a sparkline from the history; detail with the note and the history. Below the quotes, a **Metrics** section: a tile per visible metric (`metrics` history + `metric_settings` for label, group, order and hidden), grouped by the console's group, with the same sparklines and a detail with the note and history. |
+| **Markets** | A tile per visible symbol in the console's order, with a sparkline from the history. A symbol's detail is the display's: on a gradient tile, green when it's up and coral when it's down, the price, the change, the sparkline, the note and who sent it; then the history on a card. The **Metrics** segment: a tile per visible metric (`metrics` history + `metric_settings` for label, group, order and hidden), grouped by the console's group, with the same sparklines; a metric's detail is on the same tile, green when the move is good news (down is, for latency, errors or open orders), then its history. |
 | **News** | The newest report by section, story cards with thumbnail, headline and takeaway; story detail with the image, takeaway, source domain and Open Link; a calendar menu picks an older report. |
 | **Voice** | **Talk to McFly** opens the full-screen voice mode (below); **Ask by typing** is a chat sheet in `chat` mode with streamed replies and a Claude / Grok switch that sends `provider` with the request (it starts from `platform_settings.assistant_provider`; the voice loop leaves the choice to the server). |
 | **Projects** | A card per project: name, status pill (blocked, active, paused, done), progress, summary, next step, the last update. Detail: the timeline (the feed's newest five, then everything from `admin_project_updates`) and an Open link. |
 | **Dashboards** | A segmented picker across the agents' dashboards; each is a grid of widget cards by type: metric, status, progress, list, text, and chart (a small Path). A type this version doesn't know shows as a placeholder rather than hiding the dashboard. |
-| **Calendar** | A month grid with a dot per calendar color, then the agenda: events by day for the weeks ahead (`events` from yesterday to 60 days out). Tap a day to see just that day. Detail: time span, location, description, link. |
+| **Calendar** | A month grid with a dot per calendar color; under it the picked day (today until you tap one) on the display's day tile: the weekday, the date, how many events and the first two. Then the agenda: events by day for the weeks ahead (`events` from yesterday to 60 days out), or, with a day picked, just that day's, until **Show all** on the tile. Detail: time span, location, description, link. |
 | **Displays** | `admin_list_devices`: name, last seen, online when seen within 15 minutes. Rename (`admin_rename_device`), revoke (the `admin` function's `revoke_device`), and **Pair a display**. |
 | **Agents** | `admin_list_agents`: name, color, kind, last push, errors. **New agent** shows the key once with Copy and Share; rotate (`admin_rotate_agent_key`, also un-revokes), revoke, delete. |
 | **Projects** | `projects` with their `project_updates` embedded: a card per project with status, progress, summary, next step and the last update; detail with the update timeline (`admin_project_updates` for more of it). |
@@ -170,7 +170,17 @@ The display's design language (`display/qml/Theme.qml`), in `McFly/Theme`:
   gradient, the frosted-glass rings blurred into it and the static film
   grain, in one pass, with the palette worked out from a base colour or the
   glow colours as the QML does. It only moves while on screen, with the app
-  in front and Reduce Motion off.
+  in front and Reduce Motion off. Given a frame it fills it; in a scroll
+  view it is as tall as what's on it.
+- **Where the tiles are**, with the display's colours and seeds: Ambient's
+  backdrop (the glow colours); a symbol's detail (`MarketsScreen.qml`'s:
+  green `#3DB37A` up, coral `#F07F5A` down, seed 3.3, one ring toward the
+  edge) and a metric's, which borrows it, since the display shows metrics
+  only as cards; Calendar's day (`CalendarScreen.qml`'s DayTile: the glow
+  colours, seed 5.1, one ring). Text on a tile takes the tile's inks
+  (`TileColors`: `ink`, `inkMuted`, `strong` for the move and its sparkline,
+  `glassFill` and `glassStroke` for a control), not `Theme`'s. Dense lists
+  (a history, the agenda) stay on plain cards.
 
 The assistant request carries `provider: "claude" | "grok"` when the person
 has picked one (Settings → Answers from); the function otherwise uses

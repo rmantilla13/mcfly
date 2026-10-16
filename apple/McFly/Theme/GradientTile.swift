@@ -13,7 +13,8 @@ import SwiftUI
 /// near-white highlight, pastel by day and deep at night) or from 3–4
 /// `colors` mapped the same way. One loop is `period` seconds (0.85–1.15× by
 /// seed, so tiles never line up). It only moves while it can be seen, the app
-/// is in front and Reduce Motion is off.
+/// is in front and Reduce Motion is off. Given a frame it fills it, content
+/// top-leading; in a scroll view it is as tall as its content.
 struct GradientTile<Content: View>: View {
     var base: Int = 0x4F7CF7
     var colors: [Int] = []
@@ -52,24 +53,28 @@ struct GradientTile<Content: View>: View {
         let shape = (seed: Float(seed), rings: Float(rings), scale: Float(ringScale), bias: Float(ringBias),
                      soft: Float(blur), dpr: Float(max(displayScale, 1)))
 
-        ZStack {
-            TimelineView(.animation(minimumInterval: 1 / fps, paused: !playing)) { context in
-                let phase = Float((context.date.timeIntervalSinceReferenceDate * speed)
-                    .truncatingRemainder(dividingBy: 2 * .pi)) + shape.seed * 1.7
-                Rectangle()
-                    .fill(Color(rgb: base))
-                    .visualEffect { content, proxy in
-                        content.colorEffect(ShaderLibrary.gradientTile(
-                            .float2(proxy.size), .float(phase), .float(shape.seed), .float(shape.rings),
-                            .float(shape.scale), .float(shape.bias), .float(glass), .float(grain), .float(shape.soft),
-                            .float(shape.dpr), .floatArray(pal)))
-                    }
+        // The content fills a fixed frame and sizes the tile where there is
+        // none (a tile in a scroll view hugs what's on it); the gradient is
+        // its background, so it covers whichever that comes to.
+        content(tile)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background {
+                TimelineView(.animation(minimumInterval: 1 / fps, paused: !playing)) { context in
+                    let phase = Float((context.date.timeIntervalSinceReferenceDate * speed)
+                        .truncatingRemainder(dividingBy: 2 * .pi)) + shape.seed * 1.7
+                    Rectangle()
+                        .fill(Color(rgb: base))
+                        .visualEffect { content, proxy in
+                            content.colorEffect(ShaderLibrary.gradientTile(
+                                .float2(proxy.size), .float(phase), .float(shape.seed), .float(shape.rings),
+                                .float(shape.scale), .float(shape.bias), .float(glass), .float(grain), .float(shape.soft),
+                                .float(shape.dpr), .floatArray(pal)))
+                        }
+                }
             }
-            content(tile)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .onAppear { onScreen = true }
-        .onDisappear { onScreen = false }
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .onAppear { onScreen = true }
+            .onDisappear { onScreen = false }
     }
 
     static func wrap(_ x: Double) -> Double { x - x.rounded(.down) }

@@ -1,7 +1,9 @@
 import McFlyKit
 import SwiftUI
 
-/// A month grid and, under it, the agenda: events by day for the weeks ahead.
+/// A month grid, the picked day on its tile (today until one is tapped), and
+/// under it the agenda: events by day for the weeks ahead, or the picked
+/// day's alone.
 struct CalendarView: View {
     @Environment(AppModel.self) private var app
     @State private var month: Date = Calendar.current.startOfDay(for: .now)
@@ -22,18 +24,14 @@ struct CalendarView: View {
                     }
                 }
                 .card(padding: 12)
-                if let picked {
-                    let dayEvents = feeds.events(on: picked)
-                    SectionHeader(Format.dayLabel(picked)) {
-                        Button("Show all") { self.picked = nil }.buttonStyle(.pill(.soft))
-                    }
-                    if dayEvents.isEmpty {
-                        EmptyCard(text: "Nothing on this day.", systemImage: "calendar")
-                    } else {
-                        ForEach(dayEvents) { event in
-                            NavigationLink(value: event) { EventRow(event: event, day: picked) }
-                                .buttonStyle(PressableStyle())
-                        }
+                let day = picked ?? calendar.startOfDay(for: .now)
+                let dayEvents = EventDays.days(feeds.events, from: day, count: 1, calendar: calendar).first?.events ?? []
+                DayTile(day: day, events: dayEvents, showAll: picked == nil ? nil : { self.picked = nil })
+                if picked != nil {
+                    // The tile names the day and says when there's nothing on it.
+                    ForEach(dayEvents) { event in
+                        NavigationLink(value: event) { EventRow(event: event, day: day) }
+                            .buttonStyle(PressableStyle())
                     }
                 } else {
                     let agenda = feeds.eventsByDay()
@@ -58,6 +56,99 @@ struct CalendarView: View {
         .refreshable { await feeds.refresh() }
         .navigationTitle("Calendar")
         .navigationDestination(for: CalendarEvent.self) { EventDetailView(event: $0) }
+    }
+}
+
+/// One day on the display's day tile (CalendarScreen.qml's DayTile, as its
+/// portrait layout has it): the glow colours, seed 5.1 and one ring; the
+/// weekday, the date, how many events and the first two, each a tap away.
+/// Show all, while a day is picked, goes back to the agenda.
+struct DayTile: View {
+    let day: Date
+    /// The day's events, all-day ones first.
+    let events: [CalendarEvent]
+    var showAll: (() -> Void)?
+
+    var body: some View {
+        GradientTile(colors: Theme.palette.glow, rings: 1, seed: 5.1) { tile in
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(day.formatted(.dateTime.weekday(.wide)).uppercased())
+                        .font(.system(size: 12, weight: .semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(tile.inkMuted)
+                    Text(day.formatted(.dateTime.month(.wide).day()))
+                        .font(.system(size: 30, weight: .medium))
+                        .foregroundStyle(tile.ink)
+                    Text(count)
+                        .font(.system(size: 15))
+                        .foregroundStyle(tile.inkMuted)
+                }
+                .accessibilityElement(children: .combine)
+                if !events.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(events.prefix(2)) { event in
+                            NavigationLink(value: event) { row(event, tile: tile) }
+                                .buttonStyle(PressableStyle())
+                        }
+                    }
+                    .padding(.top, 10)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topTrailing) {
+                if let showAll {
+                    Button(action: showAll) {
+                        Text("Show all")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(tile.ink)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(tile.glassFill, in: Capsule())
+                            .overlay(Capsule().strokeBorder(tile.glassStroke, lineWidth: 1))
+                    }
+                    .buttonStyle(PressableStyle())
+                    .padding(16)
+                }
+            }
+        }
+    }
+
+    private var count: String {
+        switch events.count {
+        case 0: return "Nothing planned"
+        case 1: return "1 event"
+        default: return "\(events.count) events"
+        }
+    }
+
+    /// The calendar's dot, when it starts, the title.
+    private func row(_ event: CalendarEvent, tile: TileColors) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(Color(hex: event.color ?? "#5B7CF5"))
+                .frame(width: 9, height: 9)
+            Text(start(event))
+                .font(.system(size: 15).monospacedDigit())
+                .foregroundStyle(tile.inkMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(width: 80, alignment: .leading)
+            Text(event.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tile.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+    }
+
+    /// "9:30 AM"; "All day", or "Until 5 PM" on a day after the event began.
+    private func start(_ event: CalendarEvent) -> String {
+        event.allDay || !Calendar.current.isDate(event.startsAt, inSameDayAs: day)
+            ? Format.eventTime(event, on: day) : Format.time(event.startsAt)
     }
 }
 
