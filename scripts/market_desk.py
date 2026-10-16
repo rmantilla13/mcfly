@@ -231,7 +231,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     held = sum(1 for q in body["quotes"] if "position" in q.get("data", {}))
     print(f"{len(body['quotes'])} quotes, {held} holdings", file=sys.stderr)
-    return mcfly_push.send("quotes", body, args.dry_run)
+    if args.dry_run:  # needs no key: the body is the point
+        print(json.dumps(body, indent=2))
+        return 0
+    return mcfly_push.send("quotes", body, False)
 
 
 if __name__ == "__main__":
