@@ -5,7 +5,8 @@ import SwiftUI
 /// full screen on the phone, for a stand or a nightstand: the backdrop the
 /// displays show (`AccountBackdrop`: the moving gradient with an aurora
 /// hanging over it at night, `AuroraGlow`, fading in, or one of the display's
-/// skies, `Backdrop`), a big clock, the date, what's next and what follows, and a rail
+/// skies, `Backdrop`) with the displays' weather over it (`WeatherLayer`), a big
+/// clock, the date, what's next and what follows, and a rail
 /// of cards from the feeds (the latest brief, the markets, a blocked
 /// project, today's top story, the rest of the day). With no feeds yet it is
 /// just the clock. The composition drifts a few points every minute, the
@@ -23,6 +24,7 @@ struct AmbientView: View {
     var body: some View {
         let night = Theme.palette.isDark
         let backdrop = app.backdrop
+        let weather = app.weather
         TimelineView(.everyMinute) { context in
             let now = context.date
             GeometryReader { geo in
@@ -42,12 +44,17 @@ struct AmbientView: View {
                                                opacity: 0.5, speed: 0.35, maxFps: 15)
                                         .transition(.opacity)
                                 }
+                                // The displays' weather, over the backdrop and under the words.
+                                WeatherLayer(setting: weather)
                                 placed(composition(now: now, tile: tile, night: night, wide: wide, size: geo.size), wide: wide, geo: geo)
                             }
                         }
                     } else {
                         Backdrop(style: backdrop, colors: Theme.palette.glow, dark: night) { sky in
-                            placed(composition(now: now, tile: sky, night: night, wide: wide, size: geo.size), wide: wide, geo: geo)
+                            ZStack(alignment: .topLeading) {
+                                WeatherLayer(setting: weather)
+                                placed(composition(now: now, tile: sky, night: night, wide: wide, size: geo.size), wide: wide, geo: geo)
+                            }
                         }
                     }
                 }
@@ -68,8 +75,12 @@ struct AmbientView: View {
         #endif
         .onAppear { ScreenAwake.hold("ambient") }
         .onDisappear { ScreenAwake.release("ambient") }
-        // The displays' backdrop may have been changed since the app opened.
-        .task { await app.syncBackdrop() }
+        // The displays' backdrop and weather may have been changed since the app opened.
+        .task {
+            async let backdropSynced: Void = app.syncBackdrop()
+            await app.syncWeather()
+            await backdropSynced
+        }
     }
 
     /// The composition in its place: in from the edges, clear of the notch and

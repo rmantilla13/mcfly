@@ -3,8 +3,12 @@
 #include <QDir>
 #include <QEvent>
 #include <QFile>
+#include <QSet>
 #include <QSettings>
 #include <QTime>
+#include <QTimeZone>
+
+#include <cmath>
 
 namespace {
 constexpr int kDefaultIdleSec = 120;
@@ -41,6 +45,7 @@ DisplayController::DisplayController(QObject *parent) : QObject(parent)
     connect(&m_clockTimer, &QTimer::timeout, this, [this]() {
         updateNightMode();
         applySchedule(QTime::currentTime());
+        refreshWeather();
     });
     m_clockTimer.start();
 
@@ -64,6 +69,13 @@ DisplayController::DisplayController(QObject *parent) : QObject(parent)
         m_backdrop = QSettings().value("display/backdrop", "mesh").toString();
     if (!backdrops().contains(m_backdrop))
         m_backdrop = QStringLiteral("mesh");
+    // MCFLY_WEATHER the weather over it; a name this build doesn't know is off.
+    m_weather = qEnvironmentVariable("MCFLY_WEATHER");
+    if (m_weather.isEmpty())
+        m_weather = QSettings().value("display/weather", "off").toString();
+    if (!weathers().contains(m_weather))
+        m_weather = QStringLiteral("off");
+    refreshWeather();
     // MCFLY_HOME_LAYOUT picks Home's layout the same way (screenshots).
     m_homeLayout = qEnvironmentVariable("MCFLY_HOME_LAYOUT");
     if (m_homeLayout.isEmpty())
@@ -279,6 +291,95 @@ void DisplayController::setBackdrop(const QString &style)
     m_backdrop = style;
     QSettings().setValue("display/backdrop", style);
     emit backdropChanged();
+}
+
+const QStringList &DisplayController::weathers()
+{
+    static const QStringList kinds{"off", "season", "snow", "petals", "fireflies", "leaves"};
+    return kinds;
+}
+
+void DisplayController::setWeather(const QString &weather)
+{
+    if (!weathers().contains(weather) || weather == m_weather)
+        return;
+    m_weather = weather;
+    QSettings().setValue("display/weather", weather);
+    emit weatherChanged();
+    refreshWeather();
+}
+
+void DisplayController::refreshWeather()
+{
+    const QString kind = weatherFor(m_weather, QDate::currentDate(), QTimeZone::systemTimeZoneId());
+    if (kind == m_weatherKind)
+        return;
+    m_weatherKind = kind;
+    emit weatherKindChanged();
+}
+
+QString DisplayController::seasonFor(const QDate &date, bool south)
+{
+    // December to February is winter in the north.
+    static const char *const north[] = {"winter", "winter", "spring", "spring", "spring", "summer",
+                                        "summer", "summer", "autumn", "autumn", "autumn", "winter"};
+    const int month = date.month() - 1;
+    return QString::fromLatin1(north[south ? (month + 6) % 12 : month]);
+}
+
+bool DisplayController::southernZone(const QByteArray &zone)
+{
+    // A whole region by prefix where every zone in it is south, one by one
+    // elsewhere. Not exhaustive: one missing gets the north's seasons.
+    static const QList<QByteArray> prefixes{"Australia/", "Antarctica/", "America/Argentina/", "Chile/", "Brazil/"};
+    static const QSet<QByteArray> zones{
+        "NZ", "NZ-CHAT", "Pacific/Auckland", "Pacific/Chatham", "Pacific/Fiji", "Pacific/Noumea", "Pacific/Tongatapu",
+        "Pacific/Apia", "Pacific/Efate", "Pacific/Norfolk", "Pacific/Tahiti", "Pacific/Easter", "Pacific/Rarotonga",
+        "America/Santiago", "America/Punta_Arenas", "America/Montevideo", "America/Asuncion", "America/Sao_Paulo",
+        "America/La_Paz", "America/Lima", "America/Recife", "America/Bahia", "America/Maceio", "America/Cuiaba",
+        "America/Campo_Grande", "America/Porto_Velho", "America/Rio_Branco",
+        "Atlantic/Stanley", "Atlantic/South_Georgia", "Atlantic/St_Helena",
+        "Africa/Johannesburg", "Africa/Maputo", "Africa/Harare", "Africa/Lusaka", "Africa/Windhoek", "Africa/Gaborone",
+        "Africa/Maseru", "Africa/Mbabane", "Africa/Blantyre", "Africa/Lubumbashi", "Africa/Luanda", "Africa/Dar_es_Salaam",
+        "Indian/Antananarivo", "Indian/Mauritius", "Indian/Reunion", "Indian/Mayotte", "Indian/Comoro",
+    };
+    if (zones.contains(zone))
+        return true;
+    for (const QByteArray &prefix : prefixes)
+        if (zone.startsWith(prefix))
+            return true;
+    return false;
+}
+
+QString DisplayController::weatherFor(const QString &weather, const QDate &date, const QByteArray &zone)
+{
+    if (weather == QLatin1String("season")) {
+        const QString season = seasonFor(date, southernZone(zone));
+        if (season == QLatin1String("winter"))
+            return QStringLiteral("snow");
+        if (season == QLatin1String("spring"))
+            return QStringLiteral("petals");
+        if (season == QLatin1String("summer"))
+            return QStringLiteral("fireflies");
+        return QStringLiteral("leaves");
+    }
+    if (weather == QLatin1String("off") || !weathers().contains(weather))
+        return {};
+    return weather;
+}
+
+int DisplayController::weatherCount(const QString &kind, qreal width, qreal height)
+{
+    // A phone gets a few; a big screen is not crowded, nor paying for a crowd.
+    struct Density { const char *kind; double perPixels; int min; int max; };
+    static const Density table[] = {
+        {"snow", 26000, 12, 44}, {"petals", 60000, 6, 18}, {"leaves", 85000, 5, 14}, {"fireflies", 65000, 7, 20},
+    };
+    for (const Density &d : table) {
+        if (kind == QLatin1String(d.kind))
+            return qBound(d.min, int(std::lround(qMax(0.0, double(width)) * qMax(0.0, double(height)) / d.perPixels)), d.max);
+    }
+    return 0;
 }
 
 const QStringList &DisplayController::homeLayouts()

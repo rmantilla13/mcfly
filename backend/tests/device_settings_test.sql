@@ -39,6 +39,12 @@ select tests.eq(device_update_settings('{"homeLayout": "bento"}') ->> 'homeLayou
 select tests.eq(device_update_settings('{"homeLayout": "assistant"}') ->> 'homeLayout', 'assistant', 'or the assistant first');
 select tests.throws($$select device_update_settings('{"homeLayout": "masonry"}')$$, 'homeLayout must be%', 'unknown home layout');
 select tests.eq(device_update_settings('{"wakewordModel": "hey_mcfly"}') ->> 'backdrop', 'dawn', 'the backdrop survives the restated function');
+-- Weather over the savers' backdrop (20261016000020).
+select tests.eq(device_update_settings('{"weather": "season"}') ->> 'weather', 'season', 'weather by the season');
+select tests.eq(device_update_settings('{"weather": "fireflies"}') ->> 'weather', 'fireflies', 'or one kind all year');
+select tests.throws($$select device_update_settings('{"weather": "rain"}')$$, 'weather must be%', 'unknown weather');
+select tests.eq(device_update_settings('{"homeLayout": "today"}') ->> 'weather', 'fireflies', 'the weather survives another setting');
+select tests.eq(device_update_settings('{"weather": "off"}') ->> 'homeLayout', 'today', 'and the rest survive the weather');
 select tests.eq((select settings from devices where id = :'office'), null::jsonb, 'cannot see another display');
 
 select tests.login(:'stranger');

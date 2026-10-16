@@ -40,6 +40,17 @@ enum Config {
         return ProcessInfo.processInfo.environment["MCFLY_DEMO"] == "1"
     }
 
+    /// `-McFlyWeather snow` (or MCFLY_WEATHER, as on the display) pins Ambient's
+    /// weather whatever the displays say, for screenshots. Nil otherwise, or for
+    /// a setting this build doesn't know.
+    static var pinnedWeather: String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        var value = ProcessInfo.processInfo.environment["MCFLY_WEATHER"]
+        if let i = arguments.firstIndex(of: "-McFlyWeather"), i + 1 < arguments.count { value = arguments[i + 1] }
+        guard let value = value?.lowercased(), AccountWeather.settings.contains(value) else { return nil }
+        return value
+    }
+
     /// `-McFlyBackdrop arc` (or MCFLY_BACKDROP, as on the display) pins Ambient's
     /// backdrop whatever the displays say, for screenshots. Nil otherwise, or for
     /// a style this build doesn't know.

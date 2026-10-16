@@ -42,6 +42,9 @@ final class AppModel {
     /// mesh, or one of the skies Ambient draws (`Backdrop`). A build pinned to one
     /// (`-McFlyBackdrop`, for screenshots) keeps it.
     private(set) var backdrop = Config.pinnedBackdrop ?? AccountBackdrop.mesh
+    /// What falls over it (`AccountWeather`), read from the displays: off, by the
+    /// season, or one kind. A build pinned to one (`-McFlyWeather`) keeps it.
+    private(set) var weather = Config.pinnedWeather ?? AccountWeather.off
 
     private let client: McFlyClient?
     private let pairingClient: PairingClient?
@@ -101,9 +104,11 @@ final class AppModel {
                 phase = .ready
                 async let voiceSynced: Void = syncVoice()
                 async let backdropSynced: Void = syncBackdrop()
+                async let weatherSynced: Void = syncWeather()
                 await feeds.refresh()
                 await voiceSynced
                 await backdropSynced
+                await weatherSynced
             } else {
                 phase = .notAdmin
             }
@@ -204,6 +209,12 @@ final class AppModel {
     func syncBackdrop() async {
         guard Config.pinnedBackdrop == nil, let account = try? await admin.accountBackdrop() else { return }
         backdrop = account
+    }
+
+    /// Catches up with the displays' weather the same way (`AccountWeather`).
+    func syncWeather() async {
+        guard Config.pinnedWeather == nil, let account = try? await admin.accountWeather() else { return }
+        weather = account
     }
 
     // MARK: Services

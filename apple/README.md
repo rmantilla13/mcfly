@@ -185,7 +185,11 @@ The display's design language (`display/qml/Theme.qml`), in `McFly/Theme`:
   `MCFLY_BACKDROP`) pins one for screenshots, and `-McFlyAmbient YES` opens
   Ambient as the app starts. Text on a sky takes its inks
   (`SkyColors`), which turn from dark to light in the middle of the dusk, as
-  the display's do, so they never sit grey on grey.
+  the display's do, so they never sit grey on grey. Over the backdrop falls
+  the displays' `weather` (`AccountWeather`: off, by the season where the phone
+  is, or snow, petals, fireflies or leaves), one `Canvas` on the same clock
+  (`WeatherLayer`), none with Reduce Motion or in Low Power Mode;
+  `-McFlyWeather snow` (or `MCFLY_WEATHER`) pins one.
 - **Where the tiles are**, with the display's colours and seeds: Ambient's
   backdrop (the glow colours); a symbol's detail (`MarketsScreen.qml`'s:
   green `#3DB37A` up, coral `#F07F5A` down, seed 3.3, one ring toward the

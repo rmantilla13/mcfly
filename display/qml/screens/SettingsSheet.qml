@@ -395,6 +395,28 @@ Popup {
                                 current: Device.backdrop
                                 onPicked: id => Device.backdrop = id
                             }
+                            // What falls over it: by the season where the
+                            // display is (DisplayController::weatherFor), or one all year.
+                            SettingRow {
+                                readonly property var names: ({ snow: qsTr("Snow"), petals: qsTr("Petals"),
+                                                                fireflies: qsTr("Fireflies"), leaves: qsTr("Leaves") })
+                                icon: "sun"
+                                title: qsTr("Weather")
+                                detail: Device.weather === "season"
+                                        ? qsTr("Over Ambient and Clock, by the season here: %1 now").arg(names[Device.weatherKind] || "")
+                                        : qsTr("Over Ambient and Clock: by the season, or one all year")
+                            }
+                            ChipRow {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 68
+                                Layout.bottomMargin: 8
+                                chipHeight: 48
+                                model: [{ id: "off", label: qsTr("Off") }, { id: "season", label: qsTr("Season") },
+                                        { id: "snow", label: qsTr("Snow") }, { id: "petals", label: qsTr("Petals") },
+                                        { id: "fireflies", label: qsTr("Fireflies") }, { id: "leaves", label: qsTr("Leaves") }]
+                                current: Device.weather
+                                onPicked: id => Device.weather = id
+                            }
                         }
                     }
 

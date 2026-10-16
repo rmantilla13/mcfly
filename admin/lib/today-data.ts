@@ -18,6 +18,7 @@ import { dayKey, safeTimeZone } from "@/lib/events";
 import { buildInsights, type Insight } from "@/lib/insights";
 import type { SeriesPoint } from "@/lib/series";
 import { displayBackdrop, type Backdrop } from "@/lib/sky";
+import { displayWeather, type WeatherPref } from "@/lib/weather";
 import { buildSuggestions } from "@/lib/suggestions";
 import { buildTimeline, buildTomorrow, metricRows, SERIES_DAYS, tickerRows, todayFacts, type TimelineItem, type TodayFacts } from "@/lib/today";
 
@@ -36,6 +37,7 @@ export type TodayData = TodayFacts & {
   timeZone: string;
   displayName: string;
   backdrop: Backdrop; // behind the ambient view: the display's choice (lib/sky.ts displayBackdrop)
+  weather: WeatherPref; // over it: the display's choice too (lib/weather.ts displayWeather)
   timeline: TimelineItem[];
   tomorrow: TimelineItem[]; // tomorrow's events: the preview under the day
   insights: Insight[]; // ranked, at most 5 (lib/insights.ts)
@@ -111,6 +113,7 @@ export async function loadToday(): Promise<TodayData> {
     timeZone,
     displayName: settings.display_name,
     backdrop: displayBackdrop(devices),
+    weather: displayWeather(devices),
     timeline,
     tomorrow,
     ...facts,

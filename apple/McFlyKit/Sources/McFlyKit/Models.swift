@@ -320,8 +320,12 @@ public struct Device: Codable, Identifiable, Hashable, Sendable {
         public var voice: String?
         /// The screen savers' backdrop (`AccountBackdrop`): the mesh, or one of the skies.
         public var backdrop: String?
+        /// What falls over it (`AccountWeather`): off, by the season, or one kind.
+        public var weather: String?
 
-        public init(voice: String? = nil, backdrop: String? = nil) { self.voice = voice; self.backdrop = backdrop }
+        public init(voice: String? = nil, backdrop: String? = nil, weather: String? = nil) {
+            self.voice = voice; self.backdrop = backdrop; self.weather = weather
+        }
     }
 
     public let id: UUID

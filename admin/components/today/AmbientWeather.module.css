@@ -1,0 +1,175 @@
+/* Weather over the ambient view's backdrop (AmbientWeather.tsx, lib/weather.ts):
+   the display's Weather.qml in the browser. Every colour is the mood's glow
+   (--glow-1 blue, --glow-2 coral, --glow-3 amber by day) or the ambient
+   canvas and ink, mixed again for the night (.ambient-night). Every particle
+   moves by transform and opacity alone, which the compositor animates without
+   the page painting; its size, place and pace are custom properties set from
+   lib/weather.ts's numbers. */
+
+.weather {
+  /* Snow: a cool grey by day, so it shows on the warm canvas; near white at night. */
+  --snow: color-mix(in oklab, var(--glow-1) 35%, color-mix(in oklab, var(--ambient-ink) 30%, var(--ambient-canvas-day)));
+  --petal-1: color-mix(in oklab, var(--glow-2) 92%, white);
+  --petal-2: color-mix(in oklab, var(--glow-2) 68%, white);
+  --petal-3: color-mix(in oklab, var(--glow-2) 50%, var(--glow-3));
+  --leaf-1: var(--glow-2);
+  --leaf-2: var(--glow-3);
+  --leaf-3: color-mix(in oklab, var(--glow-2) 50%, var(--glow-3));
+  --leaf-4: color-mix(in oklab, var(--glow-3) 65%, var(--ambient-ink));
+  --fly-1: var(--glow-3);
+  --fly-2: color-mix(in oklab, var(--glow-3) 60%, white);
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  animation: weather-in 1.6s ease backwards;
+}
+:global(.ambient-night) .weather {
+  --snow: color-mix(in oklab, white 88%, var(--glow-1));
+  --petal-1: color-mix(in oklab, var(--glow-2) 60%, white);
+  --petal-2: color-mix(in oklab, var(--glow-2) 40%, white);
+  --petal-3: color-mix(in oklab, var(--glow-3) 50%, white);
+  --leaf-1: color-mix(in oklab, var(--glow-2) 75%, white);
+  --leaf-2: color-mix(in oklab, var(--glow-3) 75%, white);
+  --leaf-3: color-mix(in oklab, var(--glow-1) 60%, white);
+  --leaf-4: color-mix(in oklab, var(--glow-3) 55%, var(--glow-2));
+  --fly-1: color-mix(in oklab, var(--glow-3) 60%, white);
+  --fly-2: color-mix(in oklab, var(--glow-2) 55%, white);
+}
+@keyframes weather-in {
+  from { opacity: 0; }
+}
+
+.p {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: translate;
+}
+
+/* ---- Falling: from above the screen to below it, drifting with the wind */
+
+.petals .p,
+.leaves .p {
+  animation: weather-fall var(--dur) linear var(--delay) infinite backwards;
+}
+@keyframes weather-fall {
+  from { translate: var(--x) -14vh; }
+  to { translate: calc(var(--x) + var(--drift)) 110vh; }
+}
+
+/* ---- Snow */
+
+.snow .p {
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  opacity: var(--alpha);
+  background: radial-gradient(circle at 50% 45%, var(--snow) 0 42%, color-mix(in oklab, var(--snow) 55%, transparent) 60%, transparent 72%);
+  animation:
+    weather-fall var(--dur) linear var(--delay) infinite backwards,
+    weather-sway var(--sway-dur) ease-in-out var(--sway-delay) infinite alternate;
+  will-change: translate, transform;
+}
+@keyframes weather-sway {
+  from { transform: translateX(calc(var(--sway) * -1)); }
+  to { transform: translateX(var(--sway)); }
+}
+
+/* ---- Petals and leaves: they swing, spin and tumble as they fall */
+
+.shape {
+  position: relative;
+  display: block;
+  width: var(--size);
+  opacity: var(--alpha);
+  animation:
+    weather-swing var(--sway-dur) ease-in-out var(--sway-delay) infinite alternate,
+    weather-tumble var(--flip-dur) ease-in-out var(--flip-delay) infinite alternate,
+    weather-spin var(--spin-dur) linear var(--spin-delay) infinite;
+  will-change: translate, rotate, transform;
+}
+@keyframes weather-swing {
+  from { translate: calc(var(--sway) * -1) 0; }
+  to { translate: var(--sway) 0; }
+}
+/* Turning over, seen straight on: the shape flattens along its own axis,
+   edge-on at zero and showing its back below it. A rotation would say the
+   same, but Safari animates a rotation whose angle is a custom property on
+   the page's own thread every frame; a scale goes to the compositor. */
+@keyframes weather-tumble {
+  from { transform: scale(1, var(--flip-k)); }
+  to { transform: scale(1, 1); }
+}
+@keyframes weather-spin {
+  from { rotate: var(--spin-from); }
+  to { rotate: var(--spin-to); }
+}
+
+/* A cherry petal: a rounded teardrop, its point where it met the flower, a
+   notch in its round end. */
+.petals .shape {
+  height: calc(var(--size) * 0.82);
+  border-radius: 0 62% 55% 55% / 0 55% 62% 55%;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--tone) 65%, white), var(--tone) 70%);
+  -webkit-mask: radial-gradient(circle at 88% 87%, transparent calc(var(--size) * 0.09), black calc(var(--size) * 0.09 + 0.5px));
+  mask: radial-gradient(circle at 88% 87%, transparent calc(var(--size) * 0.09), black calc(var(--size) * 0.09 + 0.5px));
+}
+.petals .tone1 { --tone: var(--petal-1); }
+.petals .tone2 { --tone: var(--petal-2); }
+.petals .tone3 { --tone: var(--petal-3); }
+
+/* A leaf: pointed at both ends, its midrib corner to corner. Its swing and
+   its tilt share a period (lib/weather.ts), so it rocks like a pendulum. */
+.leaves .shape {
+  height: calc(var(--size) * 0.56);
+  border-radius: 0 100% 0 100%;
+  background: linear-gradient(160deg, var(--tone), color-mix(in oklab, var(--tone) 75%, black));
+  animation-timing-function: ease-in-out;
+  animation-direction: alternate;
+}
+.leaves .shape::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to top right, transparent calc(50% - 0.8px), color-mix(in oklab, var(--tone) 45%, white) 50%, transparent calc(50% + 0.8px));
+}
+.leaves .tone1 { --tone: var(--leaf-1); }
+.leaves .tone2 { --tone: var(--leaf-2); }
+.leaves .tone3 { --tone: var(--leaf-3); }
+.leaves .tone4 { --tone: var(--leaf-4); }
+
+/* ---- Fireflies: wandering the lower part of the screen, glowing and dimming */
+
+.fireflies .p {
+  --fly-core: color-mix(in oklab, var(--fly) 45%, white);
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--fly-core) 0 9%, color-mix(in oklab, var(--fly) 80%, transparent) 16%, color-mix(in oklab, var(--fly) 25%, transparent) 36%, transparent 68%);
+  animation:
+    weather-wander var(--dur) ease-in-out var(--delay) infinite alternate,
+    weather-glow var(--glow-dur) ease-in-out var(--glow-delay) infinite;
+  will-change: translate, opacity, scale;
+}
+.fireflies .tone1 { --fly: var(--fly-1); }
+.fireflies .tone2 { --fly: var(--fly-2); }
+@keyframes weather-wander {
+  0% { translate: var(--x0) var(--y0); }
+  33% { translate: var(--x1) var(--y1); }
+  67% { translate: var(--x2) var(--y2); }
+  100% { translate: var(--x3) var(--y3); }
+}
+@keyframes weather-glow {
+  0%, 100% { opacity: 0.08; scale: 0.55; }
+  45% { opacity: 1; scale: 1; }
+  60% { opacity: 0.85; scale: 0.95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weather { display: none; }
+}

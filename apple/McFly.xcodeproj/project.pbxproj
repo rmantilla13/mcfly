@@ -13,6 +13,7 @@
 		0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622F972CFB8950E0AADFBB67 /* QRScanner.swift */; };
 		193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */; };
 		1D76897E71772E824308AC19 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4DA5C7573FB6B6376939E2 /* SignInView.swift */; };
+		20D440D69AB32265061E1CE7 /* WeatherLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2467E9D18042438FB3095DB8 /* WeatherLayer.swift */; };
 		26860E70D015A3DC8D7DB83A /* LocationTimeZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = AECB615DE9B1AD979C55C308 /* LocationTimeZone.swift */; };
 		28975B40DE863BBF61536D63 /* AuroraGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */; };
 		2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F63275D054EB81A93B798DB /* VoiceModeView.swift */; };
@@ -60,6 +61,7 @@
 		08BAFC5D9C7398731AB90318 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaysView.swift; sourceTree = "<group>"; };
 		2333BC1BF2A56D73A429ED6E /* AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentsView.swift; sourceTree = "<group>"; };
+		2467E9D18042438FB3095DB8 /* WeatherLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherLayer.swift; sourceTree = "<group>"; };
 		2527F7DF175D3D8B53C1A539 /* AmbientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientView.swift; sourceTree = "<group>"; };
 		27EE7599A570B363E70AC7B5 /* VoiceListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceListener.swift; sourceTree = "<group>"; };
 		2DA89C609E9FAA5C294B0BA5 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 				4EF7FF78E7284330ACF76157 /* GradientTile.metal */,
 				8F02A671863D160CFB9F6500 /* GradientTile.swift */,
 				E28DF0EF62E7B6986374243A /* Theme.swift */,
+				2467E9D18042438FB3095DB8 /* WeatherLayer.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -347,6 +350,7 @@
 				2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */,
 				BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */,
 				193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */,
+				20D440D69AB32265061E1CE7 /* WeatherLayer.swift in Sources */,
 				50458AAB7B4AFDF53506428A /* WeatherModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -266,11 +266,12 @@ export type Device = {
 
 // A display's own settings, kept on the server so the console and the screen
 // edit the same thing (clean_device_settings: migrations 20261015000004,
-// 20261015000008, 20261016000001 and 20261016000003).
+// 20261015000008, 20261016000001, 20261016000003 and 20261016000020).
 export type DisplaySettings = Partial<{
   screensaver: "ambient" | "clock" | "headlines";
   backdrop: "mesh" | "arc" | "ribbons" | "dawn" | "silk" | "pillars"; // behind Ambient, Clock and Ask: the gradient (the savers hang an aurora over it at night), or a sky of its own
   homeLayout: "today" | "bento" | "assistant"; // Home: the day as a timeline, a grid of tiles, or McFly's summary first
+  weather: "off" | "season" | "snow" | "petals" | "fireflies" | "leaves"; // over Ambient and Clock: by the season where the display is, or one all year (lib/weather.ts)
   darkMode: boolean;
   animatedTiles: boolean;
   idleSeconds: number;

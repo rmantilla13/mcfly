@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDate>
 #include <QObject>
 #include <QTime>
 #include <QTimer>
@@ -27,6 +28,14 @@ class DisplayController : public QObject
     // an aurora over it at night) | arc | ribbons | dawn | silk | pillars
     // (skies of their own, qml/components/Backdrop.qml). Remembered.
     Q_PROPERTY(QString backdrop READ backdrop WRITE setBackdrop NOTIFY backdropChanged)
+    // What falls over that backdrop: off | season (by the date and the
+    // hemisphere of the display's time zone: snow in winter, petals in
+    // spring, fireflies in summer, leaves in autumn) | snow | petals |
+    // fireflies | leaves (all year). Remembered.
+    Q_PROPERTY(QString weather READ weather WRITE setWeather NOTIFY weatherChanged)
+    // What falls today: the kind `weather` comes to, "" while it is off.
+    // Looked at again every minute, so the first of a season's month brings it.
+    Q_PROPERTY(QString weatherKind READ weatherKind NOTIFY weatherKindChanged)
     // Home's layout: today (the timeline) | bento (a grid of tiles, each a
     // door into its screen) | assistant (McFly's summary of the day first,
     // the cards it came from beside it). Remembered.
@@ -66,6 +75,9 @@ public:
     void setScreensaver(const QString &style);
     QString backdrop() const { return m_backdrop; }
     void setBackdrop(const QString &style);
+    QString weather() const { return m_weather; }
+    void setWeather(const QString &weather);
+    QString weatherKind() const { return m_weatherKind; }
     QString homeLayout() const { return m_homeLayout; }
     void setHomeLayout(const QString &layout);
     QString collageLayout() const { return m_collageLayout; }
@@ -105,6 +117,20 @@ public:
     static bool inWindow(int minuteOfDay, int start, int end);
     // The backdrops a display can show, mesh first.
     static const QStringList &backdrops();
+    // The weathers a display can show, off first.
+    static const QStringList &weathers();
+    // The season on `date`: winter | spring | summer | autumn, whole months
+    // (meteorological), as the north has them or six months on in the south.
+    static QString seasonFor(const QDate &date, bool south);
+    // Whether an IANA time zone is south of the equator. A zone not listed
+    // is north (the console's and the app's lists are the same).
+    static bool southernZone(const QByteArray &zone);
+    // The kind a weather setting comes to on `date` where `zone` is: "" for
+    // off, or a name this build doesn't know.
+    static QString weatherFor(const QString &weather, const QDate &date, const QByteArray &zone);
+    // How many of `kind` a screen width × height shows at once: one per so
+    // many square pixels, within bounds (the console's and the app's table).
+    Q_INVOKABLE static int weatherCount(const QString &kind, qreal width, qreal height);
     // Home's layouts, today first.
     static const QStringList &homeLayouts();
 
@@ -116,6 +142,8 @@ signals:
     void brightnessChanged();
     void screensaverChanged();
     void backdropChanged();
+    void weatherChanged();
+    void weatherKindChanged();
     void homeLayoutChanged();
     void collageLayoutChanged();
     void animatedTilesChanged();
@@ -130,6 +158,7 @@ private:
     void setIdle(bool idle);
     void setScreenOff(bool off);
     void restartTimers();
+    void refreshWeather();
     void updateNightMode();
     void applyBacklight();
 
@@ -146,6 +175,8 @@ private:
     int m_maxBacklight = 0;
     QString m_screensaver;
     QString m_backdrop;
+    QString m_weather;
+    QString m_weatherKind;
     QString m_homeLayout;
     QString m_collageLayout;
     bool m_animatedTiles = true;

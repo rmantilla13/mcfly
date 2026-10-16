@@ -11,6 +11,7 @@ import { formatClock, railWindow, stampLabel, untilLabel } from "@/lib/today";
 import { GlowAurora } from "@/components/GlowAurora";
 import { MeshGradient } from "@/components/MeshGradient";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import { AmbientWeather } from "./AmbientWeather";
 import DecryptedText from "@/components/reactbits/DecryptedText";
 import { clockParts, useLiveRefresh, useNow } from "./TodayView";
 
@@ -18,7 +19,8 @@ import { clockParts, useLiveRefresh, useNow } from "./TodayView";
 // the room on a spare monitor or a tablet. The display's backdrop fills the
 // screen: its moving gradient (MeshGradient, with its two glass rings) or,
 // where the display's settings chose one (data.backdrop), one of its skies
-// (SkyBackdrop). The clock and what's next sit on it, and a rail of cards
+// (SkyBackdrop), with the display's weather over it (AmbientWeather). The
+// clock and what's next sit on it, and a rail of cards
 // from the feeds rises in along the bottom. Any click or key goes back to Today. The whole composition
 // moves a few pixels every minute against burn-in.
 //
@@ -274,6 +276,7 @@ export function AmbientView({ data }: { data: TodayData }) {
         </div>
       ) : null}
       <div className="film-grain" aria-hidden="true" />
+      <AmbientWeather pref={data.weather} nowMs={minute} timeZone={tz} />
 
       <div
         className="relative flex h-full flex-col justify-between px-[clamp(24px,5vw,72px)] py-[clamp(24px,5vh,64px)]"

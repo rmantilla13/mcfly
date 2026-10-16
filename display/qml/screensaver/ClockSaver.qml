@@ -6,7 +6,8 @@ import McFly.Core
 
 // A big clock, the date, the latest brief and a line of the markets on the
 // chosen backdrop (Settings → Backdrop: the slowly drifting gradient, or one
-// of Backdrop's skies) in the time-of-day colours (deep and dim at night).
+// of Backdrop's skies, with the weather over it) in the time-of-day colours
+// (deep and dim at night).
 // The text moves a few pixels every minute, so nothing stays on the same
 // pixels all night.
 Item {
@@ -60,6 +61,8 @@ Item {
             maxFps: Theme.saverFps
         }
     }
+    // Weather over the backdrop, under the clock (Settings → Backdrop → Weather).
+    Weather { anchors.fill: parent }
 
     Column {
         anchors.centerIn: parent

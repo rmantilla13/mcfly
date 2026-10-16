@@ -176,6 +176,20 @@ qt_add_shaders(tst_backdrop "backdrop_shaders"
 add_test(NAME tst_backdrop COMMAND tst_backdrop)
 set_tests_properties(tst_backdrop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# The weather over a saver's backdrop (Weather.qml): what is built, how it
+# moves, its colours, against a stand-in DisplayController with the real count.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-weather
+    Theme.qml components/Weather.qml)
+qt_add_executable(tst_weather tst_weather.cpp
+    ../src/hardware/DisplayController.h
+    ../src/hardware/DisplayController.cpp)
+target_include_directories(tst_weather PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(tst_weather PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_weather PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-weather")
+target_link_libraries(tst_weather PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+add_test(NAME tst_weather COMMAND tst_weather)
+set_tests_properties(tst_weather PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # The assistant-first Home's opening lines, from empty, partial and full feeds.
 qt_add_executable(tst_homeglance tst_homeglance.cpp
     ../src/models/HomeGlance.h ../src/models/HomeGlance.cpp

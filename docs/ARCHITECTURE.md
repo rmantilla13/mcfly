@@ -128,7 +128,13 @@ without the aurora, the console's skies at half strength):
 of five skies of their own, **Arc**, **Ribbons**, **Dawn**, **Silk** and
 **Pillars** (`Backdrop.qml`: one shader each in the glow colours, laid on the
 canvas in OKLab so they are a wash by day and a glow at night, each run at the
-fraction of the screen its cost allows). Sleep turns the panel off
+fraction of the screen its cost allows). Weather, beside it, falls over that
+backdrop on Ambient and Clock, under the words: snow, petals, fireflies or
+leaves, by the season where the display is (the date and its time zone's
+hemisphere: `DisplayController::weatherFor`) or one all year (`Weather.qml`: a
+few dozen small Shapes moved on the backdrop's own ten updates a second; the
+console's Ambient view and the app's draw the same, with the same rules and
+counts in each one's tests). Sleep turns the panel off
 on a schedule (Settings → Sleep).
 
 ## Assistant

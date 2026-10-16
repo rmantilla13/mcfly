@@ -19,6 +19,7 @@ import type { Device, DisplaySettings } from "@/lib/types";
 const DEFAULTS: Required<Omit<DisplaySettings, "volume">> = {
   screensaver: "ambient",
   backdrop: "mesh",
+  weather: "off",
   homeLayout: "today",
   darkMode: false,
   animatedTiles: true,
@@ -136,6 +137,19 @@ export function DisplaySettingsDialog({ device, action }: { device: Device; acti
                     ["dawn", "Dawn (a horizon glow)"],
                     ["silk", "Silk (satin folds)"],
                     ["pillars", "Pillars (rays from the ground)"],
+                  ]}
+                />
+                <Choice
+                  name="weather"
+                  label="Weather (over Ambient and Clock)"
+                  value={s.weather}
+                  options={[
+                    ["off", "Off"],
+                    ["season", "By the season (snow, petals, fireflies, leaves)"],
+                    ["snow", "Snow"],
+                    ["petals", "Petals"],
+                    ["fireflies", "Fireflies"],
+                    ["leaves", "Leaves"],
                   ]}
                 />
                 <Choice

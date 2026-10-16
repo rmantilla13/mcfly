@@ -533,6 +533,7 @@ export async function disconnectGoogleAccountAction(_prev: ActionResult, fd: For
 const SAVERS = ["ambient", "clock", "headlines"] as const;
 const HOME_LAYOUTS = ["today", "bento", "assistant"] as const;
 const BACKDROPS = ["mesh", "arc", "ribbons", "dawn", "silk", "pillars"] as const;
+const WEATHERS = ["off", "season", "snow", "petals", "fireflies", "leaves"] as const;
 const WAKEWORDS = ["hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"] as const;
 const KOKORO_VOICES = ["af_heart", "af_bella", "am_michael", "am_fenrir"] as const;
 
@@ -548,12 +549,14 @@ export async function updateDeviceSettingsAction(_prev: ActionResult, fd: FormDa
     const id = uuid(fd, "device_id");
     const saver = text(fd, "screensaver", 16);
     const backdrop = text(fd, "backdrop", 16) || "mesh";
+    const weather = text(fd, "weather", 16) || "off";
     const homeLayout = text(fd, "homeLayout", 16) || "today";
     const provider = text(fd, "assistantProvider", 16);
     const wake = text(fd, "wakewordModel", 16);
     const speed = Number(text(fd, "voiceSpeed", 8) || "1");
     if (!SAVERS.includes(saver as (typeof SAVERS)[number])) throw new DataError("Pick a screen saver.");
     if (!BACKDROPS.includes(backdrop as (typeof BACKDROPS)[number])) throw new DataError("Pick a backdrop.");
+    if (!WEATHERS.includes(weather as (typeof WEATHERS)[number])) throw new DataError("Pick the weather.");
     if (!HOME_LAYOUTS.includes(homeLayout as (typeof HOME_LAYOUTS)[number])) throw new DataError("Pick a home layout.");
     if (!["", "claude", "grok"].includes(provider)) throw new DataError("Pick who answers.");
     if (!WAKEWORDS.includes(wake as (typeof WAKEWORDS)[number])) throw new DataError("Pick a wake word.");
@@ -564,6 +567,7 @@ export async function updateDeviceSettingsAction(_prev: ActionResult, fd: FormDa
     const patch: DisplaySettings = {
       screensaver: saver as DisplaySettings["screensaver"],
       backdrop: backdrop as DisplaySettings["backdrop"],
+      weather: weather as DisplaySettings["weather"],
       homeLayout: homeLayout as DisplaySettings["homeLayout"],
       darkMode: on("darkMode"),
       animatedTiles: on("animatedTiles"),

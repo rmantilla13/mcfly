@@ -81,6 +81,82 @@ private slots:
         again.setBackdrop(QStringLiteral("mesh"));
     }
 
+    // Settings → Weather: off until it is picked, remembered, and only the
+    // known names; what falls today follows it at once.
+    void weatherDefaultsToOffAndIsRemembered()
+    {
+        {
+            DisplayController device;
+            QCOMPARE(device.weather(), QStringLiteral("off"));
+            QCOMPARE(device.weatherKind(), QString());
+            QCOMPARE(DisplayController::weathers().first(), QStringLiteral("off"));
+            QSignalSpy kind(&device, &DisplayController::weatherKindChanged);
+            device.setWeather(QStringLiteral("fireflies"));
+            device.setWeather(QStringLiteral("rain"));
+            QCOMPARE(device.weather(), QStringLiteral("fireflies"));
+            QCOMPARE(device.weatherKind(), QStringLiteral("fireflies"));
+            QCOMPARE(kind.size(), 1);
+        }
+        DisplayController again;
+        QCOMPARE(again.weather(), QStringLiteral("fireflies"));
+        again.setWeather(QStringLiteral("off"));
+        QCOMPARE(again.weatherKind(), QString());
+    }
+
+    // Seasons are whole months; the south has the north's six months on
+    // (the console's and the app's tests have the same cases).
+    void seasonsByMonthAndHemisphere()
+    {
+        QStringList north;
+        for (int m = 1; m <= 12; ++m)
+            north << DisplayController::seasonFor(QDate(2026, m, 15), false);
+        QCOMPARE(north, (QStringList{"winter", "winter", "spring", "spring", "spring", "summer",
+                                     "summer", "summer", "autumn", "autumn", "autumn", "winter"}));
+        QCOMPARE(DisplayController::seasonFor(QDate(2026, 12, 25), true), QStringLiteral("summer"));
+        QCOMPARE(DisplayController::seasonFor(QDate(2026, 7, 4), true), QStringLiteral("winter"));
+        QCOMPARE(DisplayController::seasonFor(QDate(2026, 10, 16), true), QStringLiteral("spring"));
+        QCOMPARE(DisplayController::seasonFor(QDate(2026, 4, 1), true), QStringLiteral("autumn"));
+        QCOMPARE(DisplayController::seasonFor(QDate(2026, 11, 30), false), QStringLiteral("autumn"));
+        QCOMPARE(DisplayController::seasonFor(QDate(2026, 12, 1), false), QStringLiteral("winter"));
+        for (const char *zone : {"Australia/Sydney", "Pacific/Auckland", "America/Argentina/Buenos_Aires",
+                                 "America/Santiago", "America/Sao_Paulo", "Africa/Johannesburg", "Antarctica/McMurdo"})
+            QVERIFY2(DisplayController::southernZone(zone), zone);
+        for (const char *zone : {"America/Chicago", "Europe/London", "Asia/Tokyo", "Africa/Cairo", "America/Bogota", "UTC", ""})
+            QVERIFY2(!DisplayController::southernZone(zone), zone);
+    }
+
+    void seasonalWeatherIsTheSeasonsWhereTheDisplayIs()
+    {
+        QCOMPARE(DisplayController::weatherFor("season", QDate(2026, 12, 20), "America/Chicago"), QStringLiteral("snow"));
+        QCOMPARE(DisplayController::weatherFor("season", QDate(2026, 12, 20), "Australia/Sydney"), QStringLiteral("fireflies"));
+        QCOMPARE(DisplayController::weatherFor("season", QDate(2026, 4, 20), "America/Chicago"), QStringLiteral("petals"));
+        QCOMPARE(DisplayController::weatherFor("season", QDate(2026, 4, 20), "Australia/Sydney"), QStringLiteral("leaves"));
+        QCOMPARE(DisplayController::weatherFor("season", QDate(2026, 10, 16), "America/Chicago"), QStringLiteral("leaves"));
+        for (const char *kind : {"snow", "petals", "fireflies", "leaves"})
+            QCOMPARE(DisplayController::weatherFor(kind, QDate(2026, 1, 1), "America/Chicago"), QString::fromLatin1(kind));
+        QCOMPARE(DisplayController::weatherFor("off", QDate(2026, 1, 1), "America/Chicago"), QString());
+        QCOMPARE(DisplayController::weatherFor("rain", QDate(2026, 1, 1), "America/Chicago"), QString());
+    }
+
+    // A small screen gets a few, a big one is not crowded: the web's numbers.
+    void weatherCountsScaleWithTheScreenWithinBounds()
+    {
+        for (const char *kind : {"snow", "petals", "fireflies", "leaves"}) {
+            const int phone = DisplayController::weatherCount(kind, 390, 844);
+            const int laptop = DisplayController::weatherCount(kind, 1440, 900);
+            const int huge = DisplayController::weatherCount(kind, 5120, 2880);
+            QVERIFY2(phone > 0 && phone <= laptop && laptop <= huge, kind);
+            QCOMPARE(DisplayController::weatherCount(kind, 0, 0), DisplayController::weatherCount(kind, 1, 1));
+            QCOMPARE(huge, DisplayController::weatherCount(kind, 20000, 20000));
+            QVERIFY(huge <= 44);
+        }
+        QCOMPARE(DisplayController::weatherCount("snow", 1440, 900), 44);
+        QCOMPARE(DisplayController::weatherCount("petals", 1440, 900), 18);
+        QCOMPARE(DisplayController::weatherCount("fireflies", 1440, 900), 20);
+        QCOMPARE(DisplayController::weatherCount("leaves", 1440, 900), 14);
+        QCOMPARE(DisplayController::weatherCount("rain", 1440, 900), 0);
+    }
+
     // A playing video calls keepAwake(): it holds off the photo frame like a
     // touch would, but never wakes a screen that has already gone idle.
     void keepAwakeOnlyWhileAwake()

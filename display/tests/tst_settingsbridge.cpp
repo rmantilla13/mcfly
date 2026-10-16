@@ -47,6 +47,7 @@ private slots:
         QVERIFY(sent.contains("idleSeconds") && sent.contains("bedtime") && sent.contains("darkMode"));
         QCOMPARE(sent.value("backdrop").toString(), display.backdrop());
         QCOMPARE(sent.value("homeLayout").toString(), display.homeLayout());
+        QCOMPARE(sent.value("weather").toString(), display.weather());
         // An empty copy later (say, the admin cleared it) is not refilled.
         bridge.receive({});
         QCOMPARE(pushed.size(), 1);
@@ -63,8 +64,10 @@ private slots:
         server.insert("idleSeconds", 300.0);
         server.insert("backdrop", "silk");
         server.insert("homeLayout", "bento");
+        server.insert("weather", "snow");
         bridge.receive(server);
         QCOMPARE(display.screensaver(), QStringLiteral("clock"));
+        QCOMPARE(display.weather(), QStringLiteral("snow"));
         QCOMPARE(display.backdrop(), QStringLiteral("silk"));
         QCOMPARE(display.homeLayout(), QStringLiteral("bento"));
         QVERIFY(display.darkMode());

@@ -160,6 +160,12 @@ Item {
             maxFps: Theme.saverFps
         }
     }
+    // Weather over the backdrop and under the words (Settings → Backdrop →
+    // Weather), on the backdrop's frames; nothing is built while it is off.
+    Weather {
+        anchors.fill: parent
+        darkness: ambient.dusk
+    }
 
     readonly property color nightFill: Qt.rgba(0.08, 0.08, 0.12, 0.55)
     readonly property color cardFill: tone(Qt.rgba(1, 1, 1, 0.86), nightFill, dusk)
