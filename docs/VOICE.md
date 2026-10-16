@@ -38,7 +38,10 @@ converts.
 | A cheap USB lavalier or dongle mic | Works within a couple of metres; raise its gain in `alsamixer` |
 
 - Put the mic where people face the screen, away from the panel's speakers
-  and from fans, dishwashers and range hoods.
+  and from fans, dishwashers and range hoods. That includes the Pi's own
+  cooler and a fan in the screen's enclosure: a few centimetres from the mic,
+  a fan's steady hum can keep the wake word from hearing you. A short USB
+  extension cable lets the mic sit at the front of the screen.
 - Plug it in before or after starting; the service looks for a mic every 10
   seconds. With no setting it picks the first USB microphone.
 - If the mic goes quiet without being unplugged, the service closes it and
@@ -221,7 +224,7 @@ seconds, so the two can start in any order.
    takes to say, as long as the service still reports `speaking` (Kokoro is
    slower than real time on the Pi). The display's log says why each
    conversation went on or ended, never what was said:
-   `journalctl -u mcfly-display | grep "voice card"`.
+   `journalctl -t mcfly-display | grep "voice card"` (the app logs under its own name: `-u mcfly-display` shows only systemd's lines).
 
 Every question asked out loud gets a spoken answer: the wake word, the mic
 on Home (which opens the same voice card) and the mic in the assistant
