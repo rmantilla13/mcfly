@@ -428,7 +428,8 @@ Item {
                 spacing: Theme.mini ? 6 : 10
                 boundsBehavior: Flickable.StopAtBounds
                 model: Store.events.filter(e => e.day >= calendar.pickedDay)
-                section.property: "dayLabel"
+                // "Saturday 10/17": the day's name and its month/day.
+                section.property: "dayHeading"
                 section.criteria: ViewSection.FullString
                 section.delegate: Label {
                     width: ListView.view.width

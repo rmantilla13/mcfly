@@ -218,6 +218,8 @@ private:
     bool updateToday();
     bool rollDay();
     QString dayLabel(const QDate &day) const;
+    // A day on the calendar's agenda: its name and month/day, "Saturday 10/17".
+    QString dayHeading(const QDate &day) const;
     QString timeLabel(const QDateTime &when) const;
 
     SupabaseClient *m_client;

@@ -497,9 +497,20 @@ private slots:
         QVERIFY(rig->store.events().at(0).toMap().value("past").toBool());
         QCOMPARE(rig->store.upcoming().size(), 2);
         QCOMPARE(rig->store.upcoming().at(0).toMap().value("title").toString(), QStringLiteral("Standup"));
-        if (!nearMidnight())
+        if (!nearMidnight()) {
             QCOMPARE(rig->store.upcoming().at(0).toMap().value("dayLabel").toString(), QStringLiteral("Today"));
+            QCOMPARE(rig->store.upcoming().at(0).toMap().value("dayHeading").toString(),
+                     QStringLiteral("Today ") + QDate::currentDate().toString(QStringLiteral("MM/dd")));
+        }
         QCOMPARE(rig->store.upcoming().at(1).toMap().value("startLabel").toString(), QStringLiteral("All day"));
+        // The agenda heads a later day with its name and month/day: "Saturday 10/17".
+        {
+            const QVariantMap trip = rig->store.events().last().toMap();
+            const QDate day = QDate::fromString(trip.value("day").toString(), Qt::ISODate);
+            if (day > QDate::currentDate())
+                QCOMPARE(trip.value("dayHeading").toString(),
+                         QLocale().toString(day, QStringLiteral("dddd")) + QLatin1Char(' ') + day.toString(QStringLiteral("MM/dd")));
+        }
         QVERIFY(rig->store.eventDays().size() >= 2);
         QCOMPARE(rig->store.eventDays().first().toMap().value("day").toString(), QDate::currentDate().toString(Qt::ISODate));
         // The agent's color where the event has none.

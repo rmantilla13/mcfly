@@ -1184,6 +1184,14 @@ QString FeedStore::dayLabel(const QDate &day) const
     return QLocale().toString(day, QStringLiteral("dddd, MMMM d"));
 }
 
+QString FeedStore::dayHeading(const QDate &day) const
+{
+    const QString name = day == m_today ? tr("Today")
+                       : day == m_today.addDays(-1) ? tr("Yesterday")
+                       : QLocale().toString(day, QStringLiteral("dddd"));
+    return QStringLiteral("%1 %2").arg(name, day.toString(QStringLiteral("MM/dd")));
+}
+
 QString FeedStore::timeLabel(const QDateTime &when) const
 {
     return QLocale().toString(when.time(), QStringLiteral("h:mm ap"));
@@ -1959,6 +1967,7 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
         e.insert("endMs", end.toMSecsSinceEpoch());
         e.insert("day", start.date().toString(Qt::ISODate));
         e.insert("dayLabel", dayLabel(start.date()));
+        e.insert("dayHeading", dayHeading(start.date()));
         e.insert("timeLabel", e.value("all_day").toBool() ? tr("All day") : timeLabel(start) + QStringLiteral(" – ") + timeLabel(end));
         e.insert("startLabel", e.value("all_day").toBool() ? tr("All day") : timeLabel(start));
         e.insert("color", e.value("color").toString().isEmpty() ? agentColor(e.value("agent_id").toString()) : e.value("color"));
