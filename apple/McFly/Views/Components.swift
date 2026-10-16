@@ -337,30 +337,33 @@ struct KeyRevealView: View {
     }
 }
 
-/// A story's picture, or the glow when the agent sent none.
+/// A story's picture, or the glow when the agent sent none. The box is as
+/// wide as the column and `height` tall; the picture fills it in an overlay,
+/// because a filled picture reports the width it fills to (391 pt for a 16:9
+/// picture 220 pt tall), and as a stacked child that width pushed the whole
+/// page past its margins.
 struct StoryImage: View {
     let url: URL?
     var height: CGFloat = 180
 
     var body: some View {
-        ZStack {
-            Theme.sunken
-            GlowView(opacity: 0.8).scaleEffect(1.3)
-            if let url {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
+        Theme.sunken
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .overlay { GlowView(opacity: 0.8).scaleEffect(1.3) }
+            .overlay {
+                if let url {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        }
                     }
+                } else {
+                    Image(systemName: "newspaper")
+                        .font(.system(size: height * 0.22, weight: .light))
+                        .foregroundStyle(.white.opacity(0.85))
                 }
-            } else {
-                Image(systemName: "newspaper")
-                    .font(.system(size: height * 0.22, weight: .light))
-                    .foregroundStyle(.white.opacity(0.85))
             }
-        }
-        .frame(height: height)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
-        .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
     }
 }
