@@ -181,3 +181,14 @@ target_compile_options(tst_settingsbridge PRIVATE ${MCFLY_WARNINGS})
 target_link_libraries(tst_settingsbridge PRIVATE mcfly-core Qt6::Gui Qt6::Test)
 add_test(NAME tst_settingsbridge COMMAND tst_settingsbridge)
 set_tests_properties(tst_settingsbridge PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+# ChipRow's chips: a tap within a touch target's height of a chip picks it,
+# one between two chips neither, at the chip heights the screens use.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-chips
+    Theme.qml components/ChipRow.qml)
+qt_add_executable(tst_chips tst_chips.cpp)
+target_compile_options(tst_chips PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_chips PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-chips")
+target_link_libraries(tst_chips PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+add_test(NAME tst_chips COMMAND tst_chips)
+set_tests_properties(tst_chips PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")

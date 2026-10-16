@@ -336,7 +336,7 @@ Popup {
                             ChipRow {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 68
-                                Layout.bottomMargin: 16
+                                Layout.bottomMargin: 8
                                 chipHeight: 48
                                 model: [{ id: "mesh", label: qsTr("Mesh") }, { id: "arc", label: qsTr("Arc") },
                                         { id: "ribbons", label: qsTr("Ribbons") }, { id: "dawn", label: qsTr("Dawn") },
@@ -484,15 +484,22 @@ Popup {
                                     spacing: 6
                                     Repeater {
                                         model: [{ id: "claude", label: "Claude" }, { id: "grok", label: "Grok" }]
-                                        delegate: Rectangle {
+                                        // A 44 px chip in a touch target's height and at least its width.
+                                        delegate: Item {
+                                            id: providerChip
                                             required property var modelData
                                             readonly property bool chosen: AI.effectiveProvider === modelData.id
-                                            width: pl.implicitWidth + 28
-                                            height: 44
-                                            radius: 22
-                                            color: chosen ? Theme.accent : Theme.surface
-                                            Label { id: pl; anchors.centerIn: parent; text: modelData.label; color: chosen ? Theme.accentInk : Theme.text; font.pixelSize: Theme.fontXs + 1; font.weight: Font.DemiBold }
-                                            TapHandler { onTapped: AI.provider = modelData.id }
+                                            width: Math.max(Theme.touchTarget, pl.implicitWidth + 28)
+                                            height: Theme.touchTarget
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: parent.width
+                                                height: 44
+                                                radius: 22
+                                                color: providerChip.chosen ? Theme.accent : Theme.surface
+                                                Label { id: pl; anchors.centerIn: parent; text: providerChip.modelData.label; color: providerChip.chosen ? Theme.accentInk : Theme.text; font.pixelSize: Theme.fontXs + 1; font.weight: Font.DemiBold }
+                                            }
+                                            TapHandler { onTapped: AI.provider = providerChip.modelData.id }
                                         }
                                     }
                                 }
@@ -529,8 +536,8 @@ Popup {
                             // Which one wakes it. The whole card's width, not under the
                             // title like Backdrop's: five fit on a line that way at
                             // 1280×800 and 1920×1080, and wrap rather than clip if not.
-                            // Not a ChipRow: a Flickable takes no touch outside its
-                            // edges, so its chips' 64 px targets stop at 48.
+                            // Not a ChipRow: at its padding, five are a few pixels too
+                            // wide for the card at 1920×1080, where it would scroll them.
                             Flow {
                                 visible: Voice.available
                                 Layout.fillWidth: true
@@ -578,22 +585,29 @@ Popup {
                                     Repeater {
                                         model: [{ id: "af_heart", name: qsTr("Heart") }, { id: "af_bella", name: qsTr("Bella") },
                                                 { id: "am_michael", name: qsTr("Michael") }, { id: "am_fenrir", name: qsTr("Fenrir") }]
-                                        delegate: Rectangle {
+                                        // A 44 px chip in a touch target's height and at least its width.
+                                        delegate: Item {
+                                            id: voiceChip
                                             required property var modelData
                                             readonly property bool chosen: Voice.voiceId === modelData.id
-                                            implicitWidth: voiceName.implicitWidth + 28
-                                            implicitHeight: 44
-                                            radius: 22
-                                            color: chosen ? Theme.accent : Theme.surface
-                                            Label {
-                                                id: voiceName
-                                                anchors.centerIn: parent
-                                                text: modelData.name
-                                                color: parent.chosen ? Theme.accentInk : Theme.text
-                                                font.pixelSize: Theme.fontSm - 1
-                                                font.weight: Font.DemiBold
+                                            implicitWidth: Math.max(Theme.touchTarget, voiceName.implicitWidth + 28)
+                                            implicitHeight: Theme.touchTarget
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: parent.width
+                                                height: 44
+                                                radius: 22
+                                                color: voiceChip.chosen ? Theme.accent : Theme.surface
+                                                Label {
+                                                    id: voiceName
+                                                    anchors.centerIn: parent
+                                                    text: voiceChip.modelData.name
+                                                    color: voiceChip.chosen ? Theme.accentInk : Theme.text
+                                                    font.pixelSize: Theme.fontSm - 1
+                                                    font.weight: Font.DemiBold
+                                                }
                                             }
-                                            TapHandler { onTapped: Voice.setVoiceOptions(modelData.id, 0, "") }
+                                            TapHandler { onTapped: Voice.setVoiceOptions(voiceChip.modelData.id, 0, "") }
                                         }
                                     }
                                 }
