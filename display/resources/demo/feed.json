@@ -115,6 +115,7 @@
       "change": 2.11,
       "change_pct": 0.32,
       "agent_id": "a-market",
+      "data": {"position": {"shares": 12, "avg_cost": 512.4, "day_change": 25.32}, "stats": {"open": 666.9, "high": 669.8, "low": 665.7, "prev_close": 666.31, "volume": 61200000, "avg_volume": 72400000, "low_52w": 508.2, "high_52w": 670.4}},
       "history": [
         651.2,
         653.8,
@@ -138,6 +139,7 @@
       "change": 2.78,
       "change_pct": 1.13,
       "agent_id": "a-market",
+      "data": {"position": {"shares": 40, "avg_cost": 178.25, "day_change": 111.2}, "signals": [{"text": "Earnings Thursday after the close", "tone": "watch"}, {"text": "Up 6 of the last 7 sessions", "tone": "up"}], "stats": {"open": 245.6, "high": 248.4, "low": 244.9, "prev_close": 245.12, "volume": 52300000, "avg_volume": 48100000, "market_cap": 3680000000000.0, "pe": 37.2, "low_52w": 169.2, "high_52w": 260.1, "earnings": "Thu, after close"}},
       "note": "Services beat; iPhone 18 demand steady.",
       "history": [
         238.1,
@@ -162,6 +164,7 @@
       "change": 2.85,
       "change_pct": 1.51,
       "agent_id": "a-market",
+      "data": {"position": {"shares": 60, "avg_cost": 121.8, "day_change": 171.0}, "signals": [{"text": "RSI 72: above 70 for the first time since July", "tone": "up"}, {"text": "Volume 1.8x its 30-day average", "tone": "watch"}], "stats": {"open": 188.9, "high": 192.4, "low": 188.1, "prev_close": 188.4, "volume": 312000000, "avg_volume": 173000000, "market_cap": 4660000000000.0, "pe": 54.8, "low_52w": 86.6, "high_52w": 195.0, "earnings": "Nov 19, after close"}},
       "note": "Data-center revenue guided up again.",
       "history": [
         176.4,
@@ -186,6 +189,7 @@
       "change": 15.3,
       "change_pct": 3.96,
       "agent_id": "a-market",
+      "data": {"signals": [{"text": "Crossed above its 50-day average ($379.40)", "tone": "up"}]},
       "note": "Deliveries ahead of consensus.",
       "history": [
         372.0,
@@ -210,6 +214,7 @@
       "change": -3.2,
       "change_pct": -0.62,
       "agent_id": "a-market",
+      "data": {"position": {"shares": 15, "avg_cost": 528.1, "day_change": -48.0}, "signals": [{"text": "Down 4 sessions in a row", "tone": "down"}], "stats": {"open": 515.2, "high": 516.0, "low": 511.4, "prev_close": 515.8, "volume": 18400000, "avg_volume": 21900000, "market_cap": 3810000000000.0, "pe": 38.6, "low_52w": 385.6, "high_52w": 555.5, "earnings": "Oct 28, after close"}},
       "history": [
         520.1,
         522.4,

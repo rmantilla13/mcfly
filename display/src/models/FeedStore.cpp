@@ -66,6 +66,193 @@ QString signedNumber(double value, int decimals, const QString &suffix = {})
     return (value < 0 ? QStringLiteral("−") : QStringLiteral("+")) + number + suffix;
 }
 
+QString signedMoney(double value, const QString &currency)
+{
+    return (value < 0 ? QStringLiteral("−") : QStringLiteral("+")) + money(qAbs(value), currency);
+}
+
+// Volumes and market caps: 48.2M, 3.7T.
+QString compactNumber(double value)
+{
+    static const std::pair<double, const char *> steps[] = {{1e12, "T"}, {1e9, "B"}, {1e6, "M"}, {1e3, "K"}};
+    for (const auto &[size, suffix] : steps) {
+        if (qAbs(value) >= size) {
+            const double n = value / size;
+            return QLocale().toString(n, 'f', qAbs(n) >= 100 ? 0 : 1) + QLatin1String(suffix);
+        }
+    }
+    return QLocale().toString(value, 'f', 0);
+}
+
+// Whole shares plainly, a fraction to four places without trailing zeros.
+QString shareCount(double shares)
+{
+    if (std::abs(shares - std::round(shares)) < 1e-9)
+        return QLocale().toString(shares, 'f', 0);
+    QString n = QLocale().toString(shares, 'f', 4);
+    while (n.endsWith(QLatin1Char('0')))
+        n.chop(1);
+    return n;
+}
+
+// A number from an agent's free-form `data`: a JSON number, or a string like
+// "$1,234.50" or "12%". NaN for anything else.
+double dataNumber(const QVariant &v)
+{
+    if (!v.isValid() || v.isNull() || v.typeId() == QMetaType::Bool)
+        return qQNaN();
+    bool ok = false;
+    double d;
+    if (v.typeId() == QMetaType::QString) {
+        QString s = v.toString();
+        s.remove(QLatin1Char(',')).remove(QLatin1Char('$')).remove(QLatin1Char('%'));
+        d = s.trimmed().toDouble(&ok);
+    } else {
+        d = v.toDouble(&ok);
+    }
+    return ok && std::isfinite(d) ? d : qQNaN();
+}
+
+double firstNumber(const QVariantMap &m, std::initializer_list<const char *> keys)
+{
+    for (const char *key : keys) {
+        const double d = dataNumber(m.value(QLatin1String(key)));
+        if (!std::isnan(d))
+            return d;
+    }
+    return qQNaN();
+}
+
+// What an agent says about a holding (data.position), with the numbers it
+// left out worked out from the ones it sent: value from shares x price, the
+// gain from the average cost, today's move from shares x change. Empty when
+// there is no holding. `weightLabel` is filled in once every one is known.
+QVariantMap positionOf(const QVariantMap &data, double price, double change, const QString &currency)
+{
+    const QVariantMap p = data.value(QStringLiteral("position")).toMap();
+    if (p.isEmpty())
+        return {};
+    const double shares = firstNumber(p, {"shares", "quantity"});
+    double value = firstNumber(p, {"value", "market_value"});
+    if (std::isnan(value) && !std::isnan(shares))
+        value = shares * price;
+    if (std::isnan(value) || (qFuzzyIsNull(value) && (std::isnan(shares) || qFuzzyIsNull(shares))))
+        return {};
+    const double avgCost = firstNumber(p, {"avg_cost", "average_cost", "average_buy_price"});
+    double total = firstNumber(p, {"total_change", "unrealized_pl", "gain"});
+    if (std::isnan(total) && !std::isnan(avgCost) && !std::isnan(shares))
+        total = value - avgCost * shares;
+    double totalPct = firstNumber(p, {"total_change_pct", "unrealized_pl_pct", "gain_pct"});
+    if (std::isnan(totalPct) && !std::isnan(total) && value - total > 0)
+        totalPct = total / (value - total) * 100;
+    double day = firstNumber(p, {"day_change", "today"});
+    if (std::isnan(day) && !std::isnan(shares))
+        day = shares * change;
+
+    QVariantMap out{{"value", value}, {"valueLabel", money(value, currency)}};
+    if (!std::isnan(shares))
+        out.insert("sharesLabel", shares == 1 ? QObject::tr("1 share") : QObject::tr("%1 shares").arg(shareCount(shares)));
+    if (!std::isnan(avgCost))
+        out.insert("avgCostLabel", QObject::tr("avg %1").arg(money(avgCost, currency)));
+    if (!std::isnan(day)) {
+        out.insert("dayChange", day);
+        out.insert("dayChangeLabel", signedMoney(day, currency));
+        out.insert("dayUp", day >= 0);
+    }
+    if (!std::isnan(total)) {
+        out.insert("totalChange", total);
+        out.insert("totalChangeLabel", signedMoney(total, currency));
+        out.insert("totalUp", total >= 0);
+        if (!std::isnan(totalPct))
+            out.insert("totalPctLabel", signedNumber(totalPct, 1, QStringLiteral("%")));
+    }
+    const double weight = firstNumber(p, {"weight_pct", "weight"});
+    if (!std::isnan(weight))
+        out.insert("weight", weight);
+    return out;
+}
+
+// data.signals: what the agent noticed, as [{ text, tone }] (tone up, down
+// or watch). Plain strings count as "watch". At most six, one line each.
+QVariantList signalsOf(const QVariantMap &data)
+{
+    QVariantList out;
+    for (const QVariant &v : data.value(QStringLiteral("signals")).toList()) {
+        QString text, tone;
+        if (v.typeId() == QMetaType::QString) {
+            text = v.toString();
+        } else {
+            const QVariantMap m = v.toMap();
+            text = m.value("text").toString();
+            tone = m.value("tone").toString();
+        }
+        text = text.simplified().left(140);
+        if (text.isEmpty())
+            continue;
+        if (tone != QLatin1String("up") && tone != QLatin1String("down"))
+            tone = QStringLiteral("watch");
+        out << QVariantMap{{"text", text}, {"tone", tone}};
+        if (out.size() == 6)
+            break;
+    }
+    return out;
+}
+
+// data.stats' day and 52-week ranges, with where the price sits in each
+// (0 at the low, 1 at the high): [{ label, lowLabel, highLabel, pos }].
+QVariantList rangesOf(const QVariantMap &data, double price, const QString &currency)
+{
+    const QVariantMap s = data.value(QStringLiteral("stats")).toMap();
+    QVariantList out;
+    const auto add = [&](const QString &label, const char *lowKey, const char *highKey) {
+        const double low = firstNumber(s, {lowKey}), high = firstNumber(s, {highKey});
+        if (std::isnan(low) || std::isnan(high) || high < low)
+            return;
+        const double pos = high > low ? std::clamp((price - low) / (high - low), 0.0, 1.0) : 0.5;
+        out << QVariantMap{{"label", label}, {"lowLabel", money(low, currency)}, {"highLabel", money(high, currency)}, {"pos", pos}};
+    };
+    add(QObject::tr("Today"), "low", "high");
+    add(QObject::tr("52 weeks"), "low_52w", "high_52w");
+    return out;
+}
+
+// data.stats as [{ label, value }] in a fixed order, only what was sent
+// (the ranges are rangesOf's).
+QVariantList statsOf(const QVariantMap &data, const QString &currency)
+{
+    const QVariantMap s = data.value(QStringLiteral("stats")).toMap();
+    QVariantList out;
+    const auto add = [&out](const QString &label, const QString &value) {
+        if (!value.isEmpty())
+            out << QVariantMap{{"label", label}, {"value", value}};
+    };
+    const auto price = [&](const char *key) {
+        const double d = firstNumber(s, {key});
+        return std::isnan(d) ? QString() : money(d, currency);
+    };
+    add(QObject::tr("Open"), price("open"));
+    add(QObject::tr("Prev close"), price("prev_close"));
+    const double volume = firstNumber(s, {"volume"});
+    if (!std::isnan(volume)) {
+        QString label = compactNumber(volume);
+        const double avg = firstNumber(s, {"avg_volume"});
+        if (avg > 0)
+            label += QStringLiteral(" · %1× avg").arg(QLocale().toString(volume / avg, 'f', 1));
+        add(QObject::tr("Volume"), label);
+    }
+    const double cap = firstNumber(s, {"market_cap"});
+    if (!std::isnan(cap))
+        add(QObject::tr("Market cap"), (currency == QLatin1String("USD") ? QStringLiteral("$") : QString()) + compactNumber(cap));
+    const double pe = firstNumber(s, {"pe", "pe_ratio"});
+    if (!std::isnan(pe))
+        add(QObject::tr("P/E"), QLocale().toString(pe, 'f', 1));
+    const double yield = firstNumber(s, {"dividend_yield"});
+    if (!std::isnan(yield))
+        add(QObject::tr("Dividend"), QLocale().toString(yield, 'f', 2) + QStringLiteral("%"));
+    add(QObject::tr("Earnings"), s.value(QStringLiteral("earnings")).toString().simplified().left(40));
+    return out;
+}
+
 // The Pulse sections' colors, by key, then by position.
 QString sectionColor(const QString &key, int index)
 {
@@ -296,8 +483,10 @@ void FeedStore::loadDemo()
     }
 
     // Each demo quote carries its own history; it becomes one row per point
-    // so live and demo data take the same path through rebuild().
+    // so live and demo data take the same path through rebuild(). The last
+    // row carries the quote's `data` itself.
     m_rawQuotes.clear();
+    m_rawQuoteData.clear();
     m_rawSymbols.clear();
     int order = 0;
     for (const QJsonValue &v : root.value("quotes").toArray()) {
@@ -315,6 +504,7 @@ void FeedStore::loadDemo()
             row.insert("change", last ? q.value("change").toVariant() : QVariant());
             row.insert("change_pct", last ? q.value("change_pct").toVariant() : QVariant());
             row.insert("note", last ? q.value("note").toString() : QString());
+            row.insert("data", last ? q.value("data").toObject().toVariantMap() : QVariantMap());
             // One point per trading day, the last one this morning.
             row.insert("as_of", nowDt.addDays(-(points - 1 - i)).toString(Qt::ISODateWithMs));
             m_rawQuotes << row;
@@ -597,6 +787,10 @@ void FeedStore::loadLive()
              [this](const QJsonDocument &d) { m_rawSymbols = toList(d); });
         load("quotes", QUrlQuery("select=id,agent_id,symbol,name,price,change,change_pct,currency,note,as_of&order=as_of.desc,id.desc&limit=2000"),
              [this](const QJsonDocument &d) { m_rawQuotes = toList(d); });
+        // The agents' extra fields (holding, signals, stats) only for the
+        // newest row of each symbol: the history doesn't need them.
+        load("quotes_latest", QUrlQuery("select=symbol,agent_id,as_of,created_at,data"),
+             [this](const QJsonDocument &d) { m_rawQuoteData = toList(d); });
         QUrlQuery reports;
         reports.addQueryItem("select", "*,news_items(*)");
         reports.addQueryItem("order", "report_date.desc,published_at.desc");
@@ -689,6 +883,7 @@ void FeedStore::unpair()
     m_rawAgents.clear();
     m_rawBriefs.clear();
     m_rawQuotes.clear();
+    m_rawQuoteData.clear();
     m_rawSymbols.clear();
     m_rawReports.clear();
     m_rawProjects.clear();
@@ -844,8 +1039,37 @@ void FeedStore::rebuild()
     // Quotes: the rows of each symbol, newest first as loaded (demo rows come
     // oldest first, so they are sorted here too).
     QHash<QString, QVariantList> rowsBySymbol;
-    for (const QVariant &v : std::as_const(m_rawQuotes))
-        rowsBySymbol[v.toMap().value("symbol").toString()] << v;
+    // Each agent's newest push. A holding or a signal shows only while it is
+    // part of that push: a position the agent stopped sending (sold) goes,
+    // though the symbol's price stays. A push's rows share their created_at
+    // (live); each quote may carry its own as_of (the last trade), so as_of
+    // only stands in where created_at is missing (demo).
+    QHash<QString, QDateTime> lastAsOfByAgent;
+    for (const QVariant &v : std::as_const(m_rawQuotes)) {
+        const QVariantMap row = v.toMap();
+        rowsBySymbol[row.value("symbol").toString()] << v;
+        const QDateTime at = parseTimestamp(row.value("as_of").toString());
+        QDateTime &last = lastAsOfByAgent[row.value("agent_id").toString()];
+        if (at.isValid() && (!last.isValid() || at > last))
+            last = at;
+    }
+    // Live: the newest row's `data` and created_at, by symbol (quotes_latest).
+    QHash<QString, QVariantMap> latestData;
+    QHash<QString, QDateTime> lastPushByAgent;
+    for (const QVariant &v : std::as_const(m_rawQuoteData)) {
+        const QVariantMap row = v.toMap();
+        latestData.insert(row.value("symbol").toString(), row);
+        const QDateTime created = parseTimestamp(row.value("created_at").toString());
+        QDateTime &last = lastPushByAgent[row.value("agent_id").toString()];
+        if (created.isValid() && (!last.isValid() || created > last))
+            last = created;
+    }
+    // The sums, and what each move is measured against: the value before
+    // today's move, and the cost, over the holdings that gave them.
+    double heldValue = 0, heldDay = 0, heldTotal = 0, dayBase = 0, costBase = 0;
+    bool anyDay = false, anyTotal = false;
+    int heldCount = 0;
+    QString heldCurrency;
     m_quotes.clear();
     for (const QVariant &sv : std::as_const(m_rawSymbols)) {
         const QVariantMap symbol = sv.toMap();
@@ -884,7 +1108,76 @@ void FeedStore::rebuild()
         q.insert("asOfLabel", asOf.isValid() ? (asOf.date() == m_today ? timeLabel(asOf) : dayLabel(asOf.date())) : QString());
         q.insert("agentName", agentName(q.value("agent_id").toString()));
         q.insert("agentColor", agentColor(q.value("agent_id").toString()));
+
+        // What the agent added: a holding, signals, the day's numbers.
+        QVariantMap data = q.value("data").toMap();
+        const QVariantMap latest = latestData.value(q.value("symbol").toString());
+        if (!latest.isEmpty() && parseTimestamp(latest.value("as_of").toString()) == asOf)
+            data = latest.value("data").toMap();
+        bool current;
+        const QDateTime created = parseTimestamp(latest.value("created_at").toString());
+        if (created.isValid()) {
+            current = created == lastPushByAgent.value(latest.value("agent_id").toString());
+        } else {
+            const QDateTime lastAsOf = lastAsOfByAgent.value(q.value("agent_id").toString());
+            current = asOf.isValid() && lastAsOf.isValid() && asOf.secsTo(lastAsOf) <= 120;
+        }
+        const QVariantMap position = current ? positionOf(data, price, change, currency) : QVariantMap();
+        const QVariantList signalList = current ? signalsOf(data) : QVariantList();
+        q.remove("data");
+        q.insert("held", !position.isEmpty());
+        q.insert("position", position);
+        q.insert("signals", signalList);
+        q.insert("signalTone", signalList.isEmpty() ? QString() : signalList.first().toMap().value("tone").toString());
+        q.insert("stats", statsOf(data, currency));
+        q.insert("ranges", rangesOf(data, price, currency));
+        if (!position.isEmpty()) {
+            ++heldCount;
+            const double value = position.value("value").toDouble();
+            heldValue += value;
+            if (position.contains("dayChange")) {
+                heldDay += position.value("dayChange").toDouble();
+                dayBase += value - position.value("dayChange").toDouble();
+                anyDay = true;
+            }
+            if (position.contains("totalChange")) {
+                heldTotal += position.value("totalChange").toDouble();
+                costBase += value - position.value("totalChange").toDouble();
+                anyTotal = true;
+            }
+            if (heldCurrency.isEmpty())
+                heldCurrency = currency;
+        }
         m_quotes << q;
+    }
+
+    // Each holding's share of them all (unless the agent said), and the total.
+    m_portfolio = QVariantMap{{"held", heldCount > 0}, {"count", heldCount}};
+    if (heldCount > 0) {
+        for (QVariant &v : m_quotes) {
+            QVariantMap q = v.toMap();
+            QVariantMap position = q.value("position").toMap();
+            if (position.isEmpty())
+                continue;
+            const double weight = position.contains("weight") ? position.value("weight").toDouble()
+                                                              : (heldValue > 0 ? position.value("value").toDouble() / heldValue * 100 : 0);
+            position.insert("weightLabel", tr("%1% of holdings").arg(QLocale().toString(weight, 'f', weight < 10 ? 1 : 0)));
+            q.insert("position", position);
+            v = q;
+        }
+        m_portfolio.insert("valueLabel", money(heldValue, heldCurrency));
+        if (anyDay) {
+            m_portfolio.insert("dayChangeLabel", signedMoney(heldDay, heldCurrency));
+            m_portfolio.insert("dayUp", heldDay >= 0);
+            if (dayBase > 0)
+                m_portfolio.insert("dayPctLabel", signedNumber(heldDay / dayBase * 100, 2, QStringLiteral("%")));
+        }
+        if (anyTotal) {
+            m_portfolio.insert("totalChangeLabel", signedMoney(heldTotal, heldCurrency));
+            m_portfolio.insert("totalUp", heldTotal >= 0);
+            if (costBase > 0)
+                m_portfolio.insert("totalPctLabel", signedNumber(heldTotal / costBase * 100, 1, QStringLiteral("%")));
+        }
     }
 
     // News: the sources, every report for the picker, and the shown one in full.
@@ -1282,11 +1575,34 @@ QString FeedStore::snapshotText(int maxChars) const
         for (const QVariant &v : m_quotes) {
             const QVariantMap q = v.toMap();
             QString part = QStringLiteral("%1 %2 (%3)").arg(q.value("symbol").toString(), q.value("priceLabel").toString(), q.value("pctLabel").toString());
+            const QVariantMap position = q.value("position").toMap();
+            if (!position.isEmpty()) {
+                QStringList held{position.value("sharesLabel").toString(), position.value("valueLabel").toString()};
+                if (position.contains("dayChangeLabel"))
+                    held << tr("%1 today").arg(position.value("dayChangeLabel").toString());
+                if (position.contains("totalChangeLabel"))
+                    held << tr("%1 overall").arg(position.value("totalChangeLabel").toString());
+                held.removeAll(QString());
+                part += tr(", held: %1").arg(held.join(QStringLiteral(", ")));
+            }
+            QStringList signalTexts;
+            for (const QVariant &sv : q.value("signals").toList())
+                signalTexts << sv.toMap().value("text").toString();
+            if (!signalTexts.isEmpty())
+                part += tr(", signals: %1").arg(signalTexts.join(QStringLiteral("; ")));
             if (!q.value("note").toString().isEmpty())
                 part += QStringLiteral(": ") + q.value("note").toString().simplified();
             parts << part;
         }
         lines << tr("Markets: %1.").arg(parts.join(QStringLiteral("; ")));
+        if (m_portfolio.value("held").toBool()) {
+            QStringList totals{tr("worth %1").arg(m_portfolio.value("valueLabel").toString())};
+            if (m_portfolio.contains("dayChangeLabel"))
+                totals << tr("%1 today").arg(m_portfolio.value("dayChangeLabel").toString());
+            if (m_portfolio.contains("totalChangeLabel"))
+                totals << tr("%1 overall").arg(m_portfolio.value("totalChangeLabel").toString());
+            lines << tr("Holdings shown (%1 positions): %2.").arg(m_portfolio.value("count").toInt()).arg(totals.join(QStringLiteral(", ")));
+        }
     }
     if (!m_stories.isEmpty()) {
         QStringList parts;

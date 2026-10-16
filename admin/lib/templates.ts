@@ -35,14 +35,20 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   {
     id: "markets",
     label: "Markets",
-    description: "Quotes for the Markets screen and the Home strip.",
+    description: "Prices, your holdings and what moved them, for the Markets screen and the Home ticker.",
     name: "Market desk",
     kind: "stocks",
     color: "#3DB37A",
     feed: "quotes",
     scopes: [],
-    schedule: "every 15 minutes while US markets are open",
-    job: "Look up the latest price, change and percent change for each symbol I follow (SPY, AAPL, NVDA, TSLA, MSFT unless I say otherwise).",
+    schedule: "every 15 minutes while US markets are open, and once after the close",
+    job: [
+      "Send one push per run with every symbol I hold and every symbol I follow (SPY, QQQ, AAPL, NVDA, MSFT, TSLA unless I say otherwise): the latest price, change and change_pct, and a \"data\" object with",
+      "- \"position\" for a symbol I hold, only from my real brokerage positions: shares, avg_cost, value, day_change, total_change. Never guess one; leave it out if you can't read my holdings. A symbol I sold simply has no position.",
+      "- \"signals\": up to four short facts worth a glance, each { \"text\", \"tone\": \"up\" | \"down\" | \"watch\" }: RSI above 70 or below 30, crossing the 50- or 200-day average, a 52-week high or low, volume well above average, a move over 3%, earnings or a dividend in the next week, an analyst rating change. Facts only, never buy, sell or hold advice.",
+      "- \"stats\": open, high, low, prev_close, volume, avg_volume, market_cap, pe, low_52w, high_52w, and earnings (the next date, as text).",
+      "Leave out anything you don't know rather than estimate it, and put a one-line note on a symbol only when something happened to it today.",
+    ].join("\n"),
   },
   {
     id: "pulse",

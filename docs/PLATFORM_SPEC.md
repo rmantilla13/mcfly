@@ -191,7 +191,8 @@ Qt 6 app (`display/`). Settings: `MCFLY_SUPABASE_URL`, `MCFLY_SUPABASE_ANON_KEY`
 `MCFLY_VOICE_URL` (default `ws://127.0.0.1:8765`), `QT_SCALE_FACTOR`.
 Syncs every 60 s (REST, device JWT): `platform_settings`, `agents`, `briefs`
 (newest 100, unexpired), `symbols` + `quotes` (newest 2000 rows for
-sparklines), `news_reports` with embedded `news_items` (newest 14). Checks
+sparklines) + `quotes_latest` (`data` only: the holding, signals and stats
+of docs/AGENTS.md, shown while part of their agent's newest push), `news_reports` with embedded `news_items` (newest 14). Checks
 in (`devices.last_seen_at`) every 5 min. Screens: Home, Briefs, Markets,
 News (story detail with a QR code for the link), Settings; screen savers
 Ambient (the default), Clock and Headlines; the quick-answer card (voice) and the Ask panel.

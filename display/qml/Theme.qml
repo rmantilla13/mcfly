@@ -102,6 +102,10 @@ Item {
     readonly property color accentInk: "#FFFFFF"
     readonly property color success:   "#3DB37A"
     readonly property color warning:   "#F2A93B"
+    // A market up or down: saturated, so a move reads from across the room.
+    // Brighter on the dark canvas, where the light pair would look dull.
+    readonly property color gain: dark ? "#32E06E" : "#00B54A"
+    readonly property color loss: dark ? "#FF4D4D" : "#F2262B"
 
     // ---- The frame: set by Main.qml from the window.
     //

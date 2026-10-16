@@ -47,6 +47,9 @@ class FeedStore : public QObject
     Q_PROPERTY(QVariantList briefs READ briefs NOTIFY dataChanged)     // newest first
     Q_PROPERTY(QVariantMap latestBrief READ latestBrief NOTIFY dataChanged)
     Q_PROPERTY(QVariantList quotes READ quotes NOTIFY dataChanged)     // in display order, hidden ones left out
+    // The holdings among the shown quotes, summed: { held, count, valueLabel,
+    // dayChangeLabel, dayPctLabel, dayUp, totalChangeLabel, totalPctLabel, totalUp }.
+    Q_PROPERTY(QVariantMap portfolio READ portfolio NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap news READ news NOTIFY dataChanged)          // the report on show (the newest, or the one picked)
     Q_PROPERTY(QVariantList newsReports READ newsReports NOTIFY dataChanged) // every report, newest first
     Q_PROPERTY(QVariantList stories READ stories NOTIFY dataChanged)   // the shown report's items, flat, in order
@@ -88,6 +91,7 @@ public:
     QVariantList briefs() const { return m_briefs; }
     QVariantMap latestBrief() const { return m_latestBrief; }
     QVariantList quotes() const { return m_quotes; }
+    QVariantMap portfolio() const { return m_portfolio; }
     QVariantMap news() const { return m_news; }
     QVariantList newsReports() const { return m_newsReports; }
     QVariantList stories() const { return m_stories; }
@@ -197,6 +201,7 @@ private:
     // Raw rows as loaded (demo JSON or Supabase).
     QString m_displayName = QStringLiteral("McFly");
     QVariantList m_rawAgents, m_rawBriefs, m_rawQuotes, m_rawSymbols, m_rawReports;
+    QVariantList m_rawQuoteData; // quotes_latest: symbol, agent_id, as_of, data
     QVariantList m_rawMemories, m_memories;
     QVariantList m_rawCalendarSources, m_calendarSources;
     QVariantMap m_deviceSettings;
@@ -211,5 +216,5 @@ private:
     QVariantList m_agents, m_briefs, m_quotes, m_newsReports, m_stories, m_newsSources;
     QVariantList m_projects, m_metrics, m_metricGroups, m_dashboards, m_events, m_eventDays, m_upcoming;
     QVariantList m_timeline;
-    QVariantMap m_latestBrief, m_news;
+    QVariantMap m_latestBrief, m_news, m_portfolio;
 };

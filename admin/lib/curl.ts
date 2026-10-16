@@ -32,7 +32,20 @@ const BODIES: Record<Feed, unknown> = {
     briefs: [{ id: "morning", title: "Morning briefing", body: "Three things for today.\n\n- The first one.", kind: "daily" }],
   },
   quotes: {
-    quotes: [{ symbol: "AAPL", name: "Apple", price: 247.9, change: 2.78, change_pct: 1.13 }],
+    quotes: [
+      {
+        symbol: "AAPL",
+        name: "Apple",
+        price: 247.9,
+        change: 2.78,
+        change_pct: 1.13,
+        data: {
+          position: { shares: 40, avg_cost: 178.25, value: 9916, day_change: 111.2, total_change: 2786 },
+          signals: [{ text: "Earnings Thursday after the close", tone: "watch" }],
+          stats: { open: 245.6, high: 248.4, low: 244.9, prev_close: 245.12, volume: 52300000, avg_volume: 48100000, low_52w: 169.2, high_52w: 260.1 },
+        },
+      },
+    ],
   },
   news: {
     slug: "2026-10-14",

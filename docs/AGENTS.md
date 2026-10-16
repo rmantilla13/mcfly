@@ -76,6 +76,37 @@ Every push adds a row; the newest per symbol is what the display shows, and
 the history draws its sparkline (90 days kept). New symbols appear at the end
 of the list; order and hide them in the console (Feed → Markets).
 
+### Holdings, signals and the day's numbers (`data`)
+
+Three keys in a quote's `data` are drawn on the display: the holding on the
+symbol's tile and the total over the Markets grid and on Home's ticker, the
+signals as a dot on the tile and a list in its detail, the numbers in the
+detail (the day and 52-week ranges as bars, with where the price sits).
+
+```json
+{ "symbol": "NVDA", "price": 191.25, "change": 2.85, "change_pct": 1.51,
+  "data": {
+    "position": { "shares": 60, "avg_cost": 121.80, "value": 11475, "day_change": 171.0, "total_change": 4167 },
+    "signals": [
+      { "text": "RSI 72: above 70 for the first time since July", "tone": "up" },
+      { "text": "Earnings Nov 19, after the close", "tone": "watch" }
+    ],
+    "stats": { "open": 188.9, "high": 192.4, "low": 188.1, "prev_close": 188.4,
+               "volume": 312000000, "avg_volume": 173000000, "market_cap": 4.66e12, "pe": 54.8,
+               "low_52w": 86.6, "high_52w": 195.0, "dividend_yield": 0.02, "earnings": "Nov 19, after close" } } }
+```
+
+| Key | |
+|---|---|
+| `position` | `shares`, `avg_cost`, `value`, `day_change`, `total_change`, `total_change_pct`, `weight_pct`; numbers or numeric strings. The display works out what's missing: value from shares × price, the gain from the average cost, today's move from shares × change, the weight from the total |
+| `signals` | up to six, each `{ "text", "tone" }` with tone `up`, `down` or `watch` (a plain string is `watch`). Facts with a direction ("crossed its 50-day average", "volume 2× average", "earnings Thursday"), not advice |
+| `stats` | `open`, `high`, `low`, `prev_close`, `volume`, `avg_volume`, `market_cap`, `pe`, `low_52w`, `high_52w`, `dividend_yield` (%), `earnings` (text, ≤40); any subset |
+
+A holding and its signals count only while they are part of the agent's
+newest push: send every symbol you hold in each push, and one you sold
+simply without a `position` (or not at all). Its price stays; the holding
+goes. Never send account numbers: the display needs none.
+
 ## News (the Daily Pulse report)
 
 The body is the pipeline's `items-YYYY-MM-DD.json`, unchanged:

@@ -13,8 +13,8 @@ import McFly.Core
 // fade, the current event is outlined, the next one is marked.
 //
 // Mini keeps both columns but drops the ask bar (the nav's sparkle does its
-// job) and shows three tickers; Tall stacks everything into a feed
-// (docs/LAYOUTS.md).
+// job); Tall stacks everything into a feed (docs/LAYOUTS.md). Both
+// carry the markets as a ticker tape that scrolls every symbol.
 Item {
     id: home
     signal openScreen(int index)
@@ -29,7 +29,8 @@ Item {
     // Past / now / next move once a minute, not every second.
     readonly property real minuteMs: Math.floor(now.getTime() / 60000) * 60000
 
-    readonly property var tickers: Store.quotes.slice(0, Theme.wide ? 5 : Theme.mini ? 3 : 4)
+    // Every symbol: the strip is a ticker tape, so none has to be left out.
+    readonly property var tickers: Store.quotes
     readonly property var blocked: Store.projects.filter(p => p.status === "blocked")
     // The event on now, else the next one today or later (not all-day).
     readonly property var nextEvent: {
@@ -283,48 +284,101 @@ Item {
         TapHandler { onTapped: home.openAssistant("") }
     }
 
-    // The markets in one strip: symbol, price, change.
+    // One copy of the ticker tape: the holdings summed (when an agent sends
+    // them), then symbol, price, move, for every quote.
+    component TickerTape: Row {
+        property real gap: 40
+        spacing: gap
+        Row {
+            visible: !!Store.portfolio.held
+            anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+            spacing: Theme.mini ? 8 : 10
+            Label { text: qsTr("Holdings"); color: Theme.textMuted; font.pixelSize: Theme.fontSm }
+            Label { text: Store.portfolio.valueLabel || ""; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.Bold; font.features: ({ "tnum": 1 }) }
+            Label {
+                visible: !!Store.portfolio.dayChangeLabel
+                text: (Store.portfolio.dayUp ? "▲ " : "▼ ") + (Store.portfolio.dayChangeLabel || "")
+                color: Store.portfolio.dayUp ? Theme.gain : Theme.loss
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.DemiBold
+                font.features: ({ "tnum": 1 })
+            }
+        }
+        Repeater {
+            model: home.tickers
+            delegate: Row {
+                required property var modelData
+                readonly property color tone: modelData.flat ? Theme.textMuted : modelData.up ? Theme.gain : Theme.loss
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                spacing: Theme.mini ? 8 : 10
+                Label { text: modelData.symbol; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.Bold }
+                Label { text: modelData.priceLabel; color: Theme.textMuted; font.pixelSize: Theme.fontSm; font.features: ({ "tnum": 1 }) }
+                Label {
+                    text: (modelData.flat ? "" : modelData.up ? "\u25B2 " : "\u25BC ") + modelData.pctLabel
+                    color: parent.tone
+                    font.pixelSize: Theme.fontSm
+                    font.weight: Font.DemiBold
+                    font.features: ({ "tnum": 1 })
+                }
+            }
+        }
+    }
+
+    // The markets on a ticker tape: every symbol, its price and its move,
+    // gliding right to left while Home is on screen. Two copies of the tape
+    // sit end to end, each at least as wide as the strip, so the loop never
+    // shows a seam; the offset wraps at one copy, so a new price (a wider
+    // tape) changes the lap without a jump. Edges fade into the card.
     component MarketsStrip: Rectangle {
+        id: strip
         implicitHeight: Theme.mini ? 56 : 68
         radius: Theme.radiusSm + 6
         color: Theme.surface
         visible: home.tickers.length > 0
-        RowLayout {
+
+        readonly property real gap: Theme.mini ? 28 : 40
+        // One copy of the tape and the gap after it, never narrower than the window.
+        readonly property real lap: Math.max(tapeA.implicitWidth + gap, track.width)
+        readonly property real speed: Theme.mini ? 42 : 56   // px a second: read in passing, not chased
+        property real offset: 0
+
+        FrameAnimation {
+            running: home.shown && strip.visible && strip.lap > 0
+            onTriggered: strip.offset = (strip.offset + frameTime * strip.speed) % strip.lap
+        }
+
+        // Inset from the rounded ends, so the tape and its fades stay inside the card.
+        Item {
+            id: track
             anchors.fill: parent
-            anchors.leftMargin: Theme.mini ? 14 : 20
-            anchors.rightMargin: Theme.mini ? 14 : 20
-            spacing: Theme.mini ? 10 : 18
-            Repeater {
-                model: home.tickers
-                delegate: RowLayout {
-                    required property var modelData
-                    required property int index
-                    Layout.fillWidth: true
-                    spacing: 6
-                    Rectangle {
-                        visible: index > 0
-                        Layout.preferredWidth: 1
-                        Layout.preferredHeight: 26
-                        Layout.rightMargin: Theme.mini ? 4 : 10
-                        color: Theme.divider
-                    }
-                    Label { text: modelData.symbol; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold }
-                    Label {
-                        Layout.fillWidth: true
-                        visible: !Theme.mini && !Theme.tall
-                        text: modelData.priceLabel
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSm
-                        elide: Text.ElideRight
-                    }
-                    Label {
-                        Layout.fillWidth: Theme.mini || Theme.tall
-                        horizontalAlignment: Text.AlignRight
-                        text: modelData.pctLabel
-                        color: modelData.up ? Theme.success : Theme.glowCoral
-                        font.pixelSize: Theme.fontSm
-                        font.weight: Font.DemiBold
-                    }
+            anchors.margins: 6
+            anchors.leftMargin: Theme.mini ? 10 : 14
+            anchors.rightMargin: Theme.mini ? 10 : 14
+            clip: true
+            Item {
+                x: -strip.offset
+                width: 2 * strip.lap
+                height: parent.height
+                TickerTape { id: tapeA; gap: strip.gap; anchors.verticalCenter: parent.verticalCenter }
+                TickerTape { x: strip.lap; gap: strip.gap; anchors.verticalCenter: parent.verticalCenter }
+            }
+            Rectangle {
+                width: Theme.mini ? 22 : 32
+                height: parent.height
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Theme.surface }
+                    GradientStop { position: 1; color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0) }
+                }
+            }
+            Rectangle {
+                anchors.right: parent.right
+                width: Theme.mini ? 22 : 32
+                height: parent.height
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0) }
+                    GradientStop { position: 1; color: Theme.surface }
                 }
             }
         }

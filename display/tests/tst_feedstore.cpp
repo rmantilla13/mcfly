@@ -95,6 +95,8 @@ class TestFeedStore : public QObject
                 QJsonObject{{"id", 9}, {"agent_id", "a2"}, {"symbol", "HIDDEN"}, {"price", 1}, {"currency", "USD"}, {"as_of", iso(now)}},
             }));
         });
+        // Added after "/rest/v1/quotes", so it is matched first.
+        m_server.route("/rest/v1/quotes_latest", [](const Request &) { return json("[]"); });
         m_server.route("/rest/v1/projects", [now](const Request &) {
             return json(rows({
                 QJsonObject{{"id", "p1"}, {"agent_id", "a1"}, {"key", "mcfly"}, {"name", "McFly"}, {"kind", "code"}, {"status", "active"},
@@ -257,6 +259,131 @@ private slots:
         // The snapshot for the assistant mentions all three feeds.
         const QString snapshot = rig->store.snapshotText();
         QVERIFY2(snapshot.contains("Newest") && snapshot.contains("AAPL $247.90 (+1.13%)") && snapshot.contains("AI Tech: Two"), qPrintable(snapshot));
+    }
+
+    // What a market agent adds to a quote (data.position, signals, stats),
+    // labelled; a holding left out of the agent's newest push is gone.
+    void shapesHoldingsAndSignals()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        m_server.route("/rest/v1/symbols", [](const Request &) {
+            return json(R"([{"symbol":"AAA","sort_order":0,"hidden":false},{"symbol":"BBB","sort_order":1,"hidden":false},{"symbol":"OLD","sort_order":2,"hidden":false}])");
+        });
+        m_server.route("/rest/v1/quotes", [now](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", 1}, {"agent_id", "a2"}, {"symbol", "AAA"}, {"price", 50}, {"change", 1}, {"change_pct", 2.04}, {"currency", "USD"}, {"as_of", iso(now)}},
+                QJsonObject{{"id", 2}, {"agent_id", "a2"}, {"symbol", "BBB"}, {"price", 100}, {"change", -2}, {"change_pct", -1.96}, {"currency", "USD"}, {"as_of", iso(now)}},
+                QJsonObject{{"id", 3}, {"agent_id", "a2"}, {"symbol", "OLD"}, {"price", 9}, {"change", 0}, {"change_pct", 0}, {"currency", "USD"}, {"as_of", iso(now.addDays(-1))}},
+            }));
+        });
+        m_server.route("/rest/v1/quotes_latest", [now](const Request &) {
+            const QJsonObject aaa{
+                {"position", QJsonObject{{"shares", 4}, {"avg_cost", 40}}},
+                {"signals", QJsonArray{QJsonObject{{"text", "RSI 71, near the overbought line"}, {"tone", "up"}}, "Earnings in 3 days",
+                                       QJsonObject{{"text", "  "}, {"tone", "down"}}}},
+                {"stats", QJsonObject{{"open", 49}, {"high", 51}, {"low", 48.5}, {"prev_close", 49}, {"volume", 52300000}, {"avg_volume", 41000000},
+                                      {"market_cap", 3.7e12}, {"pe", 37.24}, {"low_52w", 30}, {"high_52w", 60}, {"earnings", "Oct 30, after close"}}}};
+            const QJsonObject bbb{{"position", QJsonObject{{"shares", "1.5"}, {"value", "150"}, {"day_change", -3}}}};
+            return json(rows({
+                QJsonObject{{"symbol", "AAA"}, {"agent_id", "a2"}, {"as_of", iso(now)}, {"data", aaa}},
+                QJsonObject{{"symbol", "BBB"}, {"agent_id", "a2"}, {"as_of", iso(now)}, {"data", bbb}},
+                QJsonObject{{"symbol", "OLD"}, {"agent_id", "a2"}, {"as_of", iso(now.addDays(-1))},
+                            {"data", QJsonObject{{"position", QJsonObject{{"shares", 9}}}, {"signals", QJsonArray{"Stale"}}}}},
+            }));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.quotes().size(), 3);
+
+        const QVariantMap aaa = rig->store.quote("AAA");
+        QVERIFY(aaa.value("held").toBool());
+        const QVariantMap a = aaa.value("position").toMap();
+        QCOMPARE(a.value("sharesLabel").toString(), QStringLiteral("4 shares"));
+        QCOMPARE(a.value("valueLabel").toString(), QStringLiteral("$200.00"));        // 4 x $50
+        QCOMPARE(a.value("avgCostLabel").toString(), QStringLiteral("avg $40.00"));
+        QCOMPARE(a.value("dayChangeLabel").toString(), QStringLiteral("+$4.00"));      // 4 x $1
+        QCOMPARE(a.value("totalChangeLabel").toString(), QStringLiteral("+$40.00"));   // $200 - 4 x $40
+        QCOMPARE(a.value("totalPctLabel").toString(), QStringLiteral("+25.0%"));
+        QCOMPARE(a.value("weightLabel").toString(), QStringLiteral("57% of holdings"));
+        const QVariantList signalList = aaa.value("signals").toList();
+        QCOMPARE(signalList.size(), 2); // the blank one is dropped
+        QCOMPARE(signalList.at(0).toMap().value("tone").toString(), QStringLiteral("up"));
+        QCOMPARE(signalList.at(1).toMap().value("text").toString(), QStringLiteral("Earnings in 3 days"));
+        QCOMPARE(signalList.at(1).toMap().value("tone").toString(), QStringLiteral("watch"));
+        QCOMPARE(aaa.value("signalTone").toString(), QStringLiteral("up"));
+        QStringList stats;
+        for (const QVariant &v : aaa.value("stats").toList())
+            stats << v.toMap().value("label").toString() + QLatin1Char('=') + v.toMap().value("value").toString();
+        QCOMPARE(stats, QStringList({"Open=$49.00", "Prev close=$49.00", "Volume=52.3M · 1.3× avg", "Market cap=$3.7T", "P/E=37.2",
+                                     "Earnings=Oct 30, after close"}));
+        // The ranges, with where $50 sits in each.
+        const QVariantList ranges = aaa.value("ranges").toList();
+        QCOMPARE(ranges.size(), 2);
+        QCOMPARE(ranges.at(0).toMap().value("label").toString(), QStringLiteral("Today"));
+        QCOMPARE(ranges.at(0).toMap().value("lowLabel").toString(), QStringLiteral("$48.50"));
+        QVERIFY(qAbs(ranges.at(0).toMap().value("pos").toDouble() - 0.6) < 1e-9);   // (50 - 48.5) / (51 - 48.5)
+        QCOMPARE(ranges.at(1).toMap().value("highLabel").toString(), QStringLiteral("$60.00"));
+        QVERIFY(qAbs(ranges.at(1).toMap().value("pos").toDouble() - 2.0 / 3) < 1e-9); // (50 - 30) / (60 - 30)
+
+        // Numbers sent as strings; the value given rather than worked out.
+        const QVariantMap b = rig->store.quote("BBB").value("position").toMap();
+        QCOMPARE(b.value("sharesLabel").toString(), QStringLiteral("1.5 shares"));
+        QCOMPARE(b.value("valueLabel").toString(), QStringLiteral("$150.00"));
+        QCOMPARE(b.value("dayChangeLabel").toString(), QStringLiteral("−$3.00"));
+        QVERIFY(!b.value("dayUp").toBool());
+        QVERIFY(!b.contains("totalChangeLabel")); // no cost given
+
+        // OLD wasn't in the newest push: its price stays, its holding goes.
+        const QVariantMap old = rig->store.quote("OLD");
+        QCOMPARE(old.value("priceLabel").toString(), QStringLiteral("$9.00"));
+        QVERIFY(!old.value("held").toBool());
+        QVERIFY(old.value("signals").toList().isEmpty());
+
+        // The total: $350, +$1 on the $349 it opened at, +$40 on the $160 the gain is known for.
+        const QVariantMap p = rig->store.portfolio();
+        QVERIFY(p.value("held").toBool());
+        QCOMPARE(p.value("count").toInt(), 2);
+        QCOMPARE(p.value("valueLabel").toString(), QStringLiteral("$350.00"));
+        QCOMPARE(p.value("dayChangeLabel").toString(), QStringLiteral("+$1.00"));
+        QCOMPARE(p.value("dayPctLabel").toString(), QStringLiteral("+0.29%"));
+        QCOMPARE(p.value("totalChangeLabel").toString(), QStringLiteral("+$40.00"));
+        QCOMPARE(p.value("totalPctLabel").toString(), QStringLiteral("+25.0%"));
+
+        // The assistant hears about the holdings too.
+        const QString snapshot = rig->store.snapshotText();
+        QVERIFY2(snapshot.contains("held: 4 shares, $200.00") && snapshot.contains("RSI 71") && snapshot.contains("worth $350.00"), qPrintable(snapshot));
+    }
+
+    // One push is the rows written together (created_at), whatever as_of
+    // each quote carries: a close three hours old keeps its holding; a
+    // symbol only in an earlier push loses it.
+    void aHoldingCountsWhileInTheNewestPush()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        const QString pushed = iso(now), earlier = iso(now.addSecs(-900));
+        m_server.route("/rest/v1/symbols", [](const Request &) {
+            return json(R"([{"symbol":"BTC-USD","sort_order":0,"hidden":false},{"symbol":"AAA","sort_order":1,"hidden":false},{"symbol":"OLD","sort_order":2,"hidden":false}])");
+        });
+        m_server.route("/rest/v1/quotes", [now](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", 3}, {"agent_id", "a2"}, {"symbol", "BTC-USD"}, {"price", 100}, {"change", 1}, {"currency", "USD"}, {"as_of", iso(now)}},
+                QJsonObject{{"id", 2}, {"agent_id", "a2"}, {"symbol", "AAA"}, {"price", 50}, {"change", 1}, {"currency", "USD"}, {"as_of", iso(now.addSecs(-3 * 3600))}},
+                QJsonObject{{"id", 1}, {"agent_id", "a2"}, {"symbol", "OLD"}, {"price", 9}, {"change", 0}, {"currency", "USD"}, {"as_of", iso(now.addSecs(-3 * 3600))}},
+            }));
+        });
+        m_server.route("/rest/v1/quotes_latest", [now, pushed, earlier](const Request &) {
+            const QJsonObject held{{"position", QJsonObject{{"shares", 2}}}};
+            return json(rows({
+                QJsonObject{{"symbol", "BTC-USD"}, {"agent_id", "a2"}, {"as_of", iso(now)}, {"created_at", pushed}, {"data", held}},
+                QJsonObject{{"symbol", "AAA"}, {"agent_id", "a2"}, {"as_of", iso(now.addSecs(-3 * 3600))}, {"created_at", pushed}, {"data", held}},
+                QJsonObject{{"symbol", "OLD"}, {"agent_id", "a2"}, {"as_of", iso(now.addSecs(-3 * 3600))}, {"created_at", earlier}, {"data", held}},
+            }));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.quotes().size(), 3);
+        QVERIFY(rig->store.quote("BTC-USD").value("held").toBool());
+        QVERIFY(rig->store.quote("AAA").value("held").toBool());
+        QVERIFY(!rig->store.quote("OLD").value("held").toBool());
+        QCOMPARE(rig->store.portfolio().value("count").toInt(), 2);
     }
 
     void shapesTheProductivityFeeds()

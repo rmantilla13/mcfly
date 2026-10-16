@@ -34,6 +34,18 @@ test("without the key, a placeholder; without scopes, no reads", () => {
   assert.match(p, /ingest\/quotes/);
 });
 
+test("the market desk sends holdings only from real positions, and signals as facts", () => {
+  const t = templateById("markets");
+  const p = agentPrompt({ template: t, name: "Desk", baseUrl: "https://x", scopes: [] });
+  assert.match(p, /"position"/);
+  assert.match(p, /Never guess one/);
+  assert.match(p, /"signals"/);
+  assert.match(p, /never buy, sell or hold advice/);
+  assert.match(p, /"stats"/);
+  // The example body shows the same fields.
+  assert.match(p, /"position":\{"shares":40/);
+});
+
 test("a calendar mirror is told to replace", () => {
   const t = templateById("calendar");
   assert.match(agentPrompt({ template: t, name: "Cal", baseUrl: "https://x", scopes: [] }), /"replace": true/);

@@ -71,7 +71,7 @@ Item {
                             Label {
                                 visible: !!modelData.hasDelta
                                 text: modelData.deltaLabel || ""
-                                color: modelData.up ? Theme.success : Theme.glowCoral
+                                color: modelData.up ? Theme.gain : Theme.loss
                                 font.pixelSize: Theme.fontXs
                                 font.weight: Font.DemiBold
                             }
