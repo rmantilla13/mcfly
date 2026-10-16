@@ -5,6 +5,10 @@ import SwiftUI
 struct McFlyApp: App {
     @State private var app = AppModel()
 
+    #if os(iOS)
+    init() { BackButtons.install() }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             RootView()

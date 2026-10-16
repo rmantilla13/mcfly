@@ -43,6 +43,7 @@
 		D73FF3DDA9C43A362ABEF107 /* ScreenAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82227595F1494D94F711C11A /* ScreenAwake.swift */; };
 		DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */; };
 		E79219A675B9992B901CDD27 /* BuiltInVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C368950BE03E7FDA21BEBCCC /* BuiltInVoice.swift */; };
+		E8E8628F7F744EFA0A22E2EA /* BackButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = F464976B7FC8D128061F1274 /* BackButtons.swift */; };
 		EE568B69399E265371EA67C7 /* McFlyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */; };
 		F9F2D7C5D388A3C7E7A28FAA /* GradientTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F02A671863D160CFB9F6500 /* GradientTile.swift */; };
 /* End PBXBuildFile section */
@@ -85,6 +86,7 @@
 		E28DF0EF62E7B6986374243A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E7D8CDC30E03C6AB224D384F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F43F67BC8172506F846877D4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F464976B7FC8D128061F1274 /* BackButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackButtons.swift; sourceTree = "<group>"; };
 		F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McFlyApp.swift; sourceTree = "<group>"; };
 		F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketsView.swift; sourceTree = "<group>"; };
 		FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -207,6 +209,7 @@
 			isa = PBXGroup;
 			children = (
 				FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */,
+				F464976B7FC8D128061F1274 /* BackButtons.swift */,
 				08BAFC5D9C7398731AB90318 /* Config.swift */,
 				F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */,
 				7BEA683B475142D05DCA8A58 /* WeatherModel.swift */,
@@ -300,6 +303,7 @@
 				C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */,
 				B882CD2C41CDB2417D425826 /* AuroraGlow.metal in Sources */,
 				28975B40DE863BBF61536D63 /* AuroraGlow.swift in Sources */,
+				E8E8628F7F744EFA0A22E2EA /* BackButtons.swift in Sources */,
 				B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */,
 				E79219A675B9992B901CDD27 /* BuiltInVoice.swift in Sources */,
 				07583609CE7B9BA6A8D782CB /* CalendarView.swift in Sources */,
