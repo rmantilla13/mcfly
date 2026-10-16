@@ -3,10 +3,13 @@
 // Speaking McFly's replies in the browser, with the voice Homestead uses:
 // Kokoro-82M ("Heart" by default; Bella, Michael and Fenrir too), rendered
 // a sentence ahead in a worker and played through Web Audio, whose level
-// drives the voice glow. Until the model has downloaded (or if it can't run
-// here), the browser's own voice speaks instead.
+// drives the voice glow. A reply waits for the model to load (the first
+// time, a download) rather than letting the browser's own voice stand in, so
+// it sounds as it does on the Pi and the iPhone; the browser's voice speaks
+// only when chosen, or when Kokoro can't run here (lib/speech-engine.ts).
 
 import { speechPieces } from "@/lib/sentences";
+import { replySpeaker } from "@/lib/speech-engine";
 
 export type VoiceId = "af_heart" | "af_bella" | "am_michael" | "am_fenrir" | "system";
 export const VOICES: { id: VoiceId; name: string }[] = [
@@ -48,6 +51,8 @@ class KokoroPlayer {
   private generation = 0;
   private pending = new Map<number, (r: { samples?: Float32Array; rate?: number; error?: string }) => void>();
   private nextId = 1;
+  // A failed load (a dropped download, say) is tried once more.
+  private retries = 1;
   speaking = false;
 
   subscribe = (fn: () => void) => {
@@ -91,6 +96,31 @@ class KokoroPlayer {
     if (!w) return;
     this.set({ status: "loading", percent: 0 });
     w.postMessage({ type: "load" });
+  }
+
+  get canRetry() {
+    return this.retries > 0;
+  }
+
+  // Resolves once the voice is ready or has failed, loading it first, or
+  // once more after a failure while a retry is left.
+  ready(): Promise<void> {
+    if (this.state.status === "failed" && this.retries > 0) {
+      this.retries--;
+      this.worker?.terminate();
+      this.worker = null;
+      this.set({ status: "idle", percent: 0 });
+    }
+    this.load();
+    return new Promise((resolve) => {
+      const settled = () => this.state.status === "ready" || this.state.status === "failed";
+      if (settled()) return resolve();
+      const off = this.subscribe(() => {
+        if (!settled()) return;
+        off();
+        resolve();
+      });
+    });
   }
 
   private render(text: string, voice: VoiceId, speed: number) {
@@ -181,12 +211,20 @@ export function kokoro(): KokoroPlayer {
   return player;
 }
 
-// Speaks a reply: Kokoro when it's ready, else the browser's voice (and
-// Kokoro starts downloading for next time). Resolves when done speaking.
+// The latest speakReply; a newer one, or stopSpeaking, drops a reply still
+// waiting for the voice to load.
+let replyGeneration = 0;
+
+// Speaks a reply in the chosen voice: Kokoro, once it has loaded, or the
+// browser's when that's the choice (lib/speech-engine.ts). Resolves when done
+// speaking.
 export async function speakReply(text: string, voice: VoiceId, speed = 1): Promise<void> {
+  const gen = ++replyGeneration;
   const k = kokoro();
-  if (voice !== "system" && k.state.status === "ready") return k.speak(text, voice, speed);
-  if (voice !== "system") k.load();
+  if (replySpeaker(voice, k.state.status, k.canRetry) === "load") await k.ready();
+  if (gen !== replyGeneration) return;
+  if (replySpeaker(voice, k.state.status, false) === "kokoro") return k.speak(text, voice, speed);
+  if (voice !== "system") console.warn("Kokoro can't run here; the browser's voice reads this reply.");
   if (typeof speechSynthesis === "undefined") return;
   speechSynthesis.cancel();
   await new Promise<void>((resolve) => {
@@ -199,6 +237,7 @@ export async function speakReply(text: string, voice: VoiceId, speed = 1): Promi
 }
 
 export function stopSpeaking() {
+  replyGeneration++;
   kokoro().stop();
   if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
 }
