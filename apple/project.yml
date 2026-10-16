@@ -49,8 +49,11 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         # Standard HTTPS only, so App Store Connect skips the export question.
         ITSAppUsesNonExemptEncryption: false
+        # The mark, centred at its own size (scripts/render_launch_mark.py).
+        # RootView draws it in the same place until the app knows where to go.
         UILaunchScreen:
           UIColorName: LaunchBackground
+          UIImageName: LaunchMark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
