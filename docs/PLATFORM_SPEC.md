@@ -74,6 +74,7 @@ admin RPCs.
 | `admin_audit_log` | Every admin change, written by the RPCs and the functions |
 | `calendar_sources` | Calendar subscriptions, read every 15 minutes by `calendar-sync` into `events` under the built-in agent `calendar-subscriptions`: `kind` ∈ ical · google, `name` (unique; the events' calendar), `url` (an iCal link, kind ical; service role only, the console sees its host), `google_account_id` + `google_calendar_id` (kind google), `color`, `enabled`, `last_synced_at`, `last_error`, `event_count` |
 | `google_accounts` | Service role only (RLS on, no policies): a Google account the admin signed in with: `email` (unique), `refresh_token`, `scope`, `connected_by`, `connected_at`, `last_error`. `google_oauth_states` (same) holds a sign-in under way: `state`, `user_id`, `return_to`, ten minutes |
+| `google_watch_channels` | Service role only: one notification channel per watched Google calendar: `source_id`, `channel_id` (unique), `resource_id`, `token` (Google echoes it), `expires_at`. `calendar_sources.watch_error` says why Google refused one |
 
 Retention: `prune_feed()` applies the settings (old briefs, old quote
 history keeping the newest row per symbol, old reports, 90 days of log).
@@ -113,7 +114,7 @@ mutation writes `admin_audit_log`.
 | `admin_revoke_device(device)` | jsonb { user_id, auth_user_removed }; the `admin` function finishes the auth user |
 | `admin_get_settings()` / `admin_update_settings(display_name, timezone, briefs_keep_days, quotes_keep_days, news_keep_reports)` | jsonb settings; nulls keep; an unknown timezone is refused |
 | `admin_set_admin(target, make_admin)` | void; the last admin can't be removed; displays can't be admins |
-| `admin_list_calendar_sources()` | rows: id, name, host, color, enabled, last_synced_at, last_error, event_count, created_at, kind, account_id, account_email, google_calendar_id |
+| `admin_list_calendar_sources()` | rows: id, name, host, color, enabled, last_synced_at, last_error, event_count, created_at, kind, account_id, account_email, google_calendar_id, watch_expires_at, watch_error |
 | `admin_add_calendar_source(name, url, color)` / `admin_update_calendar_source(source, name, color, enabled)` / `admin_delete_calendar_source(source)` | uuid / void / void (with the events) |
 | `admin_list_google_accounts()` | rows: id, email, connected_at, last_error, calendars |
 | `admin_add_google_calendar(account, calendar_id, name, color)` | uuid: a `calendar_sources` row of kind google (a taken name gets the account's email appended) |
@@ -132,7 +133,11 @@ enabled subscriptions with each Google calendar's account and token),
 `calendar_source_synced(source, count, error)`, `google_oauth_begin(state,
 who, return_to)` / `google_oauth_finish(state)` (one use, ten minutes),
 `google_account_save(email, refresh_token, scope, who)` (upsert by email),
-`google_account_credentials(account)`, `google_account_failed(account, error)`.
+`google_account_credentials(account)`, `google_account_failed(account, error)`;
+for the notification channels `google_watch_list()`, `google_watch_save(source,
+channel_id, resource_id, token, expires_at)` (upsert by source; clears
+`watch_error`), `google_watch_failed(source, error)`,
+`google_watch_for_channel(channel)` → (source_id, token, enabled, last_synced_at).
 
 ## 2. Edge functions
 
@@ -221,6 +226,12 @@ POST { action: "calendars", account }            admin JWT → { ok, email, cale
                                                  access_role, selected }] }  (Google's calendarList, now)
 POST { action: "disconnect", account }           admin JWT → { ok, email }  (revoked at Google, then
                                                  admin_delete_google_account as the admin)
+POST /notify   X-Goog-Channel-ID, -Channel-Token, Google's notification that a watched calendar changed → 200 at once;
+               -Resource-ID, -Resource-State     a "sync" state (a new channel) does nothing; otherwise the channel is
+                                                 looked up (google_watch_for_channel), its token compared in constant
+                                                 time, and the one calendar read through calendar-sync after the answer
+                                                 (EdgeRuntime.waitUntil). Unknown channel or token: 200, nothing done.
+                                                 A calendar read in the last 15 s is not read again (one change, a burst)
 ```
 
 Errors: 400 bad body, 401 no session, 403 not an admin, 404 unknown account,
@@ -232,6 +243,12 @@ enabled subscription: a link's iCal, or for a Google calendar
 `events.list(singleEvents, −1 day … +60 days)` with a token refreshed once
 per account per run, then `ingest_events` with `replace` under the built-in
 agent. An `invalid_grant` from Google marks the account (`google_account_failed`).
+After a Google calendar is read it keeps the calendar's notification channel
+(`events.watch` to `GOOGLE_WEBHOOK_URL`, default the function's own `/notify`,
+which Google refuses until the address's domain is verified: `watch_error`):
+opened when there is none, renewed with under two days left, the old one
+stopped (`channels.stop`). The console's `/api/google/notify` forwards
+Google's headers to the function for a domain of the console's own.
 
 ## 3. Pi display
 

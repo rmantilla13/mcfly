@@ -9,14 +9,33 @@
 //   POST { source: "<uuid>" }  one source              ("Sync now" in the console)
 //
 // Who may call: pg_cron, with `x-mcfly-cron: <the Vault secret>` (../_shared/cron.ts), or a
-// platform admin with their own JWT. The links and the tokens are read with
-// the service role and never leave this function.
+// platform admin with their own JWT (the google-calendar function's /notify
+// route calls as the service role, for one source). The links and the
+// tokens are read with the service role and never leave this function.
+//
+// After a Google calendar is read, its notification channel is kept
+// (20261016000012): opened when there is none, renewed when under two days
+// remain, the old one stopped. Google then calls /notify on a change.
 //
 // Answers { ok: true, synced: [{ name, count } | { name, error }] }.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isCronCall } from "../_shared/cron.ts";
-import { type GoogleConfig, googleConfig, listEvents, refreshAccessToken, SETUP_MESSAGE, shapeEvents, type TokenFailure, type Tokens } from "../_shared/google.ts";
+import {
+  type GoogleConfig,
+  googleConfig,
+  listEvents,
+  randomState,
+  refreshAccessToken,
+  RENEW_WITHIN_MS,
+  SETUP_MESSAGE,
+  shapeEvents,
+  stopChannel,
+  type TokenFailure,
+  type Tokens,
+  watchEvents,
+  webhookAddress,
+} from "../_shared/google.ts";
 import { bearerToken, isUuid, json, preflight, readJson } from "../_shared/http.ts";
 import { type EventItem, MAX_EVENTS, parseIcs } from "./ics.ts";
 import { refusedMessage } from "./links.ts";
@@ -139,6 +158,47 @@ async function readGoogle(s: Source, w: Window, tokens: AccessTokens): Promise<R
   return { items: shapeEvents(listed.items, { color: s.color }) };
 }
 
+type Watch = { source_id: string; channel_id: string; resource_id: string; expires_at: string };
+
+async function listWatches(): Promise<Map<string, Watch>> {
+  const { data, error } = await service.rpc("google_watch_list");
+  if (error) console.error("google_watch_list failed:", error.message);
+  return new Map(((data ?? []) as Watch[]).map((w) => [w.source_id, w]));
+}
+
+// A channel for the calendar: a new one when there is none or the current
+// one is nearly over (Google gives about a week), the old one stopped once
+// the new one exists. A refusal is kept on the source for the console.
+async function keepWatch(s: Source, current: Watch | undefined, tokens: AccessTokens, address: string | null): Promise<void> {
+  if (!address || !s.account_id || !s.refresh_token || !s.google_calendar_id) return;
+  if (current && Date.parse(current.expires_at) - Date.now() > RENEW_WITHIN_MS) return;
+  const token = await tokens.for(s.account_id, s.refresh_token);
+  if ("error" in token) return;
+  const channelId = crypto.randomUUID();
+  const secret = randomState();
+  const made = await watchEvents(token.access_token, s.google_calendar_id, { address, channelId, token: secret });
+  if (!made.ok) {
+    const { error } = await service.rpc("google_watch_failed", { source: s.id, error: made.error });
+    if (error) console.error("google_watch_failed failed:", error.message);
+    return;
+  }
+  const { error } = await service.rpc("google_watch_save", {
+    source: s.id,
+    channel_id: made.channel.channelId,
+    resource_id: made.channel.resourceId,
+    token: secret,
+    expires_at: made.channel.expiresAt,
+  });
+  if (error) {
+    console.error("google_watch_save failed:", error.message);
+    await stopChannel(token.access_token, made.channel);
+    return;
+  }
+  if (current && current.channel_id !== made.channel.channelId) {
+    await stopChannel(token.access_token, { channelId: current.channel_id, resourceId: current.resource_id });
+  }
+}
+
 async function syncOne(s: Source, tokens: AccessTokens): Promise<{ name: string; count?: number; error?: string }> {
   const now = Date.now();
   const window = { from: new Date(now - DAY), to: new Date(now + 60 * DAY) };
@@ -182,7 +242,13 @@ Deno.serve(async (req) => {
   }
   const sources = (data ?? []) as Source[];
   const tokens = new AccessTokens(googleConfig());
+  const watches = sources.some((s) => s.kind === "google") ? await listWatches() : new Map<string, Watch>();
+  const address = webhookAddress();
   const synced = [];
-  for (const s of sources) synced.push(await syncOne(s, tokens));
+  for (const s of sources) {
+    const result = await syncOne(s, tokens);
+    synced.push(result);
+    if (s.kind === "google" && !result.error) await keepWatch(s, watches.get(s.id), tokens, address);
+  }
   return json({ ok: true, synced });
 });

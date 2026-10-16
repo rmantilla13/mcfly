@@ -332,6 +332,8 @@ export type CalendarSource = {
   account_id: string | null; // kind google: the connected account
   account_email: string | null;
   google_calendar_id: string | null;
+  watch_expires_at: string | null; // kind google: Google notifies McFly of changes until then (migration 20261016000012)
+  watch_error: string | null; // why Google refused that channel
 };
 
 // A Google account the admin signed in with (migration 20261016000011). The

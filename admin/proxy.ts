@@ -8,6 +8,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Everything except build assets and static files, including voice-runtime
-  // (the browser's speech engine: public library code a worker loads).
-  matcher: ["/((?!_next/static|_next/image|voice-runtime/|favicon.ico|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
+  // (the browser's speech engine: public library code a worker loads), and
+  // api/google/notify, which Google calls with no session (it forwards
+  // calendar notifications to a function that checks a token of its own).
+  matcher: ["/((?!_next/static|_next/image|voice-runtime/|api/google/notify|favicon.ico|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
 };

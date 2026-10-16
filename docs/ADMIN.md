@@ -89,6 +89,31 @@ Disconnect revokes the sign-in at Google before removing it here. A
 calendar that Google stops showing to the account ("Not in Google's list
 anymore") can still be switched off.
 
+### Instant updates
+
+With a calendar switched on, `calendar-sync` also asks Google to notify
+McFly when it changes (a notification channel, `events.watch`, renewed
+weekly), and the `google-calendar` function's `/notify` route reads that one
+calendar at once: a change shows on the display within a minute instead of
+at the next 15-minute run. The console says "live" beside a watched calendar.
+
+Google only sends notifications to a domain verified for the Cloud project,
+and a `supabase.co` subdomain can't be verified, so point Google at the
+console instead, which forwards them (`app/api/google/notify`):
+
+1. [Search Console](https://search.google.com/search-console) → add
+   `mcfly.bot` as a Domain property and verify it with the DNS record it
+   gives you (where the domain's DNS is managed).
+2. Google Cloud → **APIs & Services → Domain verification** → Add domain
+   → `mcfly.bot`.
+3. `supabase secrets set GOOGLE_WEBHOOK_URL=https://mcfly.bot/api/google/notify`
+   and redeploy `calendar-sync` and `google-calendar`.
+
+Until then every Google calendar says "Every 15 minutes, not live: Google
+refused the notification channel (push.webhookUrlUnauthorized)" and is read
+on the schedule as before; nothing else changes. A calendar switched off
+keeps receiving notifications for up to a week, which the route ignores.
+
 A Workspace admin may block sign-ins to apps outside the organization; for
 those calendars, Apps Script from inside Google still works
 ([AGENTS.md](AGENTS.md), "A Google calendar without a secret address").
@@ -116,6 +141,8 @@ Until both are there the jobs do nothing; Settings → Backend says which is mis
   `ANTHROPIC_API_KEY` for Claude, `XAI_API_KEY` for Grok, optional
   `ASSISTANT_MODEL` / `GROK_MODEL`; `GOOGLE_CLIENT_ID` and
   `GOOGLE_CLIENT_SECRET` for the Google Calendar sign-in (optional
-  `GOOGLE_REDIRECT_URI`). Google refresh tokens live in `google_accounts`
-  (RLS on, no policies: the functions alone read them).
+  `GOOGLE_REDIRECT_URI`, and `GOOGLE_WEBHOOK_URL` for instant updates).
+  Google refresh tokens live in `google_accounts` and notification channels'
+  tokens in `google_watch_channels` (RLS on, no policies: the functions alone
+  read them).
 - The console's environment has only the project URL and the anon key.

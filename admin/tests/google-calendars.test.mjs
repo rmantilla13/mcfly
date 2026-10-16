@@ -6,7 +6,8 @@ import { googleCalendarRows, googleNotice, googleReturnTo } from "../lib/google-
 const account = { id: "acct-1", email: "ricky@example.com", connected_at: "2026-10-06T00:00:00Z", last_error: null, calendars: 2 };
 const source = (over) => ({
   id: "src", name: "X", host: "calendar.google.com", color: null, enabled: true, last_synced_at: null, last_error: null, event_count: 0,
-  created_at: "2026-10-06T00:00:00Z", kind: "google", account_id: "acct-1", account_email: "ricky@example.com", google_calendar_id: "cal", ...over,
+  created_at: "2026-10-06T00:00:00Z", kind: "google", account_id: "acct-1", account_email: "ricky@example.com", google_calendar_id: "cal",
+  watch_expires_at: null, watch_error: null, ...over,
 });
 const listed = [
   { id: "ricky@example.com", name: "ricky@example.com", color: "#4F7CF7", primary: true, access_role: "owner", selected: true },
@@ -26,6 +27,15 @@ test("every listed calendar gets a row, with its subscription when it has one", 
   assert.equal(rows[1].source?.event_count, 14);
   assert.equal(rows[2].source, null, "another account's subscription is not this one's");
   assert.equal(rows[0].listed, true);
+});
+
+test("live means a notification channel open past now", () => {
+  const now = Date.parse("2026-10-16T12:00:00Z");
+  const rows = googleCalendarRows(account, listed, [
+    source({ id: "s-live", google_calendar_id: "c_work", watch_expires_at: "2026-10-20T00:00:00Z" }),
+    source({ id: "s-over", google_calendar_id: "c_holidays", watch_expires_at: "2026-10-16T11:59:00Z" }),
+  ], now);
+  assert.deepEqual(rows.map((r) => [r.id, r.live]), [["ricky@example.com", false], ["c_holidays", false], ["c_work", true]], "both subscribed: Google's order");
 });
 
 test("a subscribed calendar Google no longer lists stays, flagged", () => {

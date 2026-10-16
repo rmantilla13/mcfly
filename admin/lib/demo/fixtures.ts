@@ -678,7 +678,10 @@ export function buildDemoState(now = Date.now()): DemoState {
       { id: "en.usa#holiday@group.v.calendar.google.com", name: "Holidays in United States", color: "#0B8043", primary: false, access_role: "reader", selected: true },
     ],
   };
-  const google = { kind: "google" as const, host: "calendar.google.com", account_id: googleAccountId, account_email: "ricky@example.com" };
+  const google = {
+    kind: "google" as const, host: "calendar.google.com", account_id: googleAccountId, account_email: "ricky@example.com",
+    watch_expires_at: new Date(Date.now() + 5 * 86_400_000).toISOString(), watch_error: null,
+  };
   const calendarSources: import("@/lib/types").CalendarSource[] = [
     { id: uuid(), name: "Work", color: "#5B7CF5", enabled: true, last_synced_at: minutes(9), last_error: null, event_count: 14,
       created_at: days(10), ...google, google_calendar_id: "c_work@group.calendar.google.com" },
@@ -686,7 +689,7 @@ export function buildDemoState(now = Date.now()): DemoState {
       created_at: days(10), ...google, google_calendar_id: "ricky@example.com" },
     { id: uuid(), name: "Family", host: "p52-caldav.icloud.com", color: "#F07F5A", enabled: true, last_synced_at: hours(3),
       last_error: "the link answered 404; it may have been reset, or the calendar isn't shared", event_count: 6, created_at: days(4),
-      kind: "ical", account_id: null, account_email: null, google_calendar_id: null },
+      kind: "ical", account_id: null, account_email: null, google_calendar_id: null, watch_expires_at: null, watch_error: null },
   ];
 
   const bots: import("@/lib/types").Bot[] = [

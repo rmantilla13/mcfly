@@ -5,6 +5,8 @@
 //   GET  /callback?code&state                      → 302 to return_to with ?google=connected, or ?google_error=<sentence>
 //   POST { action: "calendars", account }          → { ok, email, calendars: [{ id, name, color, primary, access_role, selected }] }
 //   POST { action: "disconnect", account }         → { ok, email }   revoked at Google; the account, its calendars and their events go
+//   POST /notify  (X-Goog-* headers, no body)       → 200   Google saying a watched calendar changed (20261016000012): the one
+//                                                            calendar is read now, through calendar-sync, after the answer
 //
 // Who may call: a platform admin with their own JWT (the POSTs). The callback
 // is Google sending the admin's browser back: it is tied to a sign-in the
@@ -22,9 +24,11 @@ import {
   googleConfig,
   hasCalendarScope,
   listCalendars,
+  parseNotification,
   randomState,
   refreshAccessToken,
   revokeToken,
+  sameToken,
   SETUP_MESSAGE,
 } from "../_shared/google.ts";
 import { authenticate, bearerToken, isUuid, json, preflight, readJson } from "../_shared/http.ts";
@@ -125,14 +129,58 @@ async function callback(req: Request, cfg: GoogleConfig | null): Promise<Respons
   return back();
 }
 
+// Reads one calendar now: calendar-sync, called as the service role (its
+// admin check accepts it), so the sync lives in one place.
+async function syncSource(source: string): Promise<void> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify({ source }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) console.error(`calendar-sync answered ${res.status} for ${source}`);
+  } catch (err) {
+    console.error("calendar-sync call failed:", err);
+  }
+}
+
+// Google's notification that a watched calendar changed. Answered at once
+// (Google retries a slow or failing hook); the read runs after the answer.
+// A channel this database doesn't know, or whose token differs, is
+// ignored with a 200 so Google stops sending it. A burst of notifications
+// for one change reads the calendar once.
+async function notify(req: Request): Promise<Response> {
+  const ok = new Response(null, { status: 200 });
+  const n = parseNotification(req.headers);
+  if (!n) return json({ error: "not a notification" }, 400);
+  if (n.state === "sync") return ok;
+  const { data, error } = await service.rpc("google_watch_for_channel", { channel: n.channelId });
+  if (error) {
+    console.error("google_watch_for_channel failed:", error.message);
+    return json({ error: "try again" }, 503);
+  }
+  const row = Array.isArray(data) ? (data[0] as { source_id: string; token: string; enabled: boolean; last_synced_at: string | null } | undefined) : undefined;
+  if (!row || !sameToken(row.token, n.token)) {
+    console.error(`notification for an unknown channel ${n.channelId.slice(0, 16)}…`);
+    return ok;
+  }
+  if (!row.enabled) return ok;
+  if (row.last_synced_at && Date.now() - Date.parse(row.last_synced_at) < 15_000) return ok;
+  const work = syncSource(row.source_id);
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(work);
+  else await work;
+  return ok;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
   const cfg = googleConfig();
-  if (req.method === "GET") {
-    const path = new URL(req.url).pathname.replace(/\/+$/, "");
-    return path.endsWith("/callback") ? callback(req, cfg) : json({ error: "not found" }, 404);
-  }
+  const path = new URL(req.url).pathname.replace(/\/+$/, "");
+  if (req.method === "GET") return path.endsWith("/callback") ? callback(req, cfg) : json({ error: "not found" }, 404);
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  if (path.endsWith("/notify")) return notify(req);
 
   const jwt = bearerToken(req);
   if (!jwt) return json({ error: "sign in required" }, 401);

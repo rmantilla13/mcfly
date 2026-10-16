@@ -168,6 +168,8 @@ function CalendarRow({ account, row, actions }: { account: GoogleAccount; row: G
     });
   };
 
+  // "live": Google notifies McFly of changes (row.live, judged on the
+  // server); otherwise the calendar is read every 15 minutes.
   const status = row.source ? (
     <>
       {plural(row.source.event_count, "event")} ·{" "}
@@ -178,6 +180,7 @@ function CalendarRow({ account, row, actions }: { account: GoogleAccount; row: G
       ) : (
         "not read yet"
       )}
+      {row.live ? <> · live</> : null}
     </>
   ) : row.access_role === "freeBusyReader" ? (
     "Free/busy only: Google shows no titles for it"
@@ -199,6 +202,7 @@ function CalendarRow({ account, row, actions }: { account: GoogleAccount; row: G
         </div>
         <div className="text-[13px] text-muted-foreground">{status}</div>
         {row.source?.last_error ? <div className="text-[13px] text-destructive">{row.source.last_error}</div> : null}
+        {row.source?.watch_error ? <div className="text-[13px] text-muted-foreground">Every 15 minutes, not live: {row.source.watch_error}</div> : null}
         {problem ? <div className="text-[13px] text-destructive">{problem}</div> : null}
         {sync.result && !sync.result.ok ? <div className="text-[13px] text-destructive">{sync.result.error}</div> : null}
       </div>

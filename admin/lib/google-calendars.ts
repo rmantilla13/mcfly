@@ -13,10 +13,13 @@ export type GoogleCalendarRow = {
   primary: boolean;
   access_role: string | null;
   listed: boolean; // Google still lists it for the account
+  live: boolean; // Google notifies McFly of changes (a channel open past `now`)
   source: CalendarSource | null;
 };
 
-export function googleCalendarRows(account: GoogleAccount, listed: GoogleCalendar[] | null, sources: CalendarSource[]): GoogleCalendarRow[] {
+const watching = (s: CalendarSource | null, now: number) => !!s?.watch_expires_at && Date.parse(s.watch_expires_at) > now;
+
+export function googleCalendarRows(account: GoogleAccount, listed: GoogleCalendar[] | null, sources: CalendarSource[], now = Date.now()): GoogleCalendarRow[] {
   const mine = new Map<string, CalendarSource>();
   for (const s of sources) {
     if (s.kind === "google" && s.account_id === account.id && s.google_calendar_id) mine.set(s.google_calendar_id, s);
@@ -31,11 +34,12 @@ export function googleCalendarRows(account: GoogleAccount, listed: GoogleCalenda
       primary: c.primary,
       access_role: c.access_role,
       listed: true,
+      live: watching(source, now),
       source,
     };
   });
   for (const s of mine.values()) {
-    rows.push({ id: s.google_calendar_id!, name: s.name, color: s.color, primary: false, access_role: null, listed: false, source: s });
+    rows.push({ id: s.google_calendar_id!, name: s.name, color: s.color, primary: false, access_role: null, listed: false, live: watching(s, now), source: s });
   }
   // The account's own calendar first, then what's shown, then Google's order
   // (its own list, then the hidden ones; the sort is stable).

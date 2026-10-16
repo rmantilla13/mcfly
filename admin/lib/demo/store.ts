@@ -616,6 +616,7 @@ export function demoAddCalendarSource(name: string, url: string, color: string |
   s.calendarSources.push({
     id, name, host: new URL(link).host, color, enabled: true, last_synced_at: null, last_error: null, event_count: 0,
     created_at: new Date().toISOString(), kind: "ical", account_id: null, account_email: null, google_calendar_id: null,
+    watch_expires_at: null, watch_error: null,
   });
   audit("add_calendar_source", "calendar_source", id, { name });
   return id;
@@ -707,6 +708,7 @@ export function demoAddGoogleCalendar(accountId: string, calendarId: string, nam
   s.calendarSources.push({
     id, name: wanted, host: "calendar.google.com", color, enabled: true, last_synced_at: null, last_error: null, event_count: 0,
     created_at: new Date().toISOString(), kind: "google", account_id: accountId, account_email: account.email, google_calendar_id: calendarId,
+    watch_expires_at: null, watch_error: null,
   });
   audit("add_calendar_source", "calendar_source", id, { name: wanted, kind: "google", account: account.email });
   return id;

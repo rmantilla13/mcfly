@@ -6,11 +6,17 @@ import {
   emailFromIdToken,
   googleConfig,
   hasCalendarScope,
+  parseNotification,
   plainText,
   randomState,
   REVOKED_MESSAGE,
+  sameToken,
   shapeCalendarList,
+  shapeChannel,
   shapeEvents,
+  WATCH_DAYS,
+  watchRequest,
+  webhookAddress,
 } from "./google.ts";
 
 const cfg = { clientId: "id.apps.googleusercontent.com", clientSecret: "shh", redirectUri: "https://x.supabase.co/functions/v1/google-calendar/callback" };
@@ -151,4 +157,49 @@ Deno.test("what Google's refusals say, in under 300 characters", () => {
   assertEquals(apiMessage(500, { error: { status: "INTERNAL" } }), "Google answered 500 (INTERNAL)");
   assertEquals(apiMessage(502, "nope"), "Google answered 502");
   for (const m of [apiMessage(401, {}), apiMessage(403, {}), apiMessage(429, {}), REVOKED_MESSAGE]) assert(m.length <= 300);
+});
+
+Deno.test("the web hook address is the function's, or GOOGLE_WEBHOOK_URL", () => {
+  const env = (vars: Record<string, string>) => (n: string) => vars[n];
+  assertEquals(webhookAddress(env({ SUPABASE_URL: "https://ref.supabase.co/" })), "https://ref.supabase.co/functions/v1/google-calendar/notify");
+  assertEquals(webhookAddress(env({ SUPABASE_URL: "https://ref.supabase.co", GOOGLE_WEBHOOK_URL: " https://mcfly.bot/api/google/notify " })), "https://mcfly.bot/api/google/notify");
+  assertEquals(webhookAddress(env({ SUPABASE_URL: "https://ref.supabase.co", GOOGLE_WEBHOOK_URL: "http://mcfly.bot/x" })), null, "Google wants https");
+  assertEquals(webhookAddress(env({})), null);
+});
+
+Deno.test("the watch request names the channel, the token, the address and a week", () => {
+  const { url, body } = watchRequest("c_work@group.calendar.google.com", { address: "https://mcfly.bot/api/google/notify", channelId: "chan-1", token: "tok", now: 1_000 });
+  assertEquals(url, "https://www.googleapis.com/calendar/v3/calendars/c_work%40group.calendar.google.com/events/watch");
+  assertEquals(body, { id: "chan-1", type: "web_hook", address: "https://mcfly.bot/api/google/notify", token: "tok", expiration: String(1_000 + WATCH_DAYS * 86_400_000) });
+});
+
+Deno.test("Google's channel answer becomes a channel with an ISO expiry", () => {
+  assertEquals(shapeChannel({ kind: "api#channel", id: "chan-1", resourceId: "res-9", expiration: "1792170396956" }, { channelId: "chan-1" }), {
+    channelId: "chan-1",
+    resourceId: "res-9",
+    expiresAt: new Date(1792170396956).toISOString(),
+  });
+  assertEquals(shapeChannel({ resourceId: "res-9" }, { channelId: "mine", now: 0 })?.expiresAt, new Date(86_400_000).toISOString(), "no expiry: a day, to be renewed");
+  assertEquals(shapeChannel({ id: "chan-1" }, { channelId: "chan-1" }), null, "no resource, no channel");
+});
+
+Deno.test("a notification's headers", () => {
+  const h = new Headers({ "X-Goog-Channel-ID": "chan-1", "X-Goog-Resource-ID": "res-9", "X-Goog-Resource-State": "Exists", "X-Goog-Channel-Token": "tok", "X-Goog-Message-Number": "3" });
+  assertEquals(parseNotification(h), { channelId: "chan-1", resourceId: "res-9", state: "exists", token: "tok", messageNumber: 3 });
+  assertEquals(parseNotification(new Headers({ "X-Goog-Channel-ID": "sync-1", "X-Goog-Resource-State": "sync" }))?.state, "sync");
+  assertEquals(parseNotification(new Headers({})), null, "not from Google");
+});
+
+Deno.test("tokens compare in full", () => {
+  assert(sameToken("abc", "abc"));
+  assert(!sameToken("abc", "abd"));
+  assert(!sameToken("abc", "ab"));
+  assert(!sameToken("", ""));
+});
+
+Deno.test("a refused channel says why", () => {
+  assertStringIncludes(apiMessage(401, { error: { errors: [{ reason: "push.webhookUrlUnauthorized" }] } }), REVOKED_MESSAGE.slice(0, 20));
+  assertStringIncludes(apiMessage(400, { error: { errors: [{ reason: "push.webhookUrlUnauthorized" }] } }), "domain isn't verified");
+  assertStringIncludes(apiMessage(400, { error: { errors: [{ reason: "push.channelIdNotUnique" }] } }), "push.channelIdNotUnique");
+  assert(apiMessage(400, { error: { errors: [{ reason: "push.webhookUrlUnauthorized" }] } }).length <= 300);
 });

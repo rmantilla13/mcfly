@@ -824,6 +824,8 @@ export async function listCalendarSources(): Promise<CalendarSource[]> {
     account_id: c.account_id ?? null,
     account_email: c.account_email ?? null,
     google_calendar_id: c.google_calendar_id ?? null,
+    watch_expires_at: c.watch_expires_at ?? null,
+    watch_error: c.watch_error ?? null,
   }));
 }
 

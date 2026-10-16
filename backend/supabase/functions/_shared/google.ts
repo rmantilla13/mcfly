@@ -179,6 +179,11 @@ export function apiMessage(status: number, body: unknown): string {
   if (status === 429 || (status === 403 && /ratelimit|quota|RESOURCE_EXHAUSTED/i.test(reason))) {
     return "Google asked McFly to slow down; it will try again in 15 minutes";
   }
+  if (reason.startsWith("push.")) {
+    return reason === "push.webhookUrlUnauthorized"
+      ? "Google refused the notification channel (push.webhookUrlUnauthorized): the address's domain isn't verified for the Cloud project; docs/ADMIN.md, Instant updates"
+      : `Google refused the notification channel (${reason.slice(0, 60)})`;
+  }
   if (status === 403 || status === 404) return "Google doesn't show this calendar to the account anymore (unshared, or deleted)";
   return `Google answered ${status}${reason ? ` (${reason.slice(0, 60)})` : ""}`;
 }
@@ -358,4 +363,120 @@ export function shapeEvents(items: unknown[], opts: { color?: string | null } = 
     });
   }
   return out.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+}
+
+// ───────────────────────────── Push notifications ─────────────────────────────
+// Google tells a web hook when a calendar changes (events.watch), and
+// calendar-sync reads just that calendar. Channels last about a week.
+
+const DAY_MS = 86_400_000;
+export const WATCH_DAYS = 7; // asked for; Google may grant less
+export const RENEW_WITHIN_MS = 2 * DAY_MS; // renewed on the run that finds less than this left
+
+// Where Google sends notifications: this project's google-calendar function,
+// unless GOOGLE_WEBHOOK_URL names another https address. Google only accepts
+// an address whose domain is verified for the Cloud project, which a
+// supabase.co subdomain can't be; the console's /api/google/notify on a
+// domain of your own forwards here (docs/ADMIN.md, Instant updates).
+export function webhookAddress(env: (name: string) => string | undefined = (n) => Deno.env.get(n)): string | null {
+  const own = env("GOOGLE_WEBHOOK_URL")?.trim();
+  if (own) return /^https:\/\/[^/\s]+/i.test(own) ? own : null;
+  const base = (env("SUPABASE_URL") ?? "").trim().replace(/\/+$/, "");
+  return base ? `${base}/functions/v1/google-calendar/notify` : null;
+}
+
+export type WatchChannel = { channelId: string; resourceId: string; expiresAt: string };
+
+// The events.watch request for one calendar: a channel id of our choosing,
+// a token Google echoes back with every notification, and when to stop.
+export function watchRequest(
+  calendarId: string,
+  opts: { address: string; channelId: string; token: string; now?: number },
+): { url: string; body: Record<string, string> } {
+  const now = opts.now ?? Date.now();
+  return {
+    url: `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/watch`,
+    body: { id: opts.channelId, type: "web_hook", address: opts.address, token: opts.token, expiration: String(now + WATCH_DAYS * DAY_MS) },
+  };
+}
+
+async function apiPost(accessToken: string, url: string, body: unknown): Promise<{ ok: true; body: Record<string, unknown> } | ApiFailure> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return { ok: false, error: "couldn't reach Google", status: 0, revoked: false };
+  }
+  let answer: unknown = null;
+  try {
+    answer = await res.json();
+  } catch {
+    // 204, or not JSON.
+  }
+  if (!res.ok) return { ok: false, error: apiMessage(res.status, answer), status: res.status, revoked: res.status === 401 };
+  return { ok: true, body: isObject(answer) ? answer : {} };
+}
+
+// What Google's answer to events.watch becomes. `expiration` comes as
+// milliseconds since the epoch, in a string.
+export function shapeChannel(body: Record<string, unknown>, fallback: { channelId: string; now?: number }): WatchChannel | null {
+  const resourceId = typeof body.resourceId === "string" ? body.resourceId.trim() : "";
+  if (!resourceId) return null;
+  const channelId = typeof body.id === "string" && body.id ? body.id : fallback.channelId;
+  const ms = Number(body.expiration);
+  const expiresAt = Number.isFinite(ms) && ms > 0 ? new Date(ms) : new Date((fallback.now ?? Date.now()) + DAY_MS);
+  return { channelId: channelId.slice(0, 128), resourceId: resourceId.slice(0, 200), expiresAt: expiresAt.toISOString() };
+}
+
+export async function watchEvents(
+  accessToken: string,
+  calendarId: string,
+  opts: { address: string; channelId: string; token: string },
+): Promise<{ ok: true; channel: WatchChannel } | ApiFailure> {
+  const { url, body } = watchRequest(calendarId, opts);
+  const got = await apiPost(accessToken, url, body);
+  if (!got.ok) return got;
+  const channel = shapeChannel(got.body, { channelId: opts.channelId });
+  if (!channel) return { ok: false, error: "Google made the channel without saying which resource it watches", status: 200, revoked: false };
+  return { ok: true, channel };
+}
+
+// Tells Google to stop a channel (a renewed one's predecessor). Best effort.
+export async function stopChannel(accessToken: string, channel: { channelId: string; resourceId: string }): Promise<void> {
+  await apiPost(accessToken, `${CALENDAR_API}/channels/stop`, { id: channel.channelId, resourceId: channel.resourceId });
+}
+
+export type Notification = {
+  channelId: string;
+  resourceId: string;
+  state: string; // "sync" when the channel is new, "exists" when something changed
+  token: string;
+  messageNumber: number | null;
+};
+
+// The headers Google sets on a notification; null without a channel id.
+export function parseNotification(headers: { get(name: string): string | null }): Notification | null {
+  const channelId = (headers.get("x-goog-channel-id") ?? "").trim();
+  if (!channelId || channelId.length > 128) return null;
+  const number = Number(headers.get("x-goog-message-number"));
+  return {
+    channelId,
+    resourceId: (headers.get("x-goog-resource-id") ?? "").trim().slice(0, 200),
+    state: (headers.get("x-goog-resource-state") ?? "").trim().toLowerCase(),
+    token: (headers.get("x-goog-channel-token") ?? "").trim().slice(0, 128),
+    messageNumber: Number.isFinite(number) && number > 0 ? number : null,
+  };
+}
+
+// A channel's token against the one Google sent, in constant time.
+export function sameToken(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
