@@ -95,16 +95,22 @@ jobs:
       - name: Unit tests
         run: deno test
 
+  # On Debian Trixie, the Pi's own release, so the display is built and tested
+  # against the Qt the Pi runs (6.8). Ubuntu 24.04's Qt 6.4 is older than the
+  # QML needs.
   display:
     needs: changes
     if: needs.changes.outputs.display == 'true'
     runs-on: ubuntu-24.04
+    container: debian:trixie
     steps:
-      - uses: actions/checkout@v4
       - name: Install Qt 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          apt-get update
+          # The installer's Qt packages, and what the bare image lacks for the
+          # checkout and the kiosk tests (as in pi-install).
+          apt-get install -y --no-install-recommends \
+            sudo ca-certificates git curl procps \
             build-essential cmake \
             qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-websockets-dev qt6-qpa-plugins \
             qt6-shadertools-dev \
@@ -113,6 +119,7 @@ jobs:
             qml6-module-qtquick-shapes \
             qml6-module-qtquick-virtualkeyboard qt6-virtualkeyboard-plugin \
             fonts-inter
+      - uses: actions/checkout@v4
       - name: Build
         run: |
           cmake -S display -B build/display -DCMAKE_BUILD_TYPE=Release

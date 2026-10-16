@@ -4,10 +4,12 @@ project(mcfly-display VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Network Qml Quick Concurrent WebSockets ShaderTools)
+# 6.6 for Sparkline's curve renderer (Shape.preferredRendererType); the Pi runs
+# Debian Trixie's 6.8. With an older Qt the QML would build and then not load.
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Network Qml Quick Concurrent WebSockets ShaderTools)
 qt_standard_project_setup()
 # Qt 6.8+ (Raspberry Pi OS / Debian Trixie) warns unless this is set: give each
-# QML subfolder its own qmldir. Older Qt (6.4 on Ubuntu 24.04) doesn't know it.
+# QML subfolder its own qmldir. Qt 6.6 and 6.7 don't know it.
 if(QT_KNOWN_POLICY_QTP0004)
     qt_policy(SET QTP0004 NEW)
 endif()
@@ -164,7 +166,7 @@ install(TARGETS mcfly-display RUNTIME DESTINATION bin)
 install(PROGRAMS deploy/mcfly-system DESTINATION libexec)
 
 if(MCFLY_BUILD_TESTS)
-    find_package(Qt6 6.4 QUIET COMPONENTS Test)
+    find_package(Qt6 6.6 QUIET COMPONENTS Test)
     if(Qt6Test_FOUND)
         enable_testing()
         add_subdirectory(tests)
