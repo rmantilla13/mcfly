@@ -162,7 +162,7 @@ The display's design language (`display/qml/Theme.qml`), in `McFly/Theme`:
   (`Mood` in the kit: night 9:30 pm to 6:30 am, then morning until 11, day
   until 5 pm). Every colour in the app comes from `Theme`, so all of it moves
   together, easing over when the mood changes. With the system in dark mode
-  it's the display's warm near-black palette instead (its Settings → Dark
+  it's the display's black palette instead (its Settings → Dark
   mode). A night palette is dark even when the system is light, so the app
   sets its own colour scheme and reads the system's from the screen.
 - **GradientTile** is the display's shader (`display/shaders/gradienttile.frag`)

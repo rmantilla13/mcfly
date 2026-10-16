@@ -10,7 +10,7 @@ import McFly.Core
 // so a fade from amber to blue doesn't pass through grey.
 //
 // Settings → Dark mode (Device.darkMode, remembered) replaces that palette
-// with one warm near-black canvas, over the much shorter `themeFade`: it is
+// with one black canvas and neutral greys, over the much shorter `themeFade`: it is
 // a tap, and should answer like one. The accent stays the day blue.
 //
 // Layout comes from two measurements Main.qml makes of the window (see
@@ -52,10 +52,11 @@ Item {
             glow: ["#3B4FB8", "#7A64E8", "#A04E78", "#6B4A2A"]
         }
     })
-    // Warm near-black. Cards step up from the canvas; the accent is the day blue.
+    // True black with neutral greys (a warm near-black read brown). Cards step up
+    // from the canvas; the accent is the day blue. The Apple app's Palette.dark too.
     readonly property var darkPalette: ({
-        background: "#1C1814", surface: "#2A2420", surfaceAlt: "#342C26", sunken: "#3E362F",
-        text: "#F6F1EB", textMuted: "#B3A69C", divider: "#6B6056",
+        background: "#000000", surface: "#161618", surfaceAlt: "#202023", sunken: "#2A2A2E",
+        text: "#F4F4F5", textMuted: "#A1A1A8", divider: "#48484E",
         accent: "#4F7CF7", accentSoft: "#243056", danger: "#F2826B", warningInk: "#F2A93B",
         glow: ["#3B5BD4", "#C45A3A", "#C48A2E", "#8A7350"]
     })

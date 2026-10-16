@@ -8,8 +8,8 @@ import AppKit
 #endif
 
 // Design tokens: the display's (display/qml/Theme.qml). Four time-of-day
-// palettes (warm morning, clear day, violet evening, dim night) and the warm
-// near-black one for dark mode, all from the same names, so every screen
+// palettes (warm morning, clear day, violet evening, dim night) and a black
+// one for dark mode, all from the same names, so every screen
 // shifts together as the day goes on. `Appearance` picks the palette.
 enum Theme {
     static var palette: Palette { Appearance.shared.palette }
@@ -77,9 +77,10 @@ struct Palette: Equatable, Sendable {
                                text: 0xECEDEF, textMuted: 0x8F95A1, divider: 0x30333C,
                                accent: 0x8EA2FF, accentSoft: 0x2A3554, danger: 0xFF7B6B, warningInk: 0xF2A93B,
                                glow: [0x3B4FB8, 0x7A64E8, 0xA04E78, 0x6B4A2A], isDark: true)
-    /// Dark mode: warm near-black, cards a step up from the canvas, the day's blue accent.
-    static let dark = Palette(background: 0x1C1814, surface: 0x2A2420, surfaceAlt: 0x342C26, sunken: 0x3E362F,
-                              text: 0xF6F1EB, textMuted: 0xB3A69C, divider: 0x6B6056,
+    /// Dark mode: true black with neutral greys, cards a step up from the canvas, the
+    /// day's blue accent, as the display's (Theme.qml). A warm near-black read brown.
+    static let dark = Palette(background: 0x000000, surface: 0x161618, surfaceAlt: 0x202023, sunken: 0x2A2A2E,
+                              text: 0xF4F4F5, textMuted: 0xA1A1A8, divider: 0x48484E,
                               accent: 0x4F7CF7, accentSoft: 0x243056, danger: 0xF2826B, warningInk: 0xF2A93B,
                               glow: [0x3B5BD4, 0xC45A3A, 0xC48A2E, 0x8A7350], isDark: true)
 
@@ -93,7 +94,7 @@ struct Palette: Equatable, Sendable {
     }
 }
 
-/// Which palette is showing: the system's dark mode gets the warm dark one,
+/// Which palette is showing: the system's dark mode gets the black one,
 /// otherwise the time of day picks (the display's Settings → Dark mode and
 /// its moods). Views read it through `Theme`, so a change redraws them.
 ///

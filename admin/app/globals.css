@@ -148,23 +148,25 @@
 .dark {
   color-scheme: dark;
 
-  --background: #121214;
-  --foreground: #f3f2ef;
-  --card: #1e1e22;
-  --card-foreground: #f3f2ef;
-  --popover: #1e1e22;
-  --popover-foreground: #f3f2ef;
+  /* True black with neutral greys: the display's and the Apple app's dark
+     palette (Theme.qml darkPalette, Palette.dark). */
+  --background: #000000;
+  --foreground: #f4f4f5;
+  --card: #161618;
+  --card-foreground: #f4f4f5;
+  --popover: #161618;
+  --popover-foreground: #f4f4f5;
   --primary: #4f7cf7;
   --primary-foreground: #ffffff;
-  --secondary: #2f2f35;
-  --secondary-foreground: #f3f2ef;
-  --muted: #26262b;
-  --muted-foreground: #b8b5af;
+  --secondary: #2a2a2e;
+  --secondary-foreground: #f4f4f5;
+  --muted: #202023;
+  --muted-foreground: #a1a1a8;
   --accent: #252f52;
   --accent-foreground: #93acfb;
   --destructive: #ff8f86;
-  --border: #313137;
-  --input: #43434b;
+  --border: #2a2a2e;
+  --input: #3a3a40;
   --ring: #6e8ff9;
 
   --success: #6fd3a2;
@@ -178,13 +180,13 @@
   --chart-4: #3db37a;
   --chart-5: #8f7cf0;
 
-  --sidebar: #1e1e22;
-  --sidebar-foreground: #f3f2ef;
+  --sidebar: #161618;
+  --sidebar-foreground: #f4f4f5;
   --sidebar-primary: #4f7cf7;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #2f2f35;
-  --sidebar-accent-foreground: #f3f2ef;
-  --sidebar-border: #313137;
+  --sidebar-accent: #2a2a2e;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #2a2a2e;
   --sidebar-ring: #6e8ff9;
 }
 

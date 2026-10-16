@@ -238,8 +238,8 @@ private slots:
         clock.start();
         m_device.setDarkMode(true);
         QCOMPARE(theme()->property("paletteFade").toInt(), theme()->property("themeFade").toInt());
-        QVERIFY(background() != QColor("#1C1814"));   // eased, not cut
-        QTRY_COMPARE_WITH_TIMEOUT(background(), QColor("#1C1814"), 2000);
+        QVERIFY(background() != QColor("#000000"));   // eased, not cut
+        QTRY_COMPARE_WITH_TIMEOUT(background(), QColor("#000000"), 2000);
         QVERIFY2(clock.elapsed() < 1000, qPrintable(QString::number(clock.elapsed())));
         // Once it has settled, the next change is a mood's again.
         QTRY_COMPARE(theme()->property("paletteFade").toInt(), theme()->property("moodFade").toInt());

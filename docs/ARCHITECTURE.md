@@ -102,7 +102,7 @@ SystemController ─ Wi-Fi, speakers, restart, reboot (through a root helper)
 
 - **Time-of-day moods.** `DisplayController` publishes a mood (morning, day,
   evening, night); `Theme.qml` maps it to a palette and animates every
-  token. Settings → Dark mode swaps in a warm near-black palette.
+  token. Settings → Dark mode swaps in a black palette with neutral greys.
 - **Gradient tiles.** The highlight tiles (Home's brief, Markets' detail,
   the Calendar's day, the setup screen's field) are one shader pass: a
   pastel mesh gradient with drifting frosted-glass rings blurred into it
