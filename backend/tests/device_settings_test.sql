@@ -31,6 +31,9 @@ select tests.throws($$update devices set settings = '{"screensaver": "disco"}' w
 select tests.eq(tests.affected(format('update devices set last_seen_at = now() where id = %L', :'kitchen')), 1, 'check-in still works');
 -- The voice service's own wake word, as a display reports it (20261015000008).
 select tests.eq(device_update_settings('{"wakewordModel": "hey_mcfly"}') ->> 'wakewordModel', 'hey_mcfly', 'a display runs Hey McFly');
+-- The savers' backdrop (20261016000001).
+select tests.eq(device_update_settings('{"backdrop": "dawn"}') ->> 'backdrop', 'dawn', 'a sky for the savers');
+select tests.throws($$select device_update_settings('{"backdrop": "disco"}')$$, 'backdrop must be%', 'unknown backdrop');
 select tests.eq((select settings from devices where id = :'office'), null::jsonb, 'cannot see another display');
 
 select tests.login(:'stranger');

@@ -63,6 +63,24 @@ private slots:
         again.setCollageLayout(QStringLiteral("auto"));
     }
 
+    // Settings → Backdrop: the savers' sky stays across restarts; anything
+    // but the known names is refused, and the mesh is what every display
+    // showed before there was a choice.
+    void backdropDefaultsToMeshAndIsRemembered()
+    {
+        {
+            DisplayController device;
+            QCOMPARE(device.backdrop(), QStringLiteral("mesh"));
+            QCOMPARE(DisplayController::backdrops().first(), QStringLiteral("mesh"));
+            device.setBackdrop(QStringLiteral("dawn"));
+            device.setBackdrop(QStringLiteral("disco"));
+            QCOMPARE(device.backdrop(), QStringLiteral("dawn"));
+        }
+        DisplayController again;
+        QCOMPARE(again.backdrop(), QStringLiteral("dawn"));
+        again.setBackdrop(QStringLiteral("mesh"));
+    }
+
     // A playing video calls keepAwake(): it holds off the photo frame like a
     // touch would, but never wakes a screen that has already gone idle.
     void keepAwakeOnlyWhileAwake()

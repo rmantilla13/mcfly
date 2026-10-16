@@ -4,8 +4,9 @@ import QtQuick.Layouts
 import McFly
 import McFly.Core
 
-// A big clock, the date, the latest brief and a line of the markets on a
-// soft gradient in the time-of-day colours (deep and dim at night). The
+// A big clock, the date, the latest brief and a line of the markets on the
+// chosen backdrop (Settings → Backdrop: the soft gradient, or one of
+// Backdrop's skies) in the time-of-day colours (deep and dim at night). The
 // text moves a few pixels every minute, so nothing stays on the same pixels
 // all night.
 Item {
@@ -29,11 +30,30 @@ Item {
         }
     }
 
-    GradientTile {
+    // The backdrop (Device.backdrop): the mesh, or one of Backdrop's skies.
+    // Only the chosen one is built.
+    readonly property bool mesh: Device.backdrop === "mesh"
+    Loader {
         id: backdrop
         anchors.fill: parent
-        radius: 0
-        colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
+        sourceComponent: clock.mesh ? meshBackdrop : skyBackdrop
+        readonly property color ink: item ? item.ink : "#1D1B24"
+        readonly property color inkMuted: item ? item.inkMuted : "#4A4555"
+    }
+    Component {
+        id: meshBackdrop
+        GradientTile {
+            radius: 0
+            colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
+        }
+    }
+    Component {
+        id: skyBackdrop
+        Backdrop {
+            style: Device.backdrop
+            whileIdle: true
+            maxFps: 10
+        }
     }
 
     Column {

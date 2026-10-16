@@ -518,7 +518,7 @@ export function buildDemoState(now = Date.now()): DemoState {
 
   const devices: Device[] = [
     { id: uuid(), user_id: uuid(), name: "Kitchen wall", last_seen_at: minutes(2), created_at: days(40),
-      settings: { screensaver: "ambient", darkMode: false, animatedTiles: true, idleSeconds: 120, offAfterSeconds: 0, offAtNight: true,
+      settings: { screensaver: "ambient", backdrop: "mesh", darkMode: false, animatedTiles: true, idleSeconds: 120, offAfterSeconds: 0, offAtNight: true,
                   bedtime: 1320, wakeTime: 390, assistantProvider: "", speakReplies: true, wakeword: true } },
     { id: uuid(), user_id: uuid(), name: "Office", last_seen_at: days(3), created_at: days(9), settings: {} },
   ];

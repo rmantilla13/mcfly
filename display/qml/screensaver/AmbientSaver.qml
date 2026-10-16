@@ -6,9 +6,10 @@ import McFly.Core
 
 // The default screen saver: readable from across the room.
 //
-// The moving gradient fills the screen (it keeps animating while idle, at a
-// low frame rate, and stops when the panel goes off), with an aurora hanging
-// over it at night (AuroraGlow). On it: a big clock, the date, what's next
+// The backdrop fills the screen: Settings → Backdrop picks the moving
+// gradient with an aurora hanging over it at night (GradientTile, AuroraGlow)
+// or one of Backdrop's skies; it keeps animating while idle, at a low frame
+// rate, and stops when the panel goes off. On it: a big clock, the date, what's next
 // and what follows, and along the bottom a rail of cards from the feeds: the
 // latest brief, the markets, a blocked project, today's top story and the
 // rest of the day. With no feeds yet it is just the clock.
@@ -80,35 +81,63 @@ Item {
 
     // ---- The look.
 
-    GradientTile {
+    // The backdrop (Settings → Backdrop, Device.backdrop): the mesh is the
+    // moving gradient with an aurora hanging over it at night, as on the
+    // console's ambient view; the rest are skies of their own (Backdrop),
+    // light or dark with the night. Only the chosen one is built.
+    readonly property bool mesh: Device.backdrop === "mesh"
+    Loader {
         id: backdrop
         anchors.fill: parent
-        radius: 0
-        colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
-        dark: ambient.night
-        whileIdle: true
-        maxFps: 10
-        period: 72000
-        rings: 2
-        ringScale: 1.3
+        sourceComponent: ambient.mesh ? meshBackdrop : skyBackdrop
+        // What reads on it: the loaded backdrop's own pick.
+        readonly property color ink: item ? item.ink : "#1D1B24"
+        readonly property color inkMuted: item ? item.inkMuted : "#4A4555"
     }
-
-    // At night an aurora in the night glow hangs over the clock, as on the
-    // console's ambient view. It fades in and out with the night look; at
-    // night the screen saver is up for hours, so it runs small and slow.
-    AuroraGlow {
-        anchors.fill: parent
-        visible: opacity > 0
-        opacity: ambient.night ? 0.5 : 0
-        Behavior on opacity { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
-        lightMode: false
-        whileIdle: true
-        maxFps: 10
-        speed: 0.35
-        layers: 2
-        hem: 0.36
-        blend: 0.7
-        amplitude: 1.1
+    Component {
+        id: meshBackdrop
+        Item {
+            readonly property color ink: tile.ink
+            readonly property color inkMuted: tile.inkMuted
+            GradientTile {
+                id: tile
+                anchors.fill: parent
+                radius: 0
+                colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
+                dark: ambient.night
+                whileIdle: true
+                maxFps: 10
+                period: 72000
+                rings: 2
+                ringScale: 1.3
+            }
+            // At night an aurora in the night glow hangs over the clock. It
+            // fades in and out with the night look; at night the screen saver
+            // is up for hours, so it runs small and slow.
+            AuroraGlow {
+                anchors.fill: parent
+                visible: opacity > 0
+                opacity: ambient.night ? 0.5 : 0
+                Behavior on opacity { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
+                lightMode: false
+                whileIdle: true
+                maxFps: 10
+                speed: 0.35
+                layers: 2
+                hem: 0.36
+                blend: 0.7
+                amplitude: 1.1
+            }
+        }
+    }
+    Component {
+        id: skyBackdrop
+        Backdrop {
+            style: Device.backdrop
+            dark: ambient.night
+            whileIdle: true
+            maxFps: 10
+        }
     }
 
     readonly property color cardFill: night ? Qt.rgba(0.08, 0.08, 0.12, 0.55) : Qt.rgba(1, 1, 1, 0.86)

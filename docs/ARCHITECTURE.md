@@ -116,7 +116,13 @@ latest brief, the markets, a blocked project, today's top story, later
 events; the composition drifts every minute against burn-in), **Headlines**
 (today's stories one at a time, over their pictures, with the clock) or
 **Clock** (the time, the date, the latest brief and a
-line of the markets on the time-of-day gradient). Sleep turns the panel off
+line of the markets on the time-of-day gradient). Settings → Backdrop (or the
+console's Customize) picks what Ambient and Clock draw behind the words:
+**Mesh**, the moving gradient with an aurora hanging over it at night, or one
+of five skies of their own, **Arc**, **Ribbons**, **Dawn**, **Silk** and
+**Pillars** (`Backdrop.qml`: one shader each in the glow colours, laid on the
+canvas in OKLab so they are a wash by day and a glow at night, each run at the
+fraction of the screen its cost allows). Sleep turns the panel off
 on a schedule (Settings → Sleep).
 
 ## Assistant

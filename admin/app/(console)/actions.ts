@@ -421,6 +421,7 @@ export async function syncCalendarSourceAction(_prev: ActionResult, fd: FormData
 // ───────────────────────────── Display settings ─────────────────────────────
 
 const SAVERS = ["ambient", "clock", "headlines"] as const;
+const BACKDROPS = ["mesh", "arc", "ribbons", "dawn", "silk", "pillars"] as const;
 const WAKEWORDS = ["hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"] as const;
 const KOKORO_VOICES = ["af_heart", "af_bella", "am_michael", "am_fenrir"] as const;
 
@@ -435,10 +436,12 @@ export async function updateDeviceSettingsAction(_prev: ActionResult, fd: FormDa
   return mutate(async () => {
     const id = uuid(fd, "device_id");
     const saver = text(fd, "screensaver", 16);
+    const backdrop = text(fd, "backdrop", 16) || "mesh";
     const provider = text(fd, "assistantProvider", 16);
     const wake = text(fd, "wakewordModel", 16);
     const speed = Number(text(fd, "voiceSpeed", 8) || "1");
     if (!SAVERS.includes(saver as (typeof SAVERS)[number])) throw new DataError("Pick a screen saver.");
+    if (!BACKDROPS.includes(backdrop as (typeof BACKDROPS)[number])) throw new DataError("Pick a backdrop.");
     if (!["", "claude", "grok"].includes(provider)) throw new DataError("Pick who answers.");
     if (!WAKEWORDS.includes(wake as (typeof WAKEWORDS)[number])) throw new DataError("Pick a wake word.");
     const voice = text(fd, "voice", 16);
@@ -447,6 +450,7 @@ export async function updateDeviceSettingsAction(_prev: ActionResult, fd: FormDa
     const on = (name: string) => fd.get(name) === "true";
     const patch: DisplaySettings = {
       screensaver: saver as DisplaySettings["screensaver"],
+      backdrop: backdrop as DisplaySettings["backdrop"],
       darkMode: on("darkMode"),
       animatedTiles: on("animatedTiles"),
       idleSeconds: int(fd, "idleSeconds", 30, 3600, "Screen saver after"),

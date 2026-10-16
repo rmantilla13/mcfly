@@ -108,6 +108,23 @@ target_link_libraries(tst_dialogs PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
 add_test(NAME tst_dialogs COMMAND tst_dialogs)
 set_tests_properties(tst_dialogs PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# A sky backdrop (Backdrop.qml): what its shader is fed through the dusk,
+# against a stand-in DisplayController.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop
+    Theme.qml components/Backdrop.qml)
+qt_add_executable(tst_backdrop tst_backdrop.cpp)
+target_compile_options(tst_backdrop PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_backdrop PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop")
+target_link_libraries(tst_backdrop PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_shaders(tst_backdrop "backdrop_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/ribbons.frag
+          ${PROJECT_SOURCE_DIR}/shaders/dawn.frag ${PROJECT_SOURCE_DIR}/shaders/silk.frag
+          ${PROJECT_SOURCE_DIR}/shaders/pillars.frag)
+add_test(NAME tst_backdrop COMMAND tst_backdrop)
+set_tests_properties(tst_backdrop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # The settings bridge with a real DisplayController (no store, assistant or voice).
 qt_add_executable(tst_settingsbridge tst_settingsbridge.cpp
     ../src/models/SettingsBridge.h ../src/models/SettingsBridge.cpp

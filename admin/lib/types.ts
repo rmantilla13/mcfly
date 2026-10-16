@@ -261,10 +261,11 @@ export type Device = {
 };
 
 // A display's own settings, kept on the server so the console and the screen
-// edit the same thing (clean_device_settings: migrations 20261015000004 and
-// 20261015000008).
+// edit the same thing (clean_device_settings: migrations 20261015000004,
+// 20261015000008 and 20261016000001).
 export type DisplaySettings = Partial<{
   screensaver: "ambient" | "clock" | "headlines";
+  backdrop: "mesh" | "arc" | "ribbons" | "dawn" | "silk" | "pillars"; // behind Ambient and Clock: the gradient (an aurora at night), or a sky of its own
   darkMode: boolean;
   animatedTiles: boolean;
   idleSeconds: number;

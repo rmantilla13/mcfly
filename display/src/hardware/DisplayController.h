@@ -23,6 +23,10 @@ class DisplayController : public QObject
     Q_PROPERTY(bool hasBacklight READ hasBacklight CONSTANT)
     // Idle screen style: clock | headlines. Remembered across restarts.
     Q_PROPERTY(QString screensaver READ screensaver WRITE setScreensaver NOTIFY screensaverChanged)
+    // What Ambient and Clock draw behind the words: mesh (the moving gradient,
+    // an aurora over it at night) | arc | ribbons | dawn | silk | pillars
+    // (skies of their own, qml/components/Backdrop.qml). Remembered.
+    Q_PROPERTY(QString backdrop READ backdrop WRITE setBackdrop NOTIFY backdropChanged)
     // The collage's layout: auto (the next one each time the screen saver
     // starts) | classic | grid | mosaic | trio | columns. Remembered.
     Q_PROPERTY(QString collageLayout READ collageLayout WRITE setCollageLayout NOTIFY collageLayoutChanged)
@@ -56,6 +60,8 @@ public:
     bool hasBacklight() const { return !m_backlightPath.isEmpty(); }
     QString screensaver() const { return m_screensaver; }
     void setScreensaver(const QString &style);
+    QString backdrop() const { return m_backdrop; }
+    void setBackdrop(const QString &style);
     QString collageLayout() const { return m_collageLayout; }
     void setCollageLayout(const QString &layout);
     bool animatedTiles() const { return m_animatedTiles; }
@@ -91,6 +97,8 @@ public:
     // Whether minuteOfDay falls in [start, end), a window that may wrap past
     // midnight. An empty window (start == end) holds nothing.
     static bool inWindow(int minuteOfDay, int start, int end);
+    // The backdrops a display can show, mesh first.
+    static const QStringList &backdrops();
 
 signals:
     void idleChanged();
@@ -99,6 +107,7 @@ signals:
     void idleTimeoutChanged();
     void brightnessChanged();
     void screensaverChanged();
+    void backdropChanged();
     void collageLayoutChanged();
     void animatedTilesChanged();
     void darkModeChanged();
@@ -127,6 +136,7 @@ private:
     QString m_backlightPath; // /sys/class/backlight/<dev>
     int m_maxBacklight = 0;
     QString m_screensaver;
+    QString m_backdrop;
     QString m_collageLayout;
     bool m_animatedTiles = true;
     bool m_darkMode = false;

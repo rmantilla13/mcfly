@@ -57,6 +57,13 @@ DisplayController::DisplayController(QObject *parent) : QObject(parent)
     m_screensaver = qEnvironmentVariable("MCFLY_SCREENSAVER");
     if (m_screensaver.isEmpty())
         m_screensaver = QSettings().value("display/screensaver", "ambient").toString();
+    // MCFLY_BACKDROP likewise picks the savers' backdrop; a name this build
+    // doesn't know is the mesh.
+    m_backdrop = qEnvironmentVariable("MCFLY_BACKDROP");
+    if (m_backdrop.isEmpty())
+        m_backdrop = QSettings().value("display/backdrop", "mesh").toString();
+    if (!backdrops().contains(m_backdrop))
+        m_backdrop = QStringLiteral("mesh");
     m_collageLayout = QSettings().value("display/collageLayout", "auto").toString();
     m_animatedTiles = QSettings().value("display/animatedTiles", true).toBool();
     m_darkMode = QSettings().value("display/darkMode", false).toBool();
@@ -251,6 +258,21 @@ void DisplayController::setScreensaver(const QString &style)
     m_screensaver = style;
     QSettings().setValue("display/screensaver", style);
     emit screensaverChanged();
+}
+
+const QStringList &DisplayController::backdrops()
+{
+    static const QStringList styles{"mesh", "arc", "ribbons", "dawn", "silk", "pillars"};
+    return styles;
+}
+
+void DisplayController::setBackdrop(const QString &style)
+{
+    if (!backdrops().contains(style) || style == m_backdrop)
+        return;
+    m_backdrop = style;
+    QSettings().setValue("display/backdrop", style);
+    emit backdropChanged();
 }
 
 void DisplayController::setCollageLayout(const QString &layout)

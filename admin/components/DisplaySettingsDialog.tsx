@@ -18,6 +18,7 @@ import type { Device, DisplaySettings } from "@/lib/types";
 // here the same way. Defaults match the display's own.
 const DEFAULTS: Required<Omit<DisplaySettings, "volume">> = {
   screensaver: "ambient",
+  backdrop: "mesh",
   darkMode: false,
   animatedTiles: true,
   idleSeconds: 120,
@@ -112,6 +113,19 @@ export function DisplaySettingsDialog({ device, action }: { device: Device; acti
                   label="Screen saver"
                   value={s.screensaver}
                   options={[["ambient", "Ambient (clock and cards)"], ["headlines", "Headlines"], ["clock", "Clock"]]}
+                />
+                <Choice
+                  name="backdrop"
+                  label="Backdrop (Ambient and Clock)"
+                  value={s.backdrop}
+                  options={[
+                    ["mesh", "Mesh (gradient, an aurora at night)"],
+                    ["arc", "Arc (an aurora across the sky)"],
+                    ["ribbons", "Ribbons (thin curtains, folding)"],
+                    ["dawn", "Dawn (a horizon glow)"],
+                    ["silk", "Silk (satin folds)"],
+                    ["pillars", "Pillars (rays from the ground)"],
+                  ]}
                 />
                 <Choice
                   name="idleSeconds"

@@ -39,6 +39,7 @@ private slots:
         const QVariantMap sent = pushed.first().first().toMap();
         QCOMPARE(sent.value("screensaver").toString(), display.screensaver());
         QVERIFY(sent.contains("idleSeconds") && sent.contains("bedtime") && sent.contains("darkMode"));
+        QCOMPARE(sent.value("backdrop").toString(), display.backdrop());
         // An empty copy later (say, the admin cleared it) is not refilled.
         bridge.receive({});
         QCOMPARE(pushed.size(), 1);
@@ -53,8 +54,10 @@ private slots:
         server.insert("screensaver", "clock");
         server.insert("darkMode", true);
         server.insert("idleSeconds", 300.0);
+        server.insert("backdrop", "silk");
         bridge.receive(server);
         QCOMPARE(display.screensaver(), QStringLiteral("clock"));
+        QCOMPARE(display.backdrop(), QStringLiteral("silk"));
         QVERIFY(display.darkMode());
         QCOMPARE(display.idleTimeoutSec(), 300);
         QTest::qWait(1800);

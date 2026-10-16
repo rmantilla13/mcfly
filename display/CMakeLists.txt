@@ -97,6 +97,7 @@ qt_add_qml_module(mcfly-display
         qml/components/Glow.qml
         qml/components/GradientTile.qml
         qml/components/AuroraGlow.qml
+        qml/components/Backdrop.qml
         qml/components/SpectrumGlow.qml
         qml/components/Sparkline.qml
         qml/components/StoryCard.qml
@@ -160,6 +161,11 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/gradienttile.frag
         shaders/spectrumglow.frag
         shaders/aurora.frag
+        shaders/arc.frag
+        shaders/ribbons.frag
+        shaders/dawn.frag
+        shaders/silk.frag
+        shaders/pillars.frag
 )
 
 target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr

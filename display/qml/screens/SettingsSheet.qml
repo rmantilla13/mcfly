@@ -314,6 +314,39 @@ Popup {
                         }
                     }
 
+                    // What Ambient and Clock draw behind the words.
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("BACKDROP") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: backdropRows.implicitHeight
+                        radius: 24
+                        color: Theme.surfaceAlt
+                        ColumnLayout {
+                            id: backdropRows
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 18
+                            anchors.rightMargin: 18
+                            spacing: 0
+                            SettingRow {
+                                icon: "sparkle"
+                                title: qsTr("Backdrop")
+                                detail: qsTr("Behind the clock on Ambient and Clock: the drifting gradient, or a sky of its own")
+                            }
+                            ChipRow {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 68
+                                Layout.bottomMargin: 16
+                                chipHeight: 48
+                                model: [{ id: "mesh", label: qsTr("Mesh") }, { id: "arc", label: qsTr("Arc") },
+                                        { id: "ribbons", label: qsTr("Ribbons") }, { id: "dawn", label: qsTr("Dawn") },
+                                        { id: "silk", label: qsTr("Silk") }, { id: "pillars", label: qsTr("Pillars") }]
+                                current: Device.backdrop
+                                onPicked: id => Device.backdrop = id
+                            }
+                        }
+                    }
+
                     SectionLabel { Layout.topMargin: 12; text: qsTr("DISPLAY") }
                     Rectangle {
                         Layout.fillWidth: true
