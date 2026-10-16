@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var provider: AssistantProvider = .claude
     @State private var saving = false
     @State private var saved = false
+    @State private var locating = false
+    @State private var locationNote: LocationNote?
     @State private var voice = VoiceChoice.current
     @State private var sample = VoiceSpeaker()
 
@@ -41,6 +43,22 @@ struct SettingsView: View {
                 if !timezoneKnown {
                     Text("Not a known timezone. Use an identifier like America/Chicago.")
                         .font(.footnote).foregroundStyle(Theme.down)
+                }
+                Button {
+                    Task { await useLocation() }
+                } label: {
+                    HStack {
+                        Label(locating ? "Finding where you are…" : "Use my location", systemImage: "location.fill")
+                        if locating {
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(locating || saving)
+                if let locationNote {
+                    Text(locationNote.text)
+                        .font(.footnote).foregroundStyle(locationNote.isProblem ? Theme.down : Theme.muted)
                 }
                 Button {
                     Task { await save() }
@@ -115,6 +133,20 @@ struct SettingsView: View {
         }
     }
 
+    /// Fills the timezone from where this device is (LocationTimeZone); Save still writes it.
+    private func useLocation() async {
+        locating = true
+        locationNote = nil
+        defer { locating = false }
+        do {
+            let zone = try await LocationTimeZone().current()
+            timezone = zone.identifier
+            locationNote = LocationNote(text: "From your location.", isProblem: false)
+        } catch {
+            locationNote = LocationNote(text: error.localizedDescription, isProblem: true)
+        }
+    }
+
     private func save() async {
         saving = true
         saved = false
@@ -134,4 +166,9 @@ struct SettingsView: View {
             app.report(error)
         }
     }
+}
+
+private struct LocationNote: Equatable {
+    var text: String
+    var isProblem: Bool
 }

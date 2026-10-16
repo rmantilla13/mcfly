@@ -13,6 +13,7 @@
 		0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622F972CFB8950E0AADFBB67 /* QRScanner.swift */; };
 		193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */; };
 		1D76897E71772E824308AC19 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4DA5C7573FB6B6376939E2 /* SignInView.swift */; };
+		26860E70D015A3DC8D7DB83A /* LocationTimeZone.swift in Sources */ = {isa = PBXBuildFile; fileRef = AECB615DE9B1AD979C55C308 /* LocationTimeZone.swift */; };
 		28975B40DE863BBF61536D63 /* AuroraGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */; };
 		2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F63275D054EB81A93B798DB /* VoiceModeView.swift */; };
 		2F9CC99BDC049CCE870750F1 /* Backdrop.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4A026F1F0B42DA7FF3B1DBC9 /* Backdrop.metal */; };
@@ -79,6 +80,7 @@
 		9B3CBF241787C44CC8F35BEC /* McFlyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyKit; path = McFlyKit; sourceTree = SOURCE_ROOT; };
 		A11303012ABFF57EB16B68DE /* Backdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backdrop.swift; sourceTree = "<group>"; };
 		A9BAA4A7AC4466BEACD51860 /* GlanceTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlanceTiles.swift; sourceTree = "<group>"; };
+		AECB615DE9B1AD979C55C308 /* LocationTimeZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationTimeZone.swift; sourceTree = "<group>"; };
 		BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSpeaker.swift; sourceTree = "<group>"; };
 		BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		BE738AF4E2C80B5FC057D2B5 /* AuroraGlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = AuroraGlow.metal; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 				FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */,
 				F464976B7FC8D128061F1274 /* BackButtons.swift */,
 				08BAFC5D9C7398731AB90318 /* Config.swift */,
+				AECB615DE9B1AD979C55C308 /* LocationTimeZone.swift */,
 				F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */,
 				7BEA683B475142D05DCA8A58 /* WeatherModel.swift */,
 			);
@@ -324,6 +327,7 @@
 				F9F2D7C5D388A3C7E7A28FAA /* GradientTile.swift in Sources */,
 				A11321EF58D092CFB2367A76 /* HomeView.swift in Sources */,
 				58F6BDC147D23391C32EAA09 /* KokoroSpeaker.swift in Sources */,
+				26860E70D015A3DC8D7DB83A /* LocationTimeZone.swift in Sources */,
 				5E42F488FE1CD32F40926EBE /* MarketsView.swift in Sources */,
 				CAAA01B47BE2782961A8E827 /* McFlyApp.swift in Sources */,
 				855A1069A25AE4905144CA99 /* NewsView.swift in Sources */,

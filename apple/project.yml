@@ -63,7 +63,7 @@ targets:
         NSCameraUsageDescription: Scan the pairing code on your McFly display.
         NSMicrophoneUsageDescription: Talk to McFly instead of typing.
         NSSpeechRecognitionUsageDescription: Turn what you say to McFly into text, on this device.
-        NSLocationWhenInUseUsageDescription: Show today's weather where you are on Home. Only your approximate location is used, for the forecast.
+        NSLocationWhenInUseUsageDescription: Show today's weather where you are on Home, and set McFly's time zone from where you are in Settings. Only your approximate location is used.
         # Filled from Config/Signing.xcconfig (Local.xcconfig overrides).
         SupabaseURL: "$(SUPABASE_URL)"
         SupabaseAnonKey: "$(SUPABASE_ANON_KEY)"

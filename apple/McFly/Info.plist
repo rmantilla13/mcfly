@@ -40,7 +40,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © McFly. All rights reserved.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Show today's weather where you are on Home. Only your approximate location is used, for the forecast.</string>
+	<string>Show today's weather where you are on Home, and set McFly's time zone from where you are in Settings. Only your approximate location is used.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Talk to McFly instead of typing.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

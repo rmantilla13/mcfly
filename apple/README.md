@@ -146,7 +146,7 @@ says which.
 | **Projects** | `projects` with their `project_updates` embedded: a card per project with status, progress, summary, next step and the last update; detail with the update timeline (`admin_project_updates` for more of it). |
 | **Dashboards** | `dashboards`, one at a time with a chip row to switch: the `widgets` array rendered by type: metric, status, progress, list, text, chart. An unknown type shows as a placeholder rather than hiding the dashboard. |
 | **Calendar** | `events` from yesterday to two months out: a day list (agenda), and a week view. All-day and multi-day events sit on every day they span. |
-| **Settings** | Account email and Sign out, display name and timezone, **Answers from** (Claude or Grok, `assistant_provider`), all through `admin_get_settings` / `admin_update_settings`; app version, which speech engine this system uses. |
+| **Settings** | Account email and Sign out, display name and timezone (**Use my location** fills it from where the device is: one approximate position, the same the weather tile uses, turned into a zone by the system geocoder; Save still writes it), **Answers from** (Claude or Grok, `assistant_provider`), all through `admin_get_settings` / `admin_update_settings`; app version, which speech engine this system uses. |
 
 On the iPhone, Home, Briefs, Markets and News are tabs, the display's first
 four, and the rest (Projects, Dashboards, Calendar, Voice, Displays, Agents,

@@ -40,7 +40,10 @@
 			</array>
 		</dict>
 		<!-- Home's weather: the phone's approximate location goes to Open-Meteo
-		     for the forecast, rounded to about a kilometre, linked to no one. -->
+		     for the forecast, rounded to about a kilometre, linked to no one.
+		     Settings' "Use my location" turns the same approximate position into
+		     a time zone with the system geocoder; McFly stores the zone, not
+		     the position. -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeCoarseLocation</string>
