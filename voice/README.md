@@ -26,11 +26,11 @@ and keeps its models in `~/.local/share/mcfly-voice`.
 ## The wake word
 
 The default is "Hey McFly" (`hey_mcfly`), McFly's own model, trained for it
-and shipped in `mcfly_voice/wakewords/`. The web console's display settings
-switch between it and openWakeWord's built-ins (`hey_jarvis`, `alexa`,
-`hey_mycroft`, `hey_rhasspy`) while the service runs. To start with another
-one, or with a `.onnx` file of your own, set `wakeword.model` in
-`/etc/mcfly/voice.toml`, fetch it, and restart:
+and shipped in `mcfly_voice/wakewords/`. The display's settings sheet and the
+web console's display settings switch between it and openWakeWord's built-ins
+(`hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy`) while the service runs.
+To start with another one, or with a `.onnx` file of your own, set
+`wakeword.model` in `/etc/mcfly/voice.toml`, fetch it, and restart:
 
 ```toml
 [wakeword]

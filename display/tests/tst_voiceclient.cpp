@@ -155,6 +155,34 @@ private slots:
         QVERIFY(!set.contains("wakeword_model"));
     }
 
+    void wakewords()
+    {
+        // The settings sheet's chips: the service's wake words (config.py's
+        // BUILTIN_WAKEWORDS), McFly's own first, named as the About row names
+        // the one running. A chip sends a `set` with the wake word alone.
+        VoiceClient voice(url());
+        QStringList ids, labels;
+        for (const QVariant &word : voice.wakewords()) {
+            ids << word.toMap().value("id").toString();
+            labels << word.toMap().value("label").toString();
+        }
+        QCOMPARE(ids, (QStringList{"hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"}));
+        QCOMPARE(labels, (QStringList{"Hey McFly", "Hey Jarvis", "Alexa", "Hey Mycroft", "Hey Rhasspy"}));
+
+        voice.start();
+        QTRY_VERIFY(voice.available());
+        serverSend({{"type", "hello"}, {"version", "1"}, {"wakeword", true}, {"wakeword_name", "hey_jarvis"},
+                    {"tts", true}, {"stt", true}, {"voice", "af_heart"}, {"speed", 1.0}, {"wakeword_model", "hey_jarvis"}});
+        QTRY_COMPARE(voice.wakewordModel(), QStringLiteral("hey_jarvis"));
+        QCOMPARE(voice.wakewordLabel(), labels.at(1));
+        m_received.clear();
+        voice.setVoiceOptions({}, 0, QStringLiteral("hey_mcfly"));
+        QTRY_COMPARE(m_received.size(), 1);
+        QCOMPARE(m_received.first().keys(), (QStringList{"type", "wakeword_model"}));
+        QCOMPARE(m_received.first().value("type").toString(), QStringLiteral("set"));
+        QCOMPARE(m_received.first().value("wakeword_model").toString(), QStringLiteral("hey_mcfly"));
+    }
+
     void helloAtAnyTime()
     {
         // The service re-sends hello after `set` and when the mic comes or

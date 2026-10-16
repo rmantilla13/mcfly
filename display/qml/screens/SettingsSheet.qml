@@ -526,6 +526,46 @@ Popup {
                                     onToggled: on => Voice.setWakewordEnabled(on)
                                 }
                             }
+                            // Which one wakes it. The whole card's width, not under the
+                            // title like Backdrop's: five fit on a line that way at
+                            // 1280×800 and 1920×1080, and wrap rather than clip if not.
+                            // Not a ChipRow: a Flickable takes no touch outside its
+                            // edges, so its chips' 64 px targets stop at 48.
+                            Flow {
+                                visible: Voice.available
+                                Layout.fillWidth: true
+                                Layout.bottomMargin: 8
+                                spacing: 6
+                                Repeater {
+                                    model: Voice.wakewords
+                                    // A 48 px chip in a touch target's height, its own
+                                    // width: a TapHandler margin would reach across the
+                                    // gap, and a tap there would pick both neighbours.
+                                    delegate: Item {
+                                        id: wakeChip
+                                        required property var modelData
+                                        readonly property bool chosen: Voice.wakewordModel === modelData.id
+                                        width: wakeName.implicitWidth + 24
+                                        height: Theme.touchTarget
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width
+                                            height: 48
+                                            radius: 24
+                                            color: wakeChip.chosen ? Theme.accent : Theme.surface
+                                            Label {
+                                                id: wakeName
+                                                anchors.centerIn: parent
+                                                text: wakeChip.modelData.label
+                                                color: wakeChip.chosen ? Theme.accentInk : Theme.text
+                                                font.pixelSize: Theme.fontXs + 1
+                                                font.weight: Font.DemiBold
+                                            }
+                                        }
+                                        TapHandler { onTapped: Voice.setVoiceOptions("", 0, wakeChip.modelData.id) }
+                                    }
+                                }
+                            }
                             Rectangle { Layout.fillWidth: true; Layout.leftMargin: 68; height: 1; color: Theme.divider }
                             // Homestead's Kokoro voices, when the service speaks with Kokoro.
                             SettingRow {

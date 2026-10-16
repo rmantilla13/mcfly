@@ -180,7 +180,7 @@ defaults. The ones you're most likely to touch:
 | Setting | Default | When to change it |
 |---|---|---|
 | `wakeword.threshold` | `0.5` | Raise (0.6–0.7) if it wakes on TV chatter; lower (0.3–0.4) if it misses you |
-| `wakeword.model` / `name` | `hey_mcfly` | To start with another wake word: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` or a `.onnx` of your own. The web console's display settings switch between the named ones while it runs, and that choice wins over this setting |
+| `wakeword.model` / `name` | `hey_mcfly` | To start with another wake word: `hey_jarvis`, `alexa`, `hey_mycroft`, `hey_rhasspy` or a `.onnx` of your own. The display's settings sheet and the web console's display settings switch between the named ones while it runs, and that choice wins over this setting |
 | `vad.silence` | `0.7` s | Raise to 1.0 if it cuts people off mid-sentence |
 | `vad.aggressiveness` | `2` | 3 in a noisy kitchen (stricter about what counts as speech) |
 | `vad.no_speech` | `4.0` s | How long it waits for you to start after the wake word |
@@ -218,8 +218,8 @@ models, but it ships inside the package (`voice/mcfly_voice/wakewords/`,
 under 1 MB) instead of being downloaded: `--download-models` copies it into
 `~/.local/share/mcfly-voice/wakeword`, replacing an older copy, and the
 service falls back to the package's copy when that folder doesn't have one.
-The web console's display settings (Displays → Customize) switch a display
-between it and the built-ins.
+The display's settings sheet (gear → Settings) and the web console's display
+settings (Displays → Customize) switch a display between it and the built-ins.
 
 It was trained from synthetic speech, with no recordings, using
 [livekit-wakeword](https://github.com/livekit/livekit-wakeword) 0.3.0 on a

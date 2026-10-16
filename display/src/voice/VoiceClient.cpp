@@ -9,6 +9,28 @@ namespace {
 constexpr int kRetryMs = 5000;
 constexpr int kConnectTimeoutMs = 10000;
 const QStringList kStates{"idle", "listening", "transcribing", "speaking"};
+// The wake words a `set` may switch to, McFly's own first. The same list as
+// BUILTIN_WAKEWORDS in voice/mcfly_voice/config.py and the one
+// clean_device_settings allows (migration 20261015000008): change all three.
+const QStringList kWakewords{"hey_mcfly", "hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"};
+
+// "hey_jarvis", "hey_jarvis_v0.1" or "/etc/mcfly/hey_mcfly.onnx" -> "Hey Jarvis" / "Hey McFly"
+QString wakewordLabelFor(const QString &model)
+{
+    QString name = model.section('/', -1);
+    static const QRegularExpression ext(QStringLiteral("\\.(onnx|tflite)$"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression version(QStringLiteral("[_-]v\\d+(\\.\\d+)*$"));
+    name.remove(ext);
+    name.remove(version);
+    QStringList words = name.split(QRegularExpression(QStringLiteral("[_\\-\\s]+")), Qt::SkipEmptyParts);
+    for (QString &w : words) {
+        if (w.compare(QLatin1String("mcfly"), Qt::CaseInsensitive) == 0)
+            w = QStringLiteral("McFly");
+        else
+            w[0] = w.at(0).toUpper();
+    }
+    return words.join(' ');
+}
 } // namespace
 
 VoiceClient::VoiceClient(const QUrl &url, QObject *parent) : QObject(parent), m_url(url)
@@ -207,20 +229,16 @@ void VoiceClient::setSpeakReplies(bool on)
 
 QString VoiceClient::wakewordLabel() const
 {
-    // "hey_jarvis", "hey_jarvis_v0.1" or "/etc/mcfly/hey_mcfly.onnx" -> "Hey Jarvis" / "Hey McFly"
-    QString name = m_wakewordName.section('/', -1);
-    static const QRegularExpression ext(QStringLiteral("\\.(onnx|tflite)$"), QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression version(QStringLiteral("[_-]v\\d+(\\.\\d+)*$"));
-    name.remove(ext);
-    name.remove(version);
-    QStringList words = name.split(QRegularExpression(QStringLiteral("[_\\-\\s]+")), Qt::SkipEmptyParts);
-    for (QString &w : words) {
-        if (w.compare(QLatin1String("mcfly"), Qt::CaseInsensitive) == 0)
-            w = QStringLiteral("McFly");
-        else
-            w[0] = w.at(0).toUpper();
-    }
-    return words.join(' ');
+    return wakewordLabelFor(m_wakewordName);
+}
+
+QVariantList VoiceClient::wakewords() const
+{
+    // Named as the About row names the one running.
+    QVariantList out;
+    for (const QString &id : kWakewords)
+        out << QVariantMap{{"id", id}, {"label", wakewordLabelFor(id)}};
+    return out;
 }
 
 void VoiceClient::setAvailable(bool available)

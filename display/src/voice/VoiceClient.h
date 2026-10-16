@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
+#include <QVariant>
 #include <QWebSocket>
 
 // Connection to the on-device voice service (voice/, PLATFORM_SPEC.md §5):
@@ -36,6 +37,9 @@ class VoiceClient : public QObject
     Q_PROPERTY(QString voiceId READ voiceId NOTIFY infoChanged)
     Q_PROPERTY(qreal speechSpeed READ speechSpeed NOTIFY infoChanged)
     Q_PROPERTY(QString wakewordModel READ wakewordModel NOTIFY infoChanged)
+    // The wake words the service can switch to, McFly's own first, for the
+    // settings sheet's chips: [{ id: "hey_mcfly", label: "Hey McFly" }, …].
+    Q_PROPERTY(QVariantList wakewords READ wakewords CONSTANT)
     Q_PROPERTY(QString url READ urlString CONSTANT)
     // Read quick answers out loud (QSettings voice/speakReplies, default on).
     Q_PROPERTY(bool speakReplies READ speakReplies WRITE setSpeakReplies NOTIFY speakRepliesChanged)
@@ -60,6 +64,7 @@ public:
     QString voiceId() const { return m_voiceId; }
     qreal speechSpeed() const { return m_speechSpeed; }
     QString wakewordModel() const { return m_wakewordModel; }
+    QVariantList wakewords() const;
     QString urlString() const { return m_url.toString(); }
     bool speakReplies() const { return m_speakReplies; }
     void setSpeakReplies(bool on);
