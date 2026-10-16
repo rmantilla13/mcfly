@@ -13,6 +13,7 @@
 		0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622F972CFB8950E0AADFBB67 /* QRScanner.swift */; };
 		193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */; };
 		1D76897E71772E824308AC19 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4DA5C7573FB6B6376939E2 /* SignInView.swift */; };
+		28975B40DE863BBF61536D63 /* AuroraGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */; };
 		2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F63275D054EB81A93B798DB /* VoiceModeView.swift */; };
 		3D61DB160852C5DF5374EC79 /* VoiceGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */; };
 		403B2E4ACBFB949C7AF4FF38 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EE7599A570B363E70AC7B5 /* VoiceListener.swift */; };
@@ -33,6 +34,7 @@
 		A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */; };
 		A5DC78C3C4B30C2729DE9E2B /* McFlyVoice in Frameworks */ = {isa = PBXBuildFile; productRef = B37C6D5C0B3DDD4E7924D5D6 /* McFlyVoice */; };
 		A985F080DBDA85AE23C3019C /* VoiceHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B4EC30B75341278FB8D613 /* VoiceHubView.swift */; };
+		B882CD2C41CDB2417D425826 /* AuroraGlow.metal in Sources */ = {isa = PBXBuildFile; fileRef = BE738AF4E2C80B5FC057D2B5 /* AuroraGlow.metal */; };
 		B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A13A583CBDB5AED68797C8 /* BriefsView.swift */; };
 		BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 638567AD540315D470FEDD13 /* VoiceSession.swift */; };
 		C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */; };
@@ -59,6 +61,7 @@
 		39B4EC30B75341278FB8D613 /* VoiceHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceHubView.swift; sourceTree = "<group>"; };
 		4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardsView.swift; sourceTree = "<group>"; };
 		4EF7FF78E7284330ACF76157 /* GradientTile.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GradientTile.metal; sourceTree = "<group>"; };
+		57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraGlow.swift; sourceTree = "<group>"; };
 		622F972CFB8950E0AADFBB67 /* QRScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScanner.swift; sourceTree = "<group>"; };
 		638567AD540315D470FEDD13 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
 		78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGlow.swift; sourceTree = "<group>"; };
@@ -73,6 +76,7 @@
 		A9BAA4A7AC4466BEACD51860 /* GlanceTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlanceTiles.swift; sourceTree = "<group>"; };
 		BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSpeaker.swift; sourceTree = "<group>"; };
 		BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
+		BE738AF4E2C80B5FC057D2B5 /* AuroraGlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = AuroraGlow.metal; sourceTree = "<group>"; };
 		C368950BE03E7FDA21BEBCCC /* BuiltInVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInVoice.swift; sourceTree = "<group>"; };
 		CD54E0C04D537395BD4BAE32 /* McFlyVoice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyVoice; path = McFlyVoice; sourceTree = SOURCE_ROOT; };
 		D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -125,6 +129,8 @@
 		3D05ED827F94CC52AB1D22EB /* Theme */ = {
 			isa = PBXGroup;
 			children = (
+				BE738AF4E2C80B5FC057D2B5 /* AuroraGlow.metal */,
+				57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */,
 				4EF7FF78E7284330ACF76157 /* GradientTile.metal */,
 				8F02A671863D160CFB9F6500 /* GradientTile.swift */,
 				E28DF0EF62E7B6986374243A /* Theme.swift */,
@@ -292,6 +298,8 @@
 				803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */,
 				D5830A84293021B001D6DAC3 /* AmbientView.swift in Sources */,
 				C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */,
+				B882CD2C41CDB2417D425826 /* AuroraGlow.metal in Sources */,
+				28975B40DE863BBF61536D63 /* AuroraGlow.swift in Sources */,
 				B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */,
 				E79219A675B9992B901CDD27 /* BuiltInVoice.swift in Sources */,
 				07583609CE7B9BA6A8D782CB /* CalendarView.swift in Sources */,

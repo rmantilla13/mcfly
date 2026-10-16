@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The display's ambient screen saver (display/qml/screensaver/AmbientSaver.qml)
 /// full screen on the phone, for a stand or a nightstand: the moving
-/// gradient, a big clock, the date, what's next and what follows, and a rail
+/// gradient (with an aurora hanging over it at night, `AuroraGlow`, fading
+/// in), a big clock, the date, what's next and what follows, and a rail
 /// of cards from the feeds (the latest brief, the markets, a blocked
 /// project, today's top story, the rest of the day). With no feeds yet it is
 /// just the clock. The composition drifts a few points every minute, the
@@ -22,11 +23,21 @@ struct AmbientView: View {
             GeometryReader { geo in
                 let wide = geo.size.width > geo.size.height
                 GradientTile(colors: Theme.palette.glow, dark: night, radius: 0, ringScale: 1.3, period: 72, fps: 15) { tile in
-                    composition(now: now, tile: tile, night: night, wide: wide, size: geo.size)
-                        .padding(.horizontal, wide ? 48 : 28)
-                        .padding(.top, geo.safeAreaInsets.top + (wide ? 28 : 24))
-                        .padding(.bottom, geo.safeAreaInsets.bottom + 24)
-                        .offset(shift)
+                    ZStack(alignment: .topLeading) {
+                        // At night an aurora in the night glow hangs over the
+                        // clock, edge to edge and still while the rest drifts,
+                        // as on the display's saver. It ticks with the gradient.
+                        if night {
+                            AuroraGlow(lightMode: false, hem: 0.36, amplitude: 1.1, blend: 0.7, layers: 2,
+                                       opacity: 0.5, speed: 0.35, maxFps: 15)
+                                .transition(.opacity)
+                        }
+                        composition(now: now, tile: tile, night: night, wide: wide, size: geo.size)
+                            .padding(.horizontal, wide ? 48 : 28)
+                            .padding(.top, geo.safeAreaInsets.top + (wide ? 28 : 24))
+                            .padding(.bottom, geo.safeAreaInsets.bottom + 24)
+                            .offset(shift)
+                    }
                 }
                 .ignoresSafeArea()
             }
