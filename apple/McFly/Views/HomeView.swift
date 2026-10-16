@@ -12,9 +12,21 @@ import SwiftUI
 /// On iPhone and iPad the status bar tells the time, so the big clock gives
 /// its room to four glance tiles (`GlanceGrid`): what's next, the weather,
 /// what needs you and the top story.
+///
+/// Under them, **McFly noticed**: what stands out right now (`Insights`, the
+/// console's Today and the display's highlights), ranked, each opening what
+/// it is about and offering its question to Ask; a snap carousel on a phone,
+/// a grid with the first one wide where there's room. Over the Ask bar, the
+/// questions Home suggests (`Suggestions`). Both are worked out from one
+/// snapshot of the feeds each minute, and keyed by their ids, so a refresh
+/// moves only what changed.
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @State private var showAsk = false
+    /// The question an insight or a chip asked: set, it opens the answer page
+    /// that asks it (`feedQuestion`, as Dashboards and Projects ask theirs);
+    /// closing that page sets it back to nil.
+    @State private var askQuestion: String?
     @State private var showVoice = false
     @State private var showAmbient = Config.opensAmbient
     @State private var weather = WeatherModel(isDemo: Config.isDemo)
@@ -33,6 +45,11 @@ struct HomeView: View {
             let now = context.date
             let timeline = feeds.timeline(now: now)
             let tomorrow = feeds.tomorrow(now: now)
+            // One snapshot of the feeds for what stands out and what to ask.
+            let feed = feeds.snapshot
+            let insights = Insights.build(feed, now: now)
+            let questions = Suggestions.build(for: .home, feed, now: now, insights: insights)
+            let upNext = Timeline.upNext(feeds.events, now: now)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ClockHeader(now: now, greeting: Timeline.greeting(now: now, name: feeds.displayName),
@@ -44,18 +61,31 @@ struct HomeView: View {
                     }
                     #if os(iOS)
                     GlanceGrid(now: now, feeds: feeds, weather: weather)
+                    let shownProject = GlanceGrid.shownProject(feeds, now: now)
+                    let shownReport = GlanceGrid.shownReport(feeds, now: now)?.id
+                    let shownBrief = GlanceGrid.todaysAlerts(feeds, now: now).first?.id
                     #else
-                    if let event = Timeline.upNext(feeds.events, now: now) {
+                    if let event = upNext {
                         NavigationLink(value: event) { NextCard(event: event, now: now) }
                             .buttonStyle(PressableStyle())
+                            .homeRise(0)
                     }
                     if let project = feeds.blockedProjects.first {
                         NavigationLink(value: project) {
                             BlockedCard(project: project, others: feeds.blockedProjects.count - 1)
                         }
                         .buttonStyle(PressableStyle())
+                        .homeRise(1)
                     }
+                    let shownProject = feeds.blockedProjects.first
+                    // The Mac's Home has no Top story or Needs you tile.
+                    let shownReport: UUID? = nil
+                    let shownBrief: UUID? = nil
                     #endif
+                    NoticedSection(insights: Self.noticed(insights, upNext: upNext, shownProject: shownProject,
+                                                          shownReport: shownReport, shownBrief: shownBrief),
+                                   feed: feed, onAsk: ask)
+                    SuggestionChips(questions: questions, onAsk: ask)
                     AskBar(onAsk: { showAsk = true }, onTalk: { showVoice = true })
                     MarketsStrip(series: Array(feeds.series.prefix(6)))
                     DayHeading(title: "TODAY", note: Self.things(timeline.count))
@@ -124,10 +154,11 @@ struct HomeView: View {
             VoiceModeView()
                 .environment(app)
         }
-        .sheet(isPresented: $showAsk) {
-            AskSheet()
+        .voiceCover(isPresented: $showAsk) {
+            AskView()
                 .environment(app)
         }
+        .feedQuestion($askQuestion)
         #if os(iOS)
         .fullScreenCover(isPresented: $showAmbient) {
             AmbientView()
@@ -144,15 +175,60 @@ struct HomeView: View {
 
     /// "1 thing", "3 things": a day heading's count.
     static func things(_ count: Int) -> String { count == 1 ? "1 thing" : "\(count) things" }
+
+    /// Asks McFly a question from an insight or a chip: the answer page opens
+    /// with it as its heading and the answer streaming in under it. (The Ask
+    /// bar opens the Ask chat itself.)
+    private func ask(_ question: String) {
+        askQuestion = question
+    }
+
+    /// What stands out, less what the cards above already say (the display's
+    /// rule): the blocked project the Needs you tile or card shows, the event
+    /// that is up next and, on a phone, the story on the Top story tile and
+    /// the alert on the Needs you tile.
+    static func noticed(_ insights: [Insight], upNext: CalendarEvent?, shownProject: Project?,
+                        shownReport: UUID? = nil, shownBrief: UUID? = nil) -> [Insight] {
+        insights.filter { insight in
+            switch insight.target {
+            case .project(let id): return !(insight.kind == .blocked && id == shownProject?.id)
+            case .event(let id): return id != upNext?.id
+            case .report(let id): return id != shownReport
+            case .brief(let id): return id != shownBrief
+            default: return true
+            }
+        }
+    }
 }
 
-/// Where a timeline row or a glance tile goes: the story, the brief, the project or the event.
+/// Where a timeline row, a glance tile or an insight goes: the story, the
+/// brief, the project, the event, the board, the metric or the symbol.
 enum HomeRoute: Hashable {
     case story(NewsItem)
     case brief(Brief)
     case project(Project)
     case event(CalendarEvent)
+    case dashboard(Dashboard)
+    case metric(MetricSeries)
+    case symbol(QuoteSeries)
     case none
+
+    /// Where an insight leads, found in the snapshot it was built from; nil
+    /// when that is gone (the card then doesn't open anything).
+    init?(_ insight: Insight, in feed: FeedSnapshot) {
+        let found: HomeRoute?
+        switch insight.target {
+        case .project(let id): found = feed.projects.first { $0.id == id }.map(HomeRoute.project)
+        case .dashboard(let id): found = feed.dashboards.first { $0.id == id }.map(HomeRoute.dashboard)
+        case .metric(let key): found = feed.metrics.first { $0.key == key }.map(HomeRoute.metric)
+        case .event(let id): found = feed.events.first { $0.id == id }.map(HomeRoute.event)
+        case .symbol(let symbol): found = feed.quotes.first { $0.symbol == symbol }.map(HomeRoute.symbol)
+        case .brief(let id): found = feed.briefs.first { $0.id == id }.map(HomeRoute.brief)
+        case .report(let id): found = feed.reports.first { $0.id == id }?.hero.map(HomeRoute.story)
+        }
+        guard let found else { return nil }
+        self = found
+    }
 
     @MainActor
     init(_ item: TimelineItem, feeds: FeedStore) {
@@ -175,6 +251,9 @@ enum HomeRoute: Hashable {
         case .brief(let brief): BriefReaderView(brief: brief)
         case .project(let project): ProjectDetailView(project: project)
         case .event(let event): EventDetailView(event: event)
+        case .dashboard(let board): DashboardsView(board: board.id)
+        case .metric(let series): MetricDetailView(series: series)
+        case .symbol(let series): SymbolDetailView(series: series)
         case .none: EmptyView()
         }
     }
@@ -265,32 +344,44 @@ private struct ClockHeader: View {
     static func period(_ date: Date) -> String { Timeline.Clock().parts(date).ampm.uppercased() }
 }
 
-/// Up next (or on now), on the event's colour.
+/// Up next (or on now): the display's gradient tile in the event's colour,
+/// with the countdown ring on the right (the console's UpNextCard): over the
+/// last hour it fills toward the start, then shows how far the event has run.
 private struct NextCard: View {
     let event: CalendarEvent
     let now: Date
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Whether the card is on screen; its gradient rests once it's scrolled away.
+    @State private var visible = true
 
     var body: some View {
-        let color = event.color.map(Color.init(hex:)) ?? Theme.accent
-        VStack(alignment: .leading, spacing: 3) {
-            Text(heading)
-                .font(.system(size: 13, weight: .bold))
-                .tracking(1.3)
-                .foregroundStyle(.white.opacity(0.88))
-            Text(event.title)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-            Text([range, event.location ?? event.calendar].filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.system(size: 16))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
+        let base = event.color.map(Color.rgb(hex:)) ?? Theme.palette.accent
+        let countdown = Countdown(event: event, now: now)
+        GradientTile(base: base, rings: 1, seed: 2, fps: 15, active: visible) { tile in
+            HStack(spacing: 18) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(heading)
+                        .font(.system(size: 13, weight: .bold))
+                        .tracking(1.3)
+                        .foregroundStyle(tile.inkMuted)
+                    Text(event.title)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(tile.ink)
+                        .lineLimit(2)
+                    Text([range, event.location ?? event.calendar].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.system(size: 16))
+                        .foregroundStyle(tile.inkMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                HomeCountdownRing(countdown: countdown, ink: tile.ink, inkMuted: tile.inkMuted, size: 84, lineWidth: 7)
+            }
+            .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: countdown.mode)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .shadow(color: color.opacity(0.35), radius: 16, y: 8)
+        .shadow(color: Color(rgb: base).opacity(0.3), radius: 16, y: 8)
+        .homeOnScreen($visible)
         .accessibilityElement(children: .combine)
     }
 
@@ -310,7 +401,8 @@ private struct NextCard: View {
     }
 }
 
-/// The first blocked project, on a warm tint.
+/// The first blocked project, on a warm tint; its progress as a ring when
+/// the agent reports one (the console's NeedsYouCard).
 private struct BlockedCard: View {
     let project: Project
     let others: Int
@@ -318,10 +410,21 @@ private struct BlockedCard: View {
     var body: some View {
         let dark = Theme.palette.isDark
         HStack(spacing: 14) {
-            Circle()
-                .fill(Theme.coral.opacity(0.22))
-                .frame(width: 40, height: 40)
-                .overlay(Image(systemName: "exclamationmark").font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.danger))
+            if let progress = project.progress {
+                HomeRing(value: Double(progress) / 100, color: Theme.danger, track: Theme.danger.opacity(0.16), lineWidth: 5,
+                         label: "\(project.name): \(progress)% done") {
+                    Text("\(progress)%")
+                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Theme.text)
+                        .contentTransition(.numericText(value: Double(progress)))
+                }
+                .frame(width: 46, height: 46)
+            } else {
+                Circle()
+                    .fill(Theme.coral.opacity(0.22))
+                    .frame(width: 40, height: 40)
+                    .overlay(Image(systemName: "exclamationmark").font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.danger))
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(others > 0 ? "\(project.name) and \(others) more are blocked" : "\(project.name) is blocked")
                     .font(.system(size: 17, weight: .semibold))
@@ -390,6 +493,322 @@ private struct AskBar: View {
     }
 }
 
+// MARK: What McFly noticed
+
+/// "McFly noticed": what stands out right now, ranked (`Insights`, the
+/// console's InsightsStrip). Each card opens what it is about, and its
+/// question asks McFly. On a phone the cards are a carousel that snaps card
+/// by card with the next one peeking in; with room (iPad, the Mac) a grid,
+/// the first card across the top and an odd one out at the end across its
+/// row. Cards are keyed by the insight's id: a refresh that keeps one keeps
+/// its card, a new one rises in, the rest slide over.
+private struct NoticedSection: View {
+    let insights: [Insight]
+    let feed: FeedSnapshot
+    let onAsk: (String) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
+    /// The section's width; 0 until it's known, and the grid takes two
+    /// columns till then (what a Mac window or an iPad has).
+    @State private var width: CGFloat = 0
+
+    private var wide: Bool {
+        #if os(iOS)
+        sizeClass == .regular
+        #else
+        true
+        #endif
+    }
+
+    /// Two cards to a row, one in a narrow Mac window, where two would cut
+    /// their words to a few letters.
+    private var columns: Int { width > 0 && width < 520 ? 1 : 2 }
+
+    var body: some View {
+        if !insights.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                DayHeading(title: "MCFLY NOTICED", note: "", systemImage: "sparkles")
+                Group {
+                    if insights.count == 1 {
+                        card(insights[0], rank: 0)
+                    } else if wide {
+                        grid
+                    } else {
+                        carousel
+                    }
+                }
+                .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: insights.map(\.id))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        }
+    }
+
+    private func card(_ insight: Insight, rank: Int) -> some View {
+        InsightCard(insight: insight, lead: rank == 0, route: HomeRoute(insight, in: feed), onAsk: onAsk)
+            .homeRise(rank)
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
+
+    /// One card a snap, the next one peeking in from the edge.
+    private var carousel: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(Array(insights.enumerated()), id: \.element.id) { rank, insight in
+                    card(insight, rank: rank)
+                        .containerRelativeFrame(.horizontal) { length, _ in max(220, length - 34) }
+                        .frame(maxHeight: .infinity)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+        .scrollClipDisabled()
+        .safeAreaPadding(.horizontal, Theme.page)
+        .padding(.horizontal, -Theme.page)
+    }
+
+    /// Two to a row: the first across the top, an odd one out at the end
+    /// across its row. Each row is as tall as its taller card. (Rows of
+    /// stacks, not a Grid: a Grid sizes its rows before the words wrap.)
+    /// One to a row when narrow.
+    private var grid: some View {
+        VStack(spacing: 12) {
+            ForEach(Self.rows(insights.count, columns: columns), id: \.self) { row in
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(row.map { insights[$0] }) { insight in
+                        card(insight, rank: insights.firstIndex { $0.id == insight.id } ?? 0)
+                            .frame(maxHeight: .infinity)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// [[0], [1, 2], [3, 4]], [[0], [1, 2], [3]]: the ranks on each row;
+    /// [[0], [1], [2]] in one column.
+    static func rows(_ count: Int, columns: Int = 2) -> [[Int]] {
+        guard count > 0 else { return [] }
+        guard columns > 1 else { return (0..<count).map { [$0] } }
+        var rows: [[Int]] = [[0]]
+        var rank = 1
+        while rank < count {
+            rows.append(rank + 1 < count ? [rank, rank + 1] : [rank])
+            rank += 2
+        }
+        return rows
+    }
+}
+
+/// One thing McFly noticed: its icon on its colour, what it is and a line
+/// more, then its question. The card opens what it is about; the question is
+/// a button of its own under it, never inside the link. The first card is a
+/// little larger, on a wash of its colour.
+private struct InsightCard: View {
+    let insight: Insight
+    let lead: Bool
+    let route: HomeRoute?
+    let onAsk: (String) -> Void
+
+    var body: some View {
+        let tint = Self.tint(insight)
+        let shape = RoundedRectangle(cornerRadius: Theme.radiusSm + 4, style: .continuous)
+        VStack(alignment: .leading, spacing: 0) {
+            if let route {
+                NavigationLink(value: route) { summary(tint) }
+                    .buttonStyle(PressableStyle())
+            } else {
+                summary(tint)
+            }
+            if !insight.question.isEmpty {
+                Button { onAsk(insight.question) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.accent)
+                        Text(insight.question)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Theme.text)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(Theme.accentSoft, in: Capsule())
+                    // A touch target taller than the pill.
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel("Ask McFly: \(insight.question)")
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            shape.fill(Theme.surface)
+            if lead { shape.fill(tint.wash.opacity(Theme.palette.isDark ? 0.12 : 0.09)) }
+        }
+    }
+
+    private func summary(_ tint: (glyph: Color, wash: Color)) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: insight.systemImage)
+                .font(.system(size: lead ? 17 : 15, weight: .semibold))
+                .foregroundStyle(tint.glyph)
+                .frame(width: lead ? 40 : 36, height: lead ? 40 : 36)
+                .background(tint.wash.opacity(Theme.palette.isDark ? 0.26 : 0.16), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(insight.title)
+                    .font(.system(size: lead ? 17 : 16, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                if !insight.detail.isEmpty {
+                    Text(insight.detail)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.muted)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .padding(.top, lead ? 1 : 0)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, insight.question.isEmpty ? 14 : 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The insight's colour (the display's), for the glyph and its wash. The
+    /// warning amber is too light for a glyph on a light card: its ink instead.
+    static func tint(_ insight: Insight) -> (glyph: Color, wash: Color) {
+        if insight.colorHex.caseInsensitiveCompare(Insights.warnHex) == .orderedSame {
+            return (Theme.warningInk, Theme.amber)
+        }
+        let color = Color(hex: insight.colorHex)
+        return (color, color)
+    }
+}
+
+/// Questions to ask in one tap (`Suggestions`: Home's own, "Summarize my
+/// day", first, then what the feeds raise), over the Ask bar as on the
+/// display. A row that scrolls on a phone; where there's room, they wrap.
+private struct SuggestionChips: View {
+    let questions: [String]
+    let onAsk: (String) -> Void
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
+
+    private var wide: Bool {
+        #if os(iOS)
+        sizeClass == .regular
+        #else
+        true
+        #endif
+    }
+
+    var body: some View {
+        if !questions.isEmpty {
+            Group {
+                if wide {
+                    ChipFlow(spacing: 8) { chips }
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) { chips }
+                    }
+                    .scrollClipDisabled()
+                    .safeAreaPadding(.horizontal, Theme.page)
+                    .padding(.horizontal, -Theme.page)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Suggested questions")
+        }
+    }
+
+    private var chips: some View {
+        ForEach(Array(questions.enumerated()), id: \.element) { index, question in
+            Button { onAsk(question) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                    Text(question)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 40)
+                .background(Theme.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.divider, lineWidth: 1))
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityLabel("Ask McFly: \(question)")
+            .homeRise(index)
+        }
+    }
+}
+
+/// Lays chips out in rows, wrapping where the next one wouldn't fit.
+private struct ChipFlow: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let width = rows.map { $0.width }.max() ?? 0
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for (index, size) in row.items {
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var items: [(Int, CGSize)] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for index in subviews.indices {
+            var size = subviews[index].sizeThatFits(.unspecified)
+            size.width = min(size.width, width)
+            if !row.items.isEmpty && row.width + spacing + size.width > width {
+                rows.append(row)
+                row = Row()
+            }
+            row.width += (row.items.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.items.append((index, size))
+        }
+        if !row.items.isEmpty { rows.append(row) }
+        return rows
+    }
+}
+
 /// The markets in one strip: symbol and change, a tap for the detail.
 private struct MarketsStrip: View {
     let series: [QuoteSeries]
@@ -425,22 +844,34 @@ private struct MarketsStrip: View {
     }
 }
 
-/// "TODAY ──── 11 things", "TOMORROW ──── Friday · 2 things": a day's heading over its rows.
+/// "TODAY ──── 11 things", "TOMORROW ──── Friday · 2 things": a day's heading
+/// over its rows; "✦ MCFLY NOTICED ────" over the insights.
 private struct DayHeading: View {
     let title: String
     let note: String
+    var systemImage: String?
 
     var body: some View {
         HStack(spacing: 10) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                    .padding(.trailing, -4)
+                    .accessibilityHidden(true)
+            }
             Text(title)
                 .font(.system(size: 13, weight: .bold))
                 .tracking(1.6)
                 .foregroundStyle(Theme.muted)
+                .accessibilityAddTraits(.isHeader)
             Rectangle().fill(Theme.divider).frame(height: 1)
-            Text(note)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.muted)
-                .lineLimit(1)
+            if !note.isEmpty {
+                Text(note)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+            }
         }
         .padding(.top, 6)
     }

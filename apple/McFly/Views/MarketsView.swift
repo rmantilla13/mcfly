@@ -94,7 +94,7 @@ struct MetricTile: View {
     var body: some View {
         let m = series.latest
         let delta = m.deltaPct ?? m.delta
-        let color = Color.metricChange(delta, key: series.key)
+        let color = Color.metricChange(delta, key: series.key, unit: m.unit)
         VStack(alignment: .leading, spacing: 6) {
             Text(series.label)
                 .font(.caption.weight(.semibold))
@@ -164,10 +164,12 @@ struct MetricDetailView: View {
 }
 
 extension Color {
-    /// A delta's color: up is green unless the metric is one where down is good (latency, errors, open orders).
-    static func metricChange(_ value: Double?, key: String) -> Color {
+    /// A delta's color: green when the move is good news, which for latency,
+    /// error rates, cost and the like is down (McFlyKit's `goodDirection`, as
+    /// the display and the console read it).
+    static func metricChange(_ value: Double?, key: String, unit: String?) -> Color {
         guard let value, value != 0 else { return Theme.muted }
-        return (value > 0) != MetricSeries.lowerIsBetter(key) ? Theme.up : Theme.down
+        return (value > 0) == (goodDirection(unit: unit, key: key) == .up) ? Theme.up : Theme.down
     }
 }
 
@@ -181,7 +183,7 @@ private extension MetricSeries {
     var isGoodNews: Bool {
         let m = latest
         let move = m.delta ?? m.deltaPct ?? (history.count > 1 ? m.value - history[1].value : 0)
-        return move == 0 || (move > 0) != Self.lowerIsBetter(key)
+        return move == 0 || (move > 0) == (goodDirection(unit: m.unit, key: key) == .up)
     }
 }
 

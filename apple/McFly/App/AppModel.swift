@@ -189,7 +189,8 @@ final class AppModel {
         }
         let feeds = feeds
         return { message, mode, _, provider, onEvent in
-            let reply = Self.demoReply(to: message, mode: mode, feeds: feeds, provider: provider)
+            let reply = mode == .read ? Self.demoReadReply(feeds: feeds, provider: provider)
+                : Self.demoReply(to: message, mode: mode, feeds: feeds, provider: provider)
             for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
                 try await Task.sleep(for: .milliseconds(45))
                 onEvent(.delta(String(word) + " "))
@@ -221,6 +222,49 @@ final class AppModel {
             return mode == .quick ? "From \(brief.title): \(summary)" : "Here's the latest brief, \(brief.title).\n\n\(brief.body)"
         }
         return "This is the demo. Connect a Supabase project to talk to the real McFly."
+    }
+
+    /// The full-screen Ask's answer in the demo, shaped as the real one is:
+    /// the headline, then headings, a table, bold figures and lists, from the feeds.
+    private static func demoReadReply(feeds: FeedStore, provider: AssistantProvider?) -> String {
+        var lead = "Here's where everything stands, from your feeds" + (provider == .grok ? " (Grok, in the demo)." : ".")
+        if let blocked = feeds.blockedProjects.first { lead += " **\(blocked.name)** is blocked and needs you first." }
+        var parts = [lead]
+        let series = feeds.series.prefix(5)
+        if !series.isEmpty {
+            parts.append("### Markets")
+            parts.append((["| Symbol | Price | Today |", "|:--|--:|--:|"] + series.map { s in
+                let q = s.latest
+                return "| **\(s.symbol)** | \(Format.price(q.price, currency: q.currency)) | \(Format.change(q.change, pct: q.changePct)) |"
+            }).joined(separator: "\n"))
+        }
+        let projects = feeds.projectsByAttention.prefix(4)
+        if !projects.isEmpty {
+            parts.append("### Projects")
+            parts.append((["| Project | Status | Next step |", "|:--|:--|:--|"] + projects.map { p in
+                "| \(p.name) | \(p.status.label) | \(p.nextStep ?? "Nothing planned yet") |"
+            }).joined(separator: "\n"))
+        }
+        let blocked = feeds.blockedProjects
+        if !blocked.isEmpty {
+            parts.append("### Needs you")
+            parts.append(blocked.map { p in
+                "- **\(p.name)** is blocked" + (p.nextStep.map { ": \($0)" } ?? ".")
+            }.joined(separator: "\n"))
+        }
+        let events = feeds.upcomingEvents(limit: 3)
+        if !events.isEmpty {
+            parts.append("### Coming up")
+            parts.append(events.enumerated().map { i, e in
+                "\(i + 1). **\(Format.dayLabel(e.startsAt)), \(Format.time(e.startsAt))**: \(e.title)"
+            }.joined(separator: "\n"))
+        }
+        if let brief = feeds.latestBrief {
+            parts.append("### From the latest brief")
+            parts.append("> " + BriefText.summary(brief.body))
+        }
+        parts.append("This is the demo. Connect a Supabase project to ask the real McFly.")
+        return parts.joined(separator: "\n\n")
     }
 
     func report(_ error: Error) {

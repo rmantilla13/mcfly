@@ -10,6 +10,9 @@ import SwiftUI
 /// project, today's top story, the rest of the day). With no feeds yet it is
 /// just the clock. The composition drifts a few points every minute, the
 /// screen stays awake, and a tap anywhere goes back.
+///
+/// Under the date, what McFly noticed (`Insights`, as on the console's
+/// ambient view) turns over one line at a time, cross-fading every 12 s.
 struct AmbientView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -103,6 +106,23 @@ struct AmbientView: View {
 
     private enum Card: Hashable { case brief, markets, blocked, pulse, later }
 
+    /// What McFly noticed, less what the screen already says: the event the
+    /// next line names, and the brief, the blocked project and the Pulse on
+    /// the rail's cards.
+    private func noticed(now: Date, events: [CalendarEvent], shown: [Card]) -> [Insight] {
+        let brief = shown.contains(.brief) ? feeds.latestBrief?.id : nil
+        let report = shown.contains(.pulse) ? feeds.todaysReport(now: now)?.id : nil
+        return HomeView.noticed(feeds.insights(now: now), upNext: events.first,
+                                shownProject: shown.contains(.blocked) ? feeds.blockedProjects.first : nil)
+            .filter { insight in
+                switch insight.target {
+                case .brief(let id): return id != brief
+                case .report(let id): return id != report
+                default: return true
+                }
+            }
+    }
+
     private func cards(_ events: [CalendarEvent], now: Date) -> [Card] {
         var list: [Card] = []
         if feeds.latestBrief != nil { list.append(.brief) }
@@ -137,6 +157,9 @@ struct AmbientView: View {
             Text(now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                 .font(.system(size: 26))
                 .foregroundStyle(tile.ink)
+            // Built once a minute, with the clock; the line turns on its own.
+            NoticedLine(insights: noticed(now: now, events: events, shown: shown), now: now, ink: tile.ink, wide: wide)
+                .padding(.top, 10)
             if let next = nextLine(events, now: now) {
                 Text(next)
                     .font(.system(size: 24, weight: .semibold))
@@ -264,6 +287,47 @@ struct AmbientView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(card == .blocked && !night ? Color(rgb: 0xFFE7DF) : style.fill, in: shape)
         .clipShape(shape)
+    }
+
+    /// What McFly noticed, one line at a time: every line is there, stacked,
+    /// and only the one whose turn it is shows, so the composition never
+    /// moves as they change. The turn follows the clock (12 s each); with
+    /// Reduce Motion on, the lines change without the fade.
+    private struct NoticedLine: View {
+        let insights: [Insight]
+        let now: Date
+        let ink: Color
+        let wide: Bool
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        static let turn: TimeInterval = 12
+
+        var body: some View {
+            if !insights.isEmpty {
+                // Turns on the clock's 12 s marks, counted from the minute (one of them).
+                let minute = Date(timeIntervalSinceReferenceDate: (now.timeIntervalSinceReferenceDate / 60).rounded(.down) * 60)
+                TimelineView(.periodic(from: minute, by: Self.turn)) { context in
+                    let current = Int(context.date.timeIntervalSinceReferenceDate / Self.turn) % insights.count
+                    ZStack(alignment: .leading) {
+                        ForEach(Array(insights.enumerated()), id: \.element.id) { index, insight in
+                            HStack(spacing: 10) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: wide ? 18 : 16, weight: .semibold))
+                                Text(insight.title)
+                                    .lineLimit(1)
+                            }
+                            .font(.system(size: wide ? 22 : 19, weight: .medium))
+                            .foregroundStyle(ink)
+                            .opacity(index == current ? 0.82 : 0)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("McFly noticed: \(insight.title)")
+                            .accessibilityHidden(index != current)
+                        }
+                    }
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 1.4), value: current)
+                }
+            }
+        }
     }
 
     private struct Kicker: View {

@@ -230,7 +230,10 @@ struct Sparkline: View {
     }
 }
 
-/// Plain text with light markdown: `- ` bullets as rows, inline emphasis.
+/// Plain text with light markdown: `- ` bullets as rows, inline emphasis
+/// through the kit's `Markdown.inline`. Never a link: Voice's answers and the
+/// Boards text widget come from what agents push, so a link keeps its words
+/// and loses its address.
 struct MarkdownText: View {
     let text: String
 
@@ -242,10 +245,10 @@ struct MarkdownText: View {
                 } else if let bullet = Self.bullet(line) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
-                        Text(Self.inline(bullet))
+                        Text(Markdown.inline(bullet))
                     }
                 } else {
-                    Text(Self.inline(line))
+                    Text(Markdown.inline(line))
                 }
             }
         }
@@ -260,10 +263,191 @@ struct MarkdownText: View {
         }
         return nil
     }
+}
 
-    private static func inline(_ line: String) -> AttributedString {
-        (try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(line)
+/// An answer from the full-screen Ask, set for reading: `Markdown` in the kit
+/// parses it, this lays the blocks out (the console's components/ask/Markdown.tsx).
+/// Headings, lists, tables, quotes and code on the theme's colours; the words
+/// only ever land as text, never a link.
+struct AnswerMarkdown: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(Markdown.blocks(text).enumerated()), id: \.offset) { index, block in
+                AnswerBlockView(block: block, first: index == 0)
+            }
+        }
+        .foregroundStyle(Theme.text)
+        .textSelection(.enabled)
+    }
+}
+
+private struct AnswerBlockView: View {
+    let block: Markdown.Block
+    let first: Bool
+
+    var body: some View {
+        switch block {
+        case .heading(let level, let text):
+            Text(Markdown.inline(text))
+                .font(level <= 2 ? .system(.title2, design: .rounded, weight: .bold) : .system(.title3, design: .rounded, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, first ? 0 : (level <= 2 ? 14 : 10))
+                .accessibilityAddTraits(.isHeader)
+        case .paragraph(let text):
+            AnswerText(text: text)
+        case .list(let list):
+            AnswerList(list: list, depth: 0)
+        case .table(let table):
+            AnswerTable(table: table)
+                .padding(.vertical, 4)
+        case .quote(let text):
+            HStack(alignment: .top, spacing: 12) {
+                Capsule().fill(Theme.accent.opacity(0.55)).frame(width: 3)
+                AnswerText(text: text).foregroundStyle(Theme.muted)
+            }
+        case .code(let code):
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(code)
+                    .font(.system(.callout, design: .monospaced))
+                    .padding(14)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.sunken, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+        case .rule:
+            Rectangle().fill(Theme.divider).frame(height: 1).padding(.vertical, 8)
+        }
+    }
+}
+
+/// A paragraph's words, with room between the lines for reading.
+private struct AnswerText: View {
+    let text: String
+
+    var body: some View {
+        Text(Markdown.inline(text))
+            .font(.body)
+            .lineSpacing(4)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Bullets in the accent, numbers muted; a sub-list sits under its item.
+private struct AnswerList: View {
+    let list: Markdown.List
+    let depth: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(Array(list.items.enumerated()), id: \.offset) { index, item in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    marker(index)
+                    VStack(alignment: .leading, spacing: 9) {
+                        AnswerText(text: item.text)
+                        if let sub = item.sub { AnswerList(list: sub, depth: depth + 1) }
+                    }
+                }
+            }
+        }
+        .padding(.leading, depth == 0 ? 2 : 0)
+    }
+
+    @ViewBuilder
+    private func marker(_ index: Int) -> some View {
+        if list.ordered {
+            Text("\(list.start + index).")
+                .font(.body.weight(.semibold).monospacedDigit())
+                .foregroundStyle(Theme.muted)
+                .frame(minWidth: 20, alignment: .trailing)
+        } else if depth == 0 {
+            Circle().fill(Theme.accent).frame(width: 6, height: 6).offset(y: -2).frame(width: 12)
+        } else {
+            Circle().stroke(Theme.muted, lineWidth: 1.2).frame(width: 6, height: 6).offset(y: -2).frame(width: 12)
+        }
+    }
+}
+
+/// A compact table on a card: the header on the sunken colour, a rule
+/// between rows, figures in even digits. Short cells (figures, names) keep
+/// to one line and longer ones wrap past a point; the first column takes
+/// what room is left. Wider than the page (a phone), it scrolls sideways
+/// rather than squeezing.
+private struct AnswerTable: View {
+    let table: Markdown.Table
+
+    /// The header cells' bounds: the tallest one's bottom edge is where its shading ends.
+    private struct HeaderBounds: PreferenceKey {
+        static let defaultValue: [Anchor<CGRect>] = []
+        static func reduce(value: inout [Anchor<CGRect>], nextValue: () -> [Anchor<CGRect>]) { value += nextValue() }
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            grid
+            ScrollView(.horizontal, showsIndicators: false) { grid }
+        }
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous).stroke(Theme.divider, lineWidth: 1))
+    }
+
+    private var grid: some View {
+        Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+            GridRow {
+                ForEach(Array(table.header.enumerated()), id: \.offset) { column, text in
+                    cell(text, column: column, header: true)
+                        .anchorPreference(key: HeaderBounds.self, value: .bounds) { [$0] }
+                        .gridColumnAlignment(alignment(column).horizontal)
+                }
+            }
+            ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                Rectangle().fill(Theme.divider).frame(height: 1).gridCellUnsizedAxes(.horizontal)
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { column, text in
+                        cell(text, column: column, header: false)
+                    }
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        // The header's shading, edge to edge across the row.
+        .backgroundPreferenceValue(HeaderBounds.self) { cells in
+            GeometryReader { proxy in
+                Theme.sunken.frame(height: cells.map { proxy[$0].maxY }.max() ?? 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cell(_ text: String, column: Int, header: Bool) -> some View {
+        let alignment = alignment(column)
+        let words = Text(Markdown.inline(text))
+            .font(header ? .subheadline.weight(.semibold) : .subheadline.weight(column == 0 ? .medium : .regular))
+            .monospacedDigit()
+            .multilineTextAlignment(alignment.text)
+        let sized = Group {
+            if text.count <= 24 {
+                words.fixedSize()
+            } else {
+                words.fixedSize(horizontal: false, vertical: true).frame(maxWidth: 220, alignment: alignment.frame)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        if column == 0 {
+            sized.frame(maxWidth: .infinity, alignment: alignment.frame)
+        } else {
+            sized
+        }
+    }
+
+    private func alignment(_ column: Int) -> (frame: Alignment, horizontal: HorizontalAlignment, text: TextAlignment) {
+        switch column < table.alignments.count ? table.alignments[column] : nil {
+        case .trailing: return (.trailing, .trailing, .trailing)
+        case .center: return (.center, .center, .center)
+        case .leading, nil: return (.leading, .leading, .leading)
+        }
     }
 }
 

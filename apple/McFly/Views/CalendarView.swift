@@ -8,6 +8,7 @@ struct CalendarView: View {
     @Environment(AppModel.self) private var app
     @State private var month: Date = Calendar.current.startOfDay(for: .now)
     @State private var picked: Date?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var feeds: FeedStore { app.feeds }
     private let calendar = Calendar.current
@@ -26,7 +27,9 @@ struct CalendarView: View {
                 .card(padding: 12)
                 let day = picked ?? calendar.startOfDay(for: .now)
                 let dayEvents = EventDays.days(feeds.events, from: day, count: 1, calendar: calendar).first?.events ?? []
-                DayTile(day: day, events: dayEvents, showAll: picked == nil ? nil : { self.picked = nil })
+                DayTile(day: day, events: dayEvents, showAll: picked == nil ? nil : {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)) { self.picked = nil }
+                })
                 if picked != nil {
                     // The tile names the day and says when there's nothing on it.
                     ForEach(dayEvents) { event in
@@ -85,6 +88,10 @@ struct DayTile: View {
                         .foregroundStyle(tile.inkMuted)
                 }
                 .accessibilityElement(children: .combine)
+                if Calendar.current.isDateInToday(day) || events.contains(where: { !$0.allDay }) {
+                    CalendarDayRail(day: day, events: events, tile: tile)
+                        .padding(.top, 14)
+                }
                 if !events.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(events.prefix(2)) { event in
@@ -152,13 +159,91 @@ struct DayTile: View {
     }
 }
 
-/// Seven columns of days with a dot per event, colored by its calendar.
+/// The day's hours as one slim strip on its tile: each timed event a bar
+/// where it falls (8 am to 8 pm, or wider for an earlier or later one or,
+/// on today, for the hour it is), the
+/// ones that are over faded, and on today the now line, which glides to each
+/// new minute (the display's day view, in a line).
+private struct CalendarDayRail: View {
+    let day: Date
+    let events: [CalendarEvent]
+    let tile: TileColors
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            rail(now: context.date)
+        }
+        // The tile's rows say the same in words.
+        .accessibilityHidden(true)
+    }
+
+    private func rail(now: Date) -> some View {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        func hour(_ date: Date) -> Double { min(24, max(0, date.timeIntervalSince(start) / 3600)) }
+        let timed = events.filter { !$0.allDay }
+        let isToday = calendar.isDate(now, inSameDayAs: day)
+        let nowHour = hour(now)
+        // Today's rail always reaches the hour it is, so the now line is on
+        // it at 9 pm or 6 am too.
+        let first = min(8, timed.map { hour($0.startsAt).rounded(.down) }.min() ?? 8, isToday ? nowHour.rounded(.down) : 8)
+        let last = max(20, timed.map { hour($0.endsAt).rounded(.up) }.max() ?? 20, isToday ? nowHour.rounded(.up) : 20)
+        func label(_ h: Double) -> String {
+            calendar.date(byAdding: .hour, value: Int(h), to: start)?.formatted(.dateTime.hour()) ?? ""
+        }
+        return VStack(spacing: 6) {
+            GeometryReader { geo in
+                let across = geo.size.width
+                let x = { (h: Double) -> CGFloat in CGFloat((h - first) / max(1, last - first)) * across }
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(tile.glassFill)
+                        .overlay(Capsule().strokeBorder(tile.glassStroke, lineWidth: 1))
+                        .frame(height: 10)
+                    ForEach(timed) { event in
+                        let from = x(hour(event.startsAt))
+                        Capsule()
+                            .fill(Color(hex: event.color ?? "#5B7CF5"))
+                            .frame(width: max(6, x(hour(event.endsAt)) - from), height: 10)
+                            .offset(x: from)
+                            .opacity(isToday && event.endsAt <= now ? 0.45 : 1)
+                    }
+                    if isToday && nowHour >= first && nowHour <= last {
+                        VStack(spacing: 0) {
+                            Circle().fill(Theme.danger).frame(width: 7, height: 7)
+                            Rectangle().fill(Theme.danger).frame(width: 2, height: 15)
+                        }
+                        .offset(x: x(nowHour) - 3.5)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.9), value: nowHour)
+                    }
+                }
+                .frame(width: across, height: 22, alignment: .leading)
+            }
+            .frame(height: 22)
+            HStack {
+                Text(label(first))
+                Spacer()
+                Text(label(((first + last) / 2).rounded(.down)))
+                Spacer()
+                Text(label(last))
+            }
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+            .foregroundStyle(tile.inkMuted)
+        }
+    }
+}
+
+/// Seven columns of days with a dot per event, colored by its calendar. The
+/// picked day's fill glides from one day to the next; today keeps its soft one.
 struct MonthGrid: View {
     let month: Date
     @Binding var picked: Date?
     let events: [CalendarEvent]
     let step: (Int) -> Void
     private let calendar = Calendar.current
+    @Namespace private var pickedSpace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 10) {
@@ -202,7 +287,9 @@ struct MonthGrid: View {
         let isPicked = picked.map { calendar.isDate($0, inSameDayAs: day) } ?? false
         let colors = Array(Set(events.filter { $0.occurs(on: day, calendar: calendar) }.map { $0.color ?? "#5B7CF5" })).sorted().prefix(3)
         return Button {
-            picked = isPicked ? nil : day
+            withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)) {
+                picked = isPicked ? nil : day
+            }
         } label: {
             VStack(spacing: 3) {
                 Text("\(calendar.component(.day, from: day))")
@@ -217,8 +304,19 @@ struct MonthGrid: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 40)
-            .background(isPicked ? Theme.accent : (isToday ? Theme.accentSoft : .clear),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background {
+                ZStack {
+                    if isToday {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.accentSoft)
+                    }
+                    // One fill, in whichever cell is picked: it glides between them.
+                    if isPicked {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Theme.accent)
+                            .matchedGeometryEffect(id: "picked", in: pickedSpace)
+                    }
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(day.formatted(date: .complete, time: .omitted))

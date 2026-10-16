@@ -60,6 +60,9 @@ public struct AssistantClient: Sendable {
         case quick
         /// May use short lists.
         case chat
+        /// The full-screen Ask: a longer answer shaped with Markdown headings,
+        /// lists, bold and tables (`Markdown` lays it out).
+        case read
     }
 
     public typealias TokenProvider = @Sendable () async throws -> String
@@ -104,6 +107,9 @@ public struct AssistantClient: Sendable {
                 body.append(byte)
                 if body.count > 16_384 { break }
             }
+            if mode == .read, Self.rejectsMode(status: status, body: body) {
+                return try await stream(message, mode: .chat, history: history, provider: provider, onEvent: onEvent)
+            }
             throw Self.failure(status: status, body: body)
         }
 
@@ -138,8 +144,21 @@ public struct AssistantClient: Sendable {
         let request = try await makeRequest(message, mode: mode, history: history, provider: provider, streaming: false)
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else { throw Self.failure(status: status, body: data) }
+        guard status == 200 else {
+            if mode == .read, Self.rejectsMode(status: status, body: data) {
+                return try await ask(message, mode: .chat, history: history, provider: provider)
+            }
+            throw Self.failure(status: status, body: data)
+        }
         return try JSONDecoder().decode(AssistantReply.self, from: data)
+    }
+
+    /// A function deployed before `read` existed turns it away with a 400 that
+    /// names the mode; the question is then asked again in `chat` mode, a
+    /// shorter answer rather than none.
+    static func rejectsMode(status: Int, body: Data) -> Bool {
+        guard status == 400, let message = (try? JSONDecoder().decode(ErrorBody.self, from: body))?.error else { return false }
+        return message.hasPrefix("mode must be")
     }
 
     private func makeRequest(_ message: String, mode: Mode, history: [AssistantTurn], provider: AssistantProvider?,
