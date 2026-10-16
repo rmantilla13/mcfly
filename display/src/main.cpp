@@ -117,7 +117,8 @@ int main(int argc, char *argv[])
     QCommandLineOption demo("demo", "Ignore backend settings and show sample data.");
     // Read by Main.qml; registered here so the parser doesn't reject it.
     QCommandLineOption noKeyboard("no-keyboard", "Don't load the on-screen keyboard.");
-    QCommandLineOption screen("screen", "Open on this screen: home, briefs, markets, news, projects, boards, calendar, games, setup, saver, ask, settings or admin.", "name");
+    QCommandLineOption screen("screen", "Open on this screen: home, briefs, markets, news, projects, boards, calendar, games, setup, saver, ask, settings, "
+                                      "settings/<tab> (screen, voice, wifi, account, system, admin) or admin.", "name");
     QCommandLineOption screenshot("screenshot", "Save a picture of the window to <file> after a moment and quit.", "file");
     QCommandLineOption size("size", "Window size for --windowed, like 800x480 (default 1280x800).", "WxH");
     QCommandLineOption bench("bench", "Measure every screen, drawn every frame, a line each in the log, then quit "

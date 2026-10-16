@@ -21,7 +21,7 @@ ApplicationWindow {
     // "chat" while push-to-talk is feeding the assistant panel; the wake word
     // and the mic on Home go to the voice card (QuickAnswer) instead.
     property string voiceTarget: ""
-    // --screen setup / saver / ask / settings: for pictures and checks.
+    // --screen setup / saver / ask / settings (settings/<tab>) / admin: for pictures and checks.
     readonly property bool forceSetup: startScreen === "setup"
 
     function showToast(message) {
@@ -105,6 +105,8 @@ ApplicationWindow {
             assistant.open = true
         else if (startScreen === "settings")
             settings.open()
+        else if (startScreen.startsWith("settings/"))
+            settings.openTab(startScreen.slice(9))
         else if (startScreen === "admin")
             settings.openAdmin()
     }

@@ -405,7 +405,7 @@ itself down: the NOW column says HOT.
 
 ### Performance on the screen itself
 
-On the panel, tap the gear, then **Admin** (after Power) and turn on
+On the panel, tap the gear, then the **Admin** tab, and turn on
 **Performance overlay**. The top right corner then shows the app's own
 numbers, once a second: the frames it drew and their work on the render
 thread (the longest too), the GPU's busy share and jobs, the app's CPU and
@@ -419,7 +419,8 @@ nothing is sampled or shown.
 `sudo systemctl restart mcfly-display`) turns it on at every start, whatever
 the switch was left at. It works in a window on a computer too:
 `MCFLY_PERF_HUD=1 build/display/mcfly-display --demo --windowed`, or
-`--screen admin` to open on the Admin page.
+`--screen admin` to open on the Admin tab (`--screen settings/<tab>` for
+any tab).
 
 ### Frame rate: 30 at least, 60 to aim for
 
@@ -435,10 +436,10 @@ explained). A screen with nothing moving draws next to nothing (its clock
 ticks once a second), so a low fps on the overlay then is fine.
 
 To see what a screen could keep up, turn on **Draw every frame** under the
-overlay's switch. Each frame then asks for the next, and the overlay's fps
-reads "sustained". The GPU line gives its work a frame: under 16.7 ms holds
-60, under 33 ms holds 30. It stays on only while you watch; it turns off with
-the overlay and is never remembered.
+overlay's switch on the Admin tab. Each frame then asks for the next, and
+the overlay's fps reads "sustained". The GPU line gives its work a frame:
+under 16.7 ms holds 60, under 33 ms holds 30. It stays on only while you
+watch; it turns off with the overlay and is never remembered.
 
 The bench does both for every screen, the assistant panel and the screen
 saver, and writes a line each to the log. Add `MCFLY_BENCH=1` to

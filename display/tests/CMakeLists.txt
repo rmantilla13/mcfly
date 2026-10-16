@@ -211,6 +211,33 @@ target_link_libraries(tst_perfmonitor PRIVATE Qt6::Gui Qt6::Quick Qt6::Test)
 add_test(NAME tst_perfmonitor COMMAND tst_perfmonitor)
 set_tests_properties(tst_perfmonitor PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# The settings sheet's tabs at each panel size, with the real controllers
+# and the demo store.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-settings
+    Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml
+    components/PillButton.qml components/Toggle.qml components/FocusFlickable.qml components/QrPanel.qml
+    components/TabStrip.qml screens/SettingsSheet.qml)
+qt_add_executable(tst_settings tst_settings.cpp
+    ../src/models/FeedStore.h  ../src/models/FeedStore.cpp
+    ../src/models/Assistant.h  ../src/models/Assistant.cpp
+    ../src/hardware/DisplayController.h ../src/hardware/DisplayController.cpp
+    ../src/hardware/SystemController.h ../src/hardware/SystemController.cpp
+    ../src/hardware/PerfMonitor.h ../src/hardware/PerfMonitor.cpp)
+target_include_directories(tst_settings PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(tst_settings PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_settings PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-settings")
+target_link_libraries(tst_settings PRIVATE mcfly-core mcfly-qr Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_resources(tst_settings "demo_data_settings"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/resources/demo/feed.json)
+qt_add_shaders(tst_settings "settings_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
+add_test(NAME tst_settings COMMAND tst_settings)
+set_tests_properties(tst_settings PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # The settings bridge with a real DisplayController (no store, assistant or voice).
 qt_add_executable(tst_settingsbridge tst_settingsbridge.cpp
     ../src/models/SettingsBridge.h ../src/models/SettingsBridge.cpp

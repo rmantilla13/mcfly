@@ -116,6 +116,7 @@ qt_add_qml_module(mcfly-display
         qml/components/StoryCard.qml
         qml/components/Tag.qml
         qml/components/SegmentedControl.qml
+        qml/components/TabStrip.qml
         qml/components/Page.qml
         qml/components/AnimatedNumber.qml
         qml/components/Toggle.qml

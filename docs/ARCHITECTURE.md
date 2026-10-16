@@ -135,7 +135,7 @@ hemisphere: `DisplayController::weatherFor`) or one all year (`Weather.qml`: a
 few dozen small Shapes moved on the backdrop's own ten updates a second; the
 console's Ambient view and the app's draw the same, with the same rules and
 counts in each one's tests). Sleep turns the panel off
-on a schedule (Settings → Sleep).
+on a schedule (Settings → System → Sleep).
 
 ## Assistant
 
@@ -149,7 +149,7 @@ key-less agent, never because something in the snapshot asked.
 `quick` mode (voice) answers in one or two spoken sentences; `chat` may use
 short lists. The provider is `platform_settings.assistant_provider` (Claude
 or Grok, set in the console or the app) unless a display pins its own in
-Settings → Assistant.
+Settings → Voice → Assistant.
 
 ## Apple app: `apple/`
 
