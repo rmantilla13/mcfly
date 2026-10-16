@@ -114,17 +114,41 @@ public enum Timeline {
         }
 
         for event in events where onToday(event.startsAt) {
-            let range = event.allDay ? event.calendar : "\(clock.label(event.startsAt)) – \(clock.label(event.endsAt))"
-            let place = event.location.flatMap { $0.isEmpty ? nil : $0 }
-            add("event:\(event.id)", .event, start: event.startsAt, end: max(event.endsAt, event.startsAt),
-                allDay: event.allDay, label: event.calendar, title: event.title,
-                detail: place.map { event.allDay ? range : "\(range) · \($0)" } ?? range,
-                color: event.color ?? byId[event.agentId]?.color ?? defaultColor,
-                systemImage: "calendar", target: .event(event.id))
+            rows.append(eventRow(event, clock: clock, agents: byId))
         }
+        return sorted(rows)
+    }
 
-        // All-day first, then by start; ties keep the order they were added in.
-        return rows.enumerated()
+    /// Tomorrow's events as rows: the preview Home shows under today's last row.
+    public static func tomorrow(events: [CalendarEvent], agents: [Agent], now: Date, calendar: Calendar = .current,
+                                locale: Locale = .current) -> [TimelineItem] {
+        guard let next = calendar.date(byAdding: .day, value: 1, to: now) else { return [] }
+        let clock = Clock(calendar: calendar, locale: locale)
+        let byId = Dictionary(agents.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return sorted(events.filter { calendar.isDate($0.startsAt, inSameDayAs: next) }.map { eventRow($0, clock: clock, agents: byId) })
+    }
+
+    /// Tomorrow's weekday ("Friday"), for that preview's heading.
+    public static func tomorrowLabel(now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
+        guard let next = calendar.date(byAdding: .day, value: 1, to: now) else { return "" }
+        return next.formatted(Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone).weekday(.wide))
+    }
+
+    /// An event's row: the calendar over the title, the hours and the place under it.
+    private static func eventRow(_ event: CalendarEvent, clock: Clock, agents: [UUID: Agent]) -> TimelineItem {
+        let range = event.allDay ? event.calendar : "\(clock.label(event.startsAt)) – \(clock.label(event.endsAt))"
+        let place = event.location.flatMap { $0.isEmpty ? nil : $0 }
+        let face = event.allDay ? (time: "All day", ampm: "") : clock.parts(event.startsAt)
+        return TimelineItem(id: "event:\(event.id)", kind: .event, start: event.startsAt, end: max(event.endsAt, event.startsAt),
+                            allDay: event.allDay, time: face.time, ampm: face.ampm, label: event.calendar, title: event.title,
+                            detail: place.map { event.allDay ? range : "\(range) · \($0)" } ?? range,
+                            color: event.color ?? agents[event.agentId]?.color ?? defaultColor,
+                            imageURL: nil, systemImage: "calendar", target: .event(event.id))
+    }
+
+    /// All-day first, then by start; ties keep the order they were added in.
+    private static func sorted(_ rows: [TimelineItem]) -> [TimelineItem] {
+        rows.enumerated()
             .sorted { a, b in
                 if a.element.allDay != b.element.allDay { return a.element.allDay }
                 if a.element.start != b.element.start { return a.element.start < b.element.start }

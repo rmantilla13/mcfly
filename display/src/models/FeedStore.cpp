@@ -952,6 +952,11 @@ QString FeedStore::timeLabel(const QDateTime &when) const
     return QLocale().toString(when.time(), QStringLiteral("h:mm ap"));
 }
 
+QString FeedStore::tomorrowLabel() const
+{
+    return QLocale().toString(m_today.addDays(1), QStringLiteral("dddd"));
+}
+
 void FeedStore::showSource(const QString &agentId)
 {
     if (m_newsSourceId == agentId)
@@ -1654,12 +1659,14 @@ QString FeedStore::snapshotText(int maxChars) const
 void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
 {
     m_timeline.clear();
+    m_tomorrow.clear();
     auto agentName = [&](const QString &id) { return agentById.value(id).value("name").toString(); };
     auto agentColor = [&](const QString &id) {
         const QString c = agentById.value(id).value("color").toString();
         return c.isEmpty() ? QStringLiteral("#5B7CF5") : c;
     };
-    auto add = [this](QVariantMap item, const QDateTime &start, const QDateTime &end) {
+    // A row, shaped for Home: today's stream, or tomorrow's preview.
+    auto row = [&](QVariantMap item, const QDateTime &start, const QDateTime &end) {
         item.insert("startMs", start.toMSecsSinceEpoch());
         item.insert("endMs", (end.isValid() ? end : start).toMSecsSinceEpoch());
         // "3:30" over "pm": the clock face splits them, 12-hour like the rest of the display.
@@ -1667,7 +1674,10 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         const bool allDay = item.value("allDay").toBool();
         item.insert("timeLabel", allDay ? tr("All day") : parts.value(0));
         item.insert("ampm", allDay ? QString() : parts.value(1));
-        m_timeline << item;
+        return item;
+    };
+    auto add = [&](QVariantMap item, const QDateTime &start, const QDateTime &end) {
+        m_timeline << row(std::move(item), start, end);
     };
 
     // Today's news reports, every source (not just the one News is showing):
@@ -1739,19 +1749,25 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         }
     }
 
-    // Today's events (all-day ones first in the day).
+    // Today's events (all-day ones first in the day), and tomorrow's: the
+    // preview under today's last row.
+    const QString todayKey = m_today.toString(Qt::ISODate), tomorrowKey = m_today.addDays(1).toString(Qt::ISODate);
     for (const QVariant &v : std::as_const(m_events)) {
         const QVariantMap e = v.toMap();
-        if (e.value("day").toString() != m_today.toString(Qt::ISODate))
+        const QString day = e.value("day").toString();
+        if (day != todayKey && day != tomorrowKey)
             continue;
         const QDateTime start = QDateTime::fromMSecsSinceEpoch(e.value("startMs").toLongLong());
         const QDateTime end = QDateTime::fromMSecsSinceEpoch(e.value("endMs").toLongLong());
         const QString place = e.value("location").toString();
-        add(QVariantMap{{"kind", "event"}, {"id", e.value("id")}, {"label", e.value("calendar")}, {"title", e.value("title")},
-                        {"detail", e.value("all_day").toBool() ? e.value("calendar").toString()
-                                                              : e.value("timeLabel").toString() + (place.isEmpty() ? QString() : QStringLiteral(" · ") + place)},
-                        {"color", e.value("color")}, {"allDay", e.value("all_day")}, {"target", 6}},
-            start, end);
+        const QVariantMap item{{"kind", "event"}, {"id", e.value("id")}, {"label", e.value("calendar")}, {"title", e.value("title")},
+                               {"detail", e.value("all_day").toBool() ? e.value("calendar").toString()
+                                                                     : e.value("timeLabel").toString() + (place.isEmpty() ? QString() : QStringLiteral(" · ") + place)},
+                               {"color", e.value("color")}, {"allDay", e.value("all_day")}, {"target", 6}};
+        if (day == todayKey)
+            add(item, start, end);
+        else
+            m_tomorrow << row(item, start, end);
     }
 
     // Todos and reminders. A reminder sits at its time today; a todo due at a
@@ -1792,12 +1808,15 @@ void FeedStore::rebuildTimeline(const QHash<QString, QVariantMap> &agentById)
         }
     }
 
-    std::stable_sort(m_timeline.begin(), m_timeline.end(), [](const QVariant &a, const QVariant &b) {
+    // All-day first, then by start.
+    const auto byStart = [](const QVariant &a, const QVariant &b) {
         const QVariantMap ma = a.toMap(), mb = b.toMap();
         if (ma.value("allDay").toBool() != mb.value("allDay").toBool())
             return ma.value("allDay").toBool();
         return ma.value("startMs").toLongLong() < mb.value("startMs").toLongLong();
-    });
+    };
+    std::stable_sort(m_timeline.begin(), m_timeline.end(), byStart);
+    std::stable_sort(m_tomorrow.begin(), m_tomorrow.end(), byStart);
     armReminders();
 }
 

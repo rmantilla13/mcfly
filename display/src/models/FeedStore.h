@@ -66,6 +66,11 @@ class FeedStore : public QObject
     // each { kind, startMs, endMs, timeLabel, title, detail, color, target, ... }.
     // Past, now and next are left to QML, which has a ticking clock.
     Q_PROPERTY(QVariantList timeline READ timeline NOTIFY dataChanged)
+    // Tomorrow's events, shaped like timeline rows: the preview Home shows
+    // under today's last row.
+    Q_PROPERTY(QVariantList tomorrow READ tomorrow NOTIFY dataChanged)
+    // Tomorrow's weekday ("Friday"), for that preview's heading.
+    Q_PROPERTY(QString tomorrowLabel READ tomorrowLabel NOTIFY todayChanged)
     Q_PROPERTY(QString assistantProvider READ assistantProvider NOTIFY dataChanged) // platform_settings: claude | grok
 
 public:
@@ -106,6 +111,8 @@ public:
     QVariantList upcoming() const { return m_upcoming; }
     QString assistantProvider() const { return m_assistantProvider; }
     QVariantList timeline() const { return m_timeline; }
+    QVariantList tomorrow() const { return m_tomorrow; }
+    QString tomorrowLabel() const;
 
     // Syncs now (live), or asks for a pairing code again now if the last try
     // failed (e.g. Wi-Fi was just joined). Also re-checks the date.
@@ -215,6 +222,6 @@ private:
     // Decorated rows for QML.
     QVariantList m_agents, m_briefs, m_quotes, m_newsReports, m_stories, m_newsSources;
     QVariantList m_projects, m_metrics, m_metricGroups, m_dashboards, m_events, m_eventDays, m_upcoming;
-    QVariantList m_timeline;
+    QVariantList m_timeline, m_tomorrow;
     QVariantMap m_latestBrief, m_news, m_portfolio;
 };

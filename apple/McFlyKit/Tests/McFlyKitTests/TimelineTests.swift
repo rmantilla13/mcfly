@@ -132,6 +132,20 @@ final class TimelineTests: XCTestCase {
         XCTAssertNil(Timeline.upNext(events, now: at(36)))
     }
 
+    func testTomorrowsPreviewHoldsOnlyTomorrowsEvents() throws {
+        let all = events + [event("Day off", "Home", at(24), at(48), allDay: true)]
+        let rows = Timeline.tomorrow(events: all, agents: [calendarAgent], now: now, calendar: calendar, locale: locale)
+        XCTAssertEqual(rows.map(\.title), ["Day off", "Tomorrow"], "all-day first, then by start")
+        let row = try XCTUnwrap(rows.last)
+        XCTAssertEqual(row.kind, .event)
+        XCTAssertEqual("\(row.time) \(row.ampm)", "9:00 am")
+        XCTAssertEqual(row.detail, "9:00 am – 10:00 am")
+        XCTAssertEqual(row.color, "#14C2C2", "the agent's, as on today's rows")
+        XCTAssertEqual(row.target, .event(all[3].id))
+        XCTAssertEqual(Timeline.tomorrowLabel(now: now, calendar: calendar, locale: locale), "Thursday")
+        XCTAssertFalse(build().contains { $0.title == "Tomorrow" }, "today's stream stops at midnight")
+    }
+
     func testLabels() {
         XCTAssertEqual(Timeline.untilLabel(now.addingTimeInterval(18 * 60), now: now), "in 18 min")
         XCTAssertEqual(Timeline.untilLabel(now.addingTimeInterval(18 * 60), now: now, long: true), "in 18 minutes")

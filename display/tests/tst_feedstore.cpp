@@ -510,6 +510,48 @@ private slots:
 
     // Todos and reminders (migration 20261015000020): today's on the
     // timeline; a reminder announced once, when its time comes.
+    void tomorrowIsPreviewedUnderToday()
+    {
+        // Tomorrow's events, shaped like timeline rows: all-day first, then in time order.
+        const QDate today = QDate::currentDate(), next = today.addDays(1);
+        m_server.route("/rest/v1/events", [today, next](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", "e1"}, {"agent_id", "a1"}, {"calendar", "Work"}, {"title", "Standup"}, {"location", "Zoom"},
+                            {"starts_at", iso(QDateTime(today, QTime(9, 30)))}, {"ends_at", iso(QDateTime(today, QTime(9, 45)))},
+                            {"all_day", false}, {"color", "#5B7CF5"}},
+                QJsonObject{{"id", "e2"}, {"agent_id", "a1"}, {"calendar", "Work"}, {"title", "Design review"}, {"location", QJsonValue::Null},
+                            {"starts_at", iso(QDateTime(next, QTime(14, 0)))}, {"ends_at", iso(QDateTime(next, QTime(15, 30)))},
+                            {"all_day", false}, {"color", "#5B7CF5"}},
+                QJsonObject{{"id", "e3"}, {"agent_id", "a1"}, {"calendar", "Home"}, {"title", "Day off"}, {"location", QJsonValue::Null},
+                            {"starts_at", iso(QDateTime(next, QTime(0, 0)))}, {"ends_at", iso(QDateTime(next, QTime(23, 59, 59)))},
+                            {"all_day", true}, {"color", "#F6B94A"}},
+                QJsonObject{{"id", "e4"}, {"agent_id", "a1"}, {"calendar", "Work"}, {"title", "Investor call"}, {"location", "Zoom"},
+                            {"starts_at", iso(QDateTime(next, QTime(11, 0)))}, {"ends_at", iso(QDateTime(next, QTime(12, 0)))},
+                            {"all_day", false}, {"color", QJsonValue::Null}},
+            }));
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.tomorrow().size(), 3);
+        const QVariantList tomorrow = rig->store.tomorrow();
+        QCOMPARE(tomorrow.at(0).toMap().value("title").toString(), QStringLiteral("Day off"));
+        QCOMPARE(tomorrow.at(0).toMap().value("timeLabel").toString(), QStringLiteral("All day"));
+        const QVariantMap call = tomorrow.at(1).toMap();
+        QCOMPARE(call.value("title").toString(), QStringLiteral("Investor call"));
+        QCOMPARE(call.value("kind").toString(), QStringLiteral("event"));
+        QCOMPARE(call.value("timeLabel").toString(), QStringLiteral("11:00"));
+        QCOMPARE(call.value("ampm").toString(), QStringLiteral("am"));
+        QCOMPARE(call.value("detail").toString(), QStringLiteral("11:00 am – 12:00 pm · Zoom"));
+        QCOMPARE(call.value("color").toString(), QStringLiteral("#7A64E8")); // the agent's, as on today's rows
+        QCOMPARE(call.value("target").toInt(), 6);
+        QCOMPARE(tomorrow.at(2).toMap().value("title").toString(), QStringLiteral("Design review"));
+        for (const QVariant &v : tomorrow)
+            QCOMPARE(QDateTime::fromMSecsSinceEpoch(v.toMap().value("startMs").toLongLong()).date(), next);
+        QCOMPARE(rig->store.tomorrowLabel(), QLocale().toString(next, QStringLiteral("dddd")));
+        // Today's stream still stops at midnight.
+        for (const QVariant &v : rig->store.timeline())
+            QVERIFY(v.toMap().value("title").toString() != QLatin1String("Investor call"));
+    }
+
     void todosAndReminders()
     {
         // A clock that runs from noon today, so the fixtures (hours either

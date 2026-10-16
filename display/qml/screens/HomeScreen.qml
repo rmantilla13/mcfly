@@ -10,7 +10,8 @@ import McFly.Core
 // anything blocked, and the way to ask McFly. The right column is the day:
 // the markets in one strip, then one stream of what arrived and what is
 // planned (Store.timeline), scrolled so "now" sits near the top. Past rows
-// fade, the current event is outlined, the next one is marked.
+// fade, the current event is outlined, the next one is marked. Under the
+// last row, tomorrow's events (Store.tomorrow) preview what's coming.
 //
 // Mini keeps both columns but drops the ask bar (the nav's sparkle does its
 // job); Tall stacks everything into a feed (docs/LAYOUTS.md). Both
@@ -44,6 +45,7 @@ Item {
     // the clock has the left column to itself.
     readonly property bool quiet: !nextEvent && blocked.length === 0
     readonly property var timeline: Store.timeline
+    readonly property var tomorrow: Store.tomorrow
     // The row to keep in view: the first one not yet over.
     readonly property int focusIndex: {
         const t = minuteMs
@@ -390,10 +392,12 @@ Item {
         id: row
         required property var modelData
         required property int index
+        // A row of tomorrow's preview: never past, on now or next, whatever its index.
+        property bool preview: false
         readonly property bool isEvent: modelData.kind === "event"
-        readonly property bool isNow: isEvent && !modelData.allDay && modelData.startMs <= home.minuteMs && modelData.endMs > home.minuteMs
-        readonly property bool isNext: index === home.nextIndex
-        readonly property bool isPast: !modelData.allDay && (isEvent ? modelData.endMs <= home.minuteMs : false)
+        readonly property bool isNow: !preview && isEvent && !modelData.allDay && modelData.startMs <= home.minuteMs && modelData.endMs > home.minuteMs
+        readonly property bool isNext: !preview && index === home.nextIndex
+        readonly property bool isPast: !preview && !modelData.allDay && (isEvent ? modelData.endMs <= home.minuteMs : false)
         readonly property bool hasPicture: Theme.pictures && !Theme.mini && modelData.kind === "news" && !!modelData.imageUrl
         width: ListView.view ? ListView.view.width : implicitWidth
         spacing: Theme.mini ? 10 : 16
@@ -545,9 +549,41 @@ Item {
         }
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
         Label {
-            text: home.timeline.length === 1 ? qsTr("1 thing") : qsTr("%1 things").arg(home.timeline.length)
+            text: home.timeline.length === 0 ? qsTr("Nothing yet")
+                : home.timeline.length === 1 ? qsTr("1 thing") : qsTr("%1 things").arg(home.timeline.length)
             color: Theme.textMuted
             font.pixelSize: Theme.fontXs
+        }
+    }
+
+    component TomorrowHeading: RowLayout {
+        Label {
+            text: qsTr("TOMORROW")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontXs
+            font.weight: Font.Bold
+            font.letterSpacing: 1.6
+        }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+        Label {
+            text: Store.tomorrowLabel + " · " + (home.tomorrow.length === 1 ? qsTr("1 thing") : qsTr("%1 things").arg(home.tomorrow.length))
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontXs
+        }
+    }
+
+    // Tomorrow's events under today's last row: a preview of what's coming,
+    // on the same rows, outlined like any event still ahead. The landscape
+    // list carries it as its footer, so a day that is over rests on it; the
+    // Tall feed carries it after the last row. Hidden on a free tomorrow.
+    component TomorrowPreview: Column {
+        visible: home.tomorrow.length > 0
+        topPadding: Theme.mini ? 10 : 16
+        spacing: Theme.mini ? 8 : 10
+        TomorrowHeading { width: parent.width; height: implicitHeight }
+        Repeater {
+            model: home.tomorrow
+            delegate: TimelineRow { width: parent.width; height: implicitHeight; preview: true }
         }
     }
 
@@ -639,7 +675,7 @@ Item {
             FocusFlickable {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                visible: home.timeline.length === 0
+                visible: home.timeline.length === 0 && home.tomorrow.length === 0
                 fadeColor: Theme.background
                 contentHeight: emptyDay.implicitHeight
                 EmptyDay { id: emptyDay; width: parent.width }
@@ -648,7 +684,7 @@ Item {
                 id: dayList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                visible: home.timeline.length > 0
+                visible: home.timeline.length > 0 || home.tomorrow.length > 0
                 clip: true
                 spacing: Theme.mini ? 8 : 10
                 model: home.timeline
@@ -660,7 +696,11 @@ Item {
                 // Room under the last row, so the list never rests with a row
                 // half under TODAY (see trimTop).
                 property real endRoom: 0
-                footer: Item { width: 1; height: dayList.endRoom }
+                footer: Column {
+                    width: dayList.width
+                    TomorrowPreview { width: parent.width }
+                    Item { width: 1; height: dayList.endRoom }
+                }
                 // A flick comes to rest on a row too.
                 snapMode: ListView.SnapToItem
                 function settle() {
@@ -699,8 +739,12 @@ Item {
                     return !!row && row.y < contentY - 1
                 }
                 readonly property bool cutAtBottom: {
-                    const row = contentHeight > 0 ? itemAtIndex(indexAt(width / 2, contentY + height - 1)) : null
-                    return !!row && row.y + row.height > contentY + height + 1
+                    const edge = contentY + height
+                    const row = contentHeight > 0 ? itemAtIndex(indexAt(width / 2, edge - 1)) : null
+                    if (row)
+                        return row.y + row.height > edge + 1
+                    // In the footer (tomorrow): a row is cut unless the list rests at its end.
+                    return !!footerItem && footerItem.y < edge - 1 && !atYEnd
                 }
                 Rectangle {
                     parent: dayList
@@ -756,11 +800,12 @@ Item {
             AskBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; live: Theme.tall }
             MarketsStrip { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
             TodayHeading { Layout.fillWidth: true }
-            EmptyDay { Layout.fillWidth: true; visible: home.timeline.length === 0 }
+            EmptyDay { Layout.fillWidth: true; visible: home.timeline.length === 0 && home.tomorrow.length === 0 }
             Repeater {
                 model: home.timeline
                 delegate: TimelineRow { Layout.fillWidth: true }
             }
+            TomorrowPreview { Layout.fillWidth: true }
         }
     }
 }

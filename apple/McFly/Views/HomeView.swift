@@ -6,7 +6,8 @@ import SwiftUI
 /// what's up next, anything blocked, the way to ask McFly, the markets in
 /// one strip, then one stream of what arrived and what is planned
 /// (`Timeline`). Past rows fade, the event on now is outlined, the next one
-/// is marked. The moon opens the ambient screen.
+/// is marked. Under the last row, tomorrow's events preview what's coming.
+/// The moon opens the ambient screen.
 ///
 /// On iPhone and iPad the status bar tells the time, so the big clock gives
 /// its room to four glance tiles (`GlanceGrid`): what's next, the weather,
@@ -31,6 +32,7 @@ struct HomeView: View {
         TimelineView(.everyMinute) { context in
             let now = context.date
             let timeline = feeds.timeline(now: now)
+            let tomorrow = feeds.tomorrow(now: now)
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     ClockHeader(now: now, greeting: Timeline.greeting(now: now, name: feeds.displayName),
@@ -56,7 +58,7 @@ struct HomeView: View {
                     #endif
                     AskBar(onAsk: { showAsk = true }, onTalk: { showVoice = true })
                     MarketsStrip(series: Array(feeds.series.prefix(6)))
-                    TodayHeading(count: timeline.count)
+                    DayHeading(title: "TODAY", note: Self.things(timeline.count))
                     if timeline.isEmpty {
                         Text(feeds.hasLoaded
                              ? "Nothing yet today. Briefs, the Pulse, project updates and your calendar land here as your agents push them."
@@ -69,6 +71,19 @@ struct HomeView: View {
                             ForEach(Array(timeline.enumerated()), id: \.element.id) { index, item in
                                 NavigationLink(value: HomeRoute(item, feeds: feeds)) {
                                     TimelineRow(item: item, state: Timeline.state(at: index, in: timeline, now: now), now: now)
+                                }
+                                .buttonStyle(PressableStyle())
+                            }
+                        }
+                    }
+                    // Tomorrow's events under today's last row: a preview of what's
+                    // coming, on the same rows, with nothing past, on now or next.
+                    if !tomorrow.isEmpty {
+                        DayHeading(title: "TOMORROW", note: "\(Timeline.tomorrowLabel(now: now)) · \(Self.things(tomorrow.count))")
+                        LazyVStack(spacing: 10) {
+                            ForEach(tomorrow) { item in
+                                NavigationLink(value: HomeRoute(item, feeds: feeds)) {
+                                    TimelineRow(item: item, state: .none, now: now)
                                 }
                                 .buttonStyle(PressableStyle())
                             }
@@ -126,6 +141,9 @@ struct HomeView: View {
         }
         #endif
     }
+
+    /// "1 thing", "3 things": a day heading's count.
+    static func things(_ count: Int) -> String { count == 1 ? "1 thing" : "\(count) things" }
 }
 
 /// Where a timeline row or a glance tile goes: the story, the brief, the project or the event.
@@ -407,19 +425,22 @@ private struct MarketsStrip: View {
     }
 }
 
-private struct TodayHeading: View {
-    let count: Int
+/// "TODAY ──── 11 things", "TOMORROW ──── Friday · 2 things": a day's heading over its rows.
+private struct DayHeading: View {
+    let title: String
+    let note: String
 
     var body: some View {
         HStack(spacing: 10) {
-            Text("TODAY")
+            Text(title)
                 .font(.system(size: 13, weight: .bold))
                 .tracking(1.6)
                 .foregroundStyle(Theme.muted)
             Rectangle().fill(Theme.divider).frame(height: 1)
-            Text(count == 1 ? "1 thing" : "\(count) things")
+            Text(note)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.muted)
+                .lineLimit(1)
         }
         .padding(.top, 6)
     }

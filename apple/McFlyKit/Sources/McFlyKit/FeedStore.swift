@@ -116,6 +116,11 @@ public final class FeedStore {
                        now: now, calendar: calendar)
     }
 
+    /// Tomorrow's events as rows: Home's preview under today's last row (`Timeline.tomorrow`).
+    public func tomorrow(now: Date = .now, calendar: Calendar = .current) -> [TimelineItem] {
+        Timeline.tomorrow(events: events, agents: agents, now: now, calendar: calendar)
+    }
+
     /// Blocked projects, in the console's order.
     public var blockedProjects: [Project] { projects.filter { $0.status == .blocked } }
 
