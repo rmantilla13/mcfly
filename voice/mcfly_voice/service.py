@@ -155,6 +155,9 @@ class VoiceService:
         self._speech_queue: deque[tuple[str, str]] = deque()
         self._speech_task: asyncio.Task[None] | None = None
         self._speaking_id: str | None = None
+        # When the last transcript went out: the reply to speak that follows
+        # shows how long the display and the assistant took.
+        self._heard_at: float | None = None
         self._tasks: set[asyncio.Task[None]] = set()
 
     # Clients
@@ -285,6 +288,7 @@ class VoiceService:
             self.gate.triggered()
         session = Session(self, source)
         self._session = session
+        self._heard_at = None  # a new turn: the last one's reply isn't coming
         self.backend.begin_capture()
         log.info("listening (%s)", source)
         self.broadcast(protocol.wake(source))
@@ -305,6 +309,7 @@ class VoiceService:
             return  # cancelled while the model was still busy
         self._session = None
         self._session_task = None
+        self._heard_at = self._clock() if text else None
         self.broadcast(protocol.transcript(text))
         self._set_state("idle")
         self._kick_speech()
@@ -324,6 +329,7 @@ class VoiceService:
 
     def cancel(self) -> None:
         """Drop the current session (no transcript is sent) and any speech."""
+        self._heard_at = None
         task, self._session_task = self._session_task, None
         if self._session is not None:
             self._session = None
@@ -361,6 +367,10 @@ class VoiceService:
             # Cut at the last word break that fits (a hard cut if there's none).
             cut = max(head.rfind(" "), head.rfind("\n"))
             text = head[:cut].rstrip() if cut > 0 else head[:MAX_SPEAK_CHARS]
+        if self._heard_at is not None:
+            log.info("reply to speak arrived %.1f s after the transcript",
+                     self._clock() - self._heard_at)
+            self._heard_at = None
         self._speech_queue.append((speech_id, text))
         self._kick_speech()
         return speech_id

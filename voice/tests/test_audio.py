@@ -412,6 +412,30 @@ def test_create_synth_off_and_missing(tmp_path, monkeypatch):
     assert create_synth(TtsConfig(), tmp_path) is None
 
 
+def test_speaker_logs_when_the_voice_starts(caplog):
+    played: list[bytes] = []
+
+    class Synth:
+        engine = "kokoro"
+
+        def stream(self, text: str):
+            return 24000, iter([b"one", b"two"])
+
+    class Player:
+        def play(self, rate, chunks, stop) -> None:
+            played.extend(chunks)
+
+        def abort(self) -> None:
+            pass
+
+    with caplog.at_level("INFO", logger="mcfly_voice.tts"):
+        Speaker(Synth(), Player()).speak("Nothing until **three**.", threading.Event())
+    assert played == [b"one", b"two"]
+    starts = [r.getMessage() for r in caplog.records if "first audio" in r.getMessage()]
+    assert len(starts) == 1
+    assert starts[0].startswith("speaking 20 characters (kokoro): first audio after ")
+
+
 @pytest.mark.skipif(not shutil.which("espeak-ng"), reason="espeak-ng not installed")
 def test_espeak_fallback_synthesizes_and_plays(fake_aplay, tmp_path, monkeypatch):
     out, args = fake_aplay

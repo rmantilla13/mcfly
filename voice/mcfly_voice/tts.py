@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -351,6 +352,18 @@ def create_synth(cfg: TtsConfig, data_dir: Path) -> Synthesizer | None:
     return None
 
 
+def _timed(chunks: Iterator[bytes], engine: str, length: int, started: float) -> Iterator[bytes]:
+    """Passes the audio through, logging how long the first of it took: the
+    wait between a reply arriving and McFly starting to say it."""
+    first = True
+    for chunk in chunks:
+        if first:
+            first = False
+            log.info("speaking %d characters (%s): first audio after %.1f s",
+                     length, engine, time.monotonic() - started)
+        yield chunk
+
+
 class Speaker:
     """Speaks one text at a time through a player; `abort` cuts it short."""
 
@@ -362,8 +375,9 @@ class Speaker:
         text = clean_for_speech(text)
         if not text or stop.is_set():
             return
+        started = time.monotonic()
         rate, chunks = self.synth.stream(text)
-        self.player.play(rate, chunks, stop)
+        self.player.play(rate, _timed(chunks, self.synth.engine, len(text), started), stop)
 
     def abort(self) -> None:
         self.player.abort()

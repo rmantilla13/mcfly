@@ -109,6 +109,31 @@ async def test_speak_answers_with_spoken_after_the_words_are_said():
         assert backend.spoken == ["Tacos tonight, and Leo is on dishes."]
 
 
+async def test_the_reply_wait_is_logged(caplog):
+    # From the transcript going out to the display asking to speak the answer:
+    # the time the assistant took, which the Pi can't otherwise see.
+    sim = fast_sim(listen_text="what's on today")
+    async with running(sim) as (_, backend, url), client(url) as c:
+        with caplog.at_level("INFO", logger="mcfly_voice.service"):
+            await c.send(type="listen")
+            await c.until(IDLE)
+            await c.send(type="speak", text="Nothing until three.", id="r1")
+            await c.until(IDLE)
+            await c.send(type="speak", text="Not a reply to anything.", id="r2")
+            await c.until(IDLE)
+            # A transcript the display doesn't answer aloud (typed into the
+            # chat, or cancelled) leaves nothing to time a later speak against.
+            backend.command("follow add milk to the list")  # just after a reply
+            await c.send(type="listen")
+            got = await c.until(IDLE)
+            assert {"type": "transcript", "text": "add milk to the list", "final": True} in got
+            await c.send(type="cancel")  # handled before the speak below
+            await c.send(type="speak", text="A voice preview.", id="r3")
+            await c.until(IDLE)
+    waits = [r.getMessage() for r in caplog.records if "after the transcript" in r.getMessage()]
+    assert len(waits) == 1 and waits[0].startswith("reply to speak arrived ")
+
+
 async def test_speak_without_an_id_gets_one():
     async with running() as (_, _, url), client(url) as c:
         await c.send(type="speak", text="Hello there")

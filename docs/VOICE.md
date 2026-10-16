@@ -68,6 +68,14 @@ PortAudio's reader to give up on the silent device, 2048 empty polls of 80 ms
 each, so every stall took 2 minutes 47 seconds. The whole service waited
 with it, the display's connection included.
 
+Each overflow also threw away about 170 ms of whatever was being said.
+Commands played through the panel and recorded with that two-block buffer
+were missing a sixth of their audio, mostly from the middle, and Whisper got
+19–36% of their words wrong ("add cup dry cleaning my to dust"). Recorded
+with room to spare, nothing was lost and `base.en` got them all right, as it
+does the clean audio. A bigger model can't bring back what was never
+recorded: `small.en` was as wrong on the broken audio, and four times slower.
+
 Now:
 
 - The buffer holds four blocks (320 ms), so the reader has time to spare.
@@ -476,7 +484,8 @@ can open the devices, and start it again afterwards.
 | Never wakes | Check the log for `wake word unavailable` (model missing: run `--download-models`). Then lower the threshold, and check that the display's wake word switch is on |
 | Cuts you off | Raise `vad.silence` to 1.0 |
 | Waits long after you stop talking | Background noise reads as speech: try `vad.aggressiveness = 3`, or move the mic |
-| Wrong words | Add names to `stt.initial_prompt`; try `stt.model = "small.en"`; speak closer to the mic |
+| Wrong words | First look for `input overflowed` in the log: lost audio drops whole syllables, and no model gets them back. Then add names to `stt.initial_prompt`, speak closer to the mic, or try `stt.model = "small.en"` (about four times slower on the Pi) |
+| Slow to answer | The log times each step: `transcribed N s of audio in N s` (Whisper), `reply to speak arrived N s after the transcript` (the display asking the assistant), `speaking N characters (kokoro): first audio after N s` (the voice). On a hot Pi Whisper and Kokoro each take seconds; see the next row |
 | Not Homestead's voice | Kokoro isn't loading, so it fell back to Piper (or espeak-ng). The log says why; usually the models need `--download-models` |
 | Answers start late, or pause between sentences | Kokoro renders a reply piece by piece (`speech_pieces`), the next while the last plays. The first piece is a short sentence or clause, so speaking starts soon; the rest flows only while Kokoro renders faster than it speaks. A hot Pi slows to 1–1.5 GHz and falls behind: at 1 GHz the first words came 2–6.5 s after the reply (9–17 s when the first piece was the whole answer), then the rest paused 6–12 s while it rendered. `vcgencmd measure_temp` and `vcgencmd get_throttled` show it; fit the Active Cooler ([PI_SETUP.md](PI_SETUP.md)) |
 | Robotic voice | Neither Kokoro nor Piper loaded, so it fell back to espeak-ng. The log says why |
