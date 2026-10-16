@@ -13,6 +13,14 @@ class TestPerfMonitor : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        QCoreApplication::setOrganizationName("McFly-tests");
+        QCoreApplication::setApplicationName("tst_perfmonitor");
+        QSettings().clear();
+    }
+    void cleanupTestCase() { QSettings().clear(); }
+
     void residentMemoryFromStatus()
     {
         const QByteArray status = "Name:\tmcfly-display\nUmask:\t0022\nState:\tS (sleeping)\n"
@@ -57,8 +65,9 @@ private slots:
         QCOMPARE(PerfMonitor::throttleText("throttled=zz"), QString());
     }
 
-    // Off (MCFLY_PERF_HUD unset): attaching does nothing, and a sample is
-    // never taken, so the overlay's bindings never change.
+    // Off (MCFLY_PERF_HUD unset, the switch never turned on): attaching
+    // starts nothing, and a sample is never taken, so the overlay's bindings
+    // never change.
     void offCostsNothing()
     {
         qunsetenv("MCFLY_PERF_HUD");
@@ -66,7 +75,7 @@ private slots:
         QVERIFY(!perf.enabled());
         QQuickWindow window;
         perf.attach(&window);
-        QVERIFY(!perf.attached());
+        QVERIFY(!perf.sampling());
         QSignalSpy sampled(&perf, &PerfMonitor::sampled);
         perf.sample();
         QCOMPARE(sampled.count(), 0);
@@ -93,7 +102,8 @@ private slots:
         window.show();
         QVERIFY(QTest::qWaitForWindowExposed(&window));
         perf.attach(&window);
-        QVERIFY(perf.attached());
+        QVERIFY(perf.sampling());
+        QCOMPARE(perf.lines(), QStringList{QStringLiteral("Measuring…")});
         QSignalSpy sampled(&perf, &PerfMonitor::sampled);
         for (int i = 0; i < 10; ++i) {
             box->setX(i);       // a change, so a frame
@@ -108,6 +118,49 @@ private slots:
         QVERIFY(perf.lines().first().contains(QStringLiteral("fps")));
         // And the timer keeps sampling.
         QTRY_VERIFY_WITH_TIMEOUT(sampled.count() >= 2, 2500);
+    }
+
+    // Settings → Admin: the switch turns sampling on and off at once, is
+    // remembered for the next start, and MCFLY_PERF_HUD still turns it on
+    // at every start whatever the switch was left at.
+    void switchesAtRuntimeAndRemembers()
+    {
+        qunsetenv("MCFLY_PERF_HUD");
+        QSettings().clear();
+        QQuickWindow window;
+        window.resize(200, 120);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        {
+            PerfMonitor perf;
+            QVERIFY(!perf.enabled());
+            QVERIFY(!perf.forced());
+            perf.attach(&window);
+            QVERIFY(!perf.sampling());
+            QSignalSpy changed(&perf, &PerfMonitor::enabledChanged);
+            perf.setEnabled(true);
+            QCOMPARE(changed.count(), 1);
+            QVERIFY(perf.sampling());
+            QCOMPARE(perf.lines(), QStringList{QStringLiteral("Measuring…")});
+            perf.setEnabled(true); // no change, no signal
+            QCOMPARE(changed.count(), 1);
+            perf.setEnabled(false);
+            QCOMPARE(changed.count(), 2);
+            QVERIFY(!perf.sampling());
+            QVERIFY(perf.lines().isEmpty());
+            perf.setEnabled(true);
+        }
+        QVERIFY(PerfMonitor().enabled()); // left on: on at the next start
+        {
+            PerfMonitor perf;
+            perf.setEnabled(false);
+        }
+        QVERIFY(!PerfMonitor().enabled());
+        qputenv("MCFLY_PERF_HUD", "1");
+        PerfMonitor forced;
+        QVERIFY(forced.enabled());
+        QVERIFY(forced.forced());
+        qunsetenv("MCFLY_PERF_HUD");
     }
 };
 

@@ -405,16 +405,21 @@ down: the NOW column says HOT.
 
 ### Performance on the screen itself
 
-With `MCFLY_PERF_HUD=1` in `/etc/mcfly/display.env` (then
-`sudo systemctl restart mcfly-display`), the top right corner of the panel
-shows the app's own numbers, once a second: the frames it drew and their
-work on the render thread (the longest too), the GPU's busy share and jobs,
-the app's CPU and memory, and the temperature, clock and any throttling. The
-frame count is exact, where `pi-perf.sh`'s GPU jobs also count each cached
-layer the GPU redrew. Its border turns amber from 80 °C or while the Pi is
-held back. It adds one small redraw a second; without the variable it is
-never sampled or shown. It works in a window on a computer too:
-`MCFLY_PERF_HUD=1 build/display/mcfly-display --demo --windowed`.
+On the panel, tap the gear, then **Admin** (after Power) and turn on
+**Performance overlay**. The top right corner then shows the app's own
+numbers, once a second: the frames it drew and their work on the render
+thread (the longest too), the GPU's busy share and jobs, the app's CPU and
+memory, and the temperature, clock and any throttling. The frame count is
+exact, where `pi-perf.sh`'s GPU jobs also count each cached layer the GPU
+redrew. Its border turns amber from 80 °C or while the Pi is held back. The
+switch is remembered on the display. It adds one small redraw a second; off,
+nothing is sampled or shown.
+
+`MCFLY_PERF_HUD=1` in `/etc/mcfly/display.env` (then
+`sudo systemctl restart mcfly-display`) turns it on at every start, whatever
+the switch was left at. It works in a window on a computer too:
+`MCFLY_PERF_HUD=1 build/display/mcfly-display --demo --windowed`, or
+`--screen admin` to open on the Admin page.
 
 ## Start over (clean install)
 

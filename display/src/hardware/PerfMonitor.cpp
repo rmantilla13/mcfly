@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QQuickWindow>
+#include <QSettings>
 #include <QStandardPaths>
 
 #include <sys/resource.h>
@@ -39,6 +40,8 @@ QString gpuStatsPath()
     return {};
 }
 
+const char *const kSettingKey = "display/perfHud";
+
 bool enabledByEnvironment()
 {
     const QByteArray v = qgetenv("MCFLY_PERF_HUD").trimmed().toLower();
@@ -47,7 +50,12 @@ bool enabledByEnvironment()
 
 } // namespace
 
-PerfMonitor::PerfMonitor(QObject *parent) : PerfMonitor(enabledByEnvironment(), parent) {}
+PerfMonitor::PerfMonitor(QObject *parent)
+    : PerfMonitor(enabledByEnvironment() || QSettings().value(QLatin1String(kSettingKey), false).toBool(), parent)
+{
+    m_forced = enabledByEnvironment();
+    m_persist = true;
+}
 
 PerfMonitor::PerfMonitor(bool enabled, QObject *parent) : QObject(parent), m_enabled(enabled)
 {
@@ -57,16 +65,48 @@ PerfMonitor::PerfMonitor(bool enabled, QObject *parent) : QObject(parent), m_ena
 
 void PerfMonitor::attach(QQuickWindow *window)
 {
-    if (!m_enabled || !window || m_window)
+    if (!window || m_window)
         return;
     m_window = window;
     m_gpuStatsPath = gpuStatsPath();
+    if (m_enabled)
+        start();
+}
+
+void PerfMonitor::setEnabled(bool on)
+{
+    if (on == m_enabled)
+        return;
+    m_enabled = on;
+    if (m_persist)
+        QSettings().setValue(QLatin1String(kSettingKey), on);
+    if (m_window) {
+        if (on)
+            start();
+        else
+            stop();
+    }
+    emit enabledChanged();
+}
+
+void PerfMonitor::start()
+{
+    if (!m_window || m_timer.isActive())
+        return;
+    QQuickWindow *window = m_window;
+    m_frames = 0;
+    m_frameNs = 0;
+    m_frameMaxNs = 0;
+    m_syncStartNs = -1;
+    m_lastSampleNs = 0;
+    m_lastCpuSeconds = -1;
+    m_lastGpuJobs = m_lastGpuRuntime = -1;
     m_clock.start();
     // Emitted on the render thread with the threaded loop: atomics only.
-    connect(window, &QQuickWindow::beforeSynchronizing, this, [this]() {
+    m_connections << connect(window, &QQuickWindow::beforeSynchronizing, this, [this]() {
         m_syncStartNs.store(m_clock.nsecsElapsed(), std::memory_order_relaxed);
     }, Qt::DirectConnection);
-    connect(window, &QQuickWindow::afterRendering, this, [this]() {
+    m_connections << connect(window, &QQuickWindow::afterRendering, this, [this]() {
         const qint64 start = m_syncStartNs.exchange(-1, std::memory_order_relaxed);
         if (start < 0)
             return;
@@ -76,11 +116,23 @@ void PerfMonitor::attach(QQuickWindow *window)
         while (ns > max && !m_frameMaxNs.compare_exchange_weak(max, ns, std::memory_order_relaxed)) {
         }
     }, Qt::DirectConnection);
-    connect(window, &QQuickWindow::frameSwapped, this, [this]() {
+    m_connections << connect(window, &QQuickWindow::frameSwapped, this, [this]() {
         m_frames.fetch_add(1, std::memory_order_relaxed);
     }, Qt::DirectConnection);
     sample(); // the baselines
     m_timer.start();
+}
+
+// Off: no connection left to the window, no timer, nothing on show.
+void PerfMonitor::stop()
+{
+    for (const QMetaObject::Connection &c : std::as_const(m_connections))
+        disconnect(c);
+    m_connections.clear();
+    m_timer.stop();
+    m_lines.clear();
+    m_warn = false;
+    emit sampled();
 }
 
 void PerfMonitor::sample()
@@ -124,6 +176,13 @@ void PerfMonitor::sample()
     const QByteArray khz = readFile(QStringLiteral("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")).trimmed();
     m_cpuMhz = khz.isEmpty() ? -1 : int(khz.toLongLong() / 1000);
     readThrottle();
+    if (first) {
+        // The baselines only: the numbers come with the next second.
+        m_lines = {tr("Measuring…")};
+        m_warn = false;
+        emit sampled();
+        return;
+    }
 
     const auto num = [](double v, int decimals = 0) { return QString::number(v, 'f', decimals); };
     m_lines.clear();

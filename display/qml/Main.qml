@@ -105,6 +105,8 @@ ApplicationWindow {
             assistant.open = true
         else if (startScreen === "settings")
             settings.open()
+        else if (startScreen === "admin")
+            settings.openAdmin()
     }
 
     // Drop back to the home screen after the screen saver has been up.

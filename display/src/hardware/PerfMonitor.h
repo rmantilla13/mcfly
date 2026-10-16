@@ -27,12 +27,16 @@
 //              (HOT soft temperature limit, CAP clock capped, THR throttled,
 //              UV under-voltage), with what happened since boot after it
 //
-// Off (the default) it is never attached: no timer, no connection to the
-// window, nothing sampled; the overlay's properties never change.
+// Settings → Admin turns it on and off, remembered on this display
+// (display/perfHud); MCFLY_PERF_HUD=1 in /etc/mcfly/display.env turns it on
+// at every start (`forced`). Off, it holds no connection to the window and
+// runs no timer: nothing is sampled and the overlay's properties never change.
 class PerfMonitor : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(bool enabled READ enabled CONSTANT)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
+    // On from MCFLY_PERF_HUD at every start, whatever the switch last said.
+    Q_PROPERTY(bool forced READ forced CONSTANT)
     Q_PROPERTY(double fps READ fps NOTIFY sampled)
     Q_PROPERTY(double frameMs READ frameMs NOTIFY sampled)
     Q_PROPERTY(double frameMaxMs READ frameMaxMs NOTIFY sampled)
@@ -49,17 +53,22 @@ class PerfMonitor : public QObject
     Q_PROPERTY(bool warn READ warn NOTIFY sampled)
 
 public:
-    // Enabled by MCFLY_PERF_HUD (1, on, true or yes), unless told otherwise.
+    // On if MCFLY_PERF_HUD is 1, on, true or yes, else as the switch was
+    // left; the switch is remembered from then on.
     explicit PerfMonitor(QObject *parent = nullptr);
+    // On or off as told, remembering nothing (tests).
     PerfMonitor(bool enabled, QObject *parent);
 
-    // Starts counting this window's frames and sampling, if enabled.
+    // The window to watch: its frames are counted while this is on, from now
+    // or from when it is switched on.
     void attach(QQuickWindow *window);
+    void setEnabled(bool on);
     // Takes a sample now (tests; the timer calls it every second).
     void sample();
 
     bool enabled() const { return m_enabled; }
-    bool attached() const { return m_window != nullptr; }
+    bool forced() const { return m_forced; }
+    bool sampling() const { return m_timer.isActive(); }
     double fps() const { return m_fps; }
     double frameMs() const { return m_frameMs; }
     double frameMaxMs() const { return m_frameMaxMs; }
@@ -86,11 +95,17 @@ public:
 
 signals:
     void sampled();
+    void enabledChanged();
 
 private:
+    void start();
+    void stop();
     void readThrottle();
 
     bool m_enabled = false;
+    bool m_forced = false;
+    bool m_persist = false;     // the switch is saved (not in tests)
+    QList<QMetaObject::Connection> m_connections;
     QPointer<QQuickWindow> m_window;
     QTimer m_timer;
     QElapsedTimer m_clock;      // monotonic, for the frame timings and the second

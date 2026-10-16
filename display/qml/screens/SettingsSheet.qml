@@ -6,8 +6,9 @@ import McFly.Core
 
 // Display settings, from the gear in the nav rail: screen saver, dark mode,
 // sleep, voice, Wi-Fi, speaker volume, restart, about this display, and
-// re-pairing. The setup screen opens it on the Wi-Fi page; until the display
-// is paired the re-pairing part stays hidden.
+// re-pairing, with an Admin page of switches for working on McFly. The setup
+// screen opens it on the Wi-Fi page; until the display is paired the
+// re-pairing part stays hidden.
 Popup {
     id: sheet
     modal: true
@@ -25,7 +26,7 @@ Popup {
     padding: Theme.mini ? 18 : Theme.compact ? 28 : 36
     closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
 
-    property string page: "main"          // main | wifi
+    property string page: "main"          // main | wifi | admin
     property bool confirmingRepair: false
     property string confirmingPower: ""   // "" | restart | reboot
     property string joinSsid: ""
@@ -45,6 +46,10 @@ Popup {
     }
     function openWifi() {
         page = "wifi"
+        open()
+    }
+    function openAdmin() {
+        page = "admin"
         open()
     }
     readonly property bool paired: Store.mode !== "pairing"
@@ -216,7 +221,7 @@ Popup {
             RowLayout {
                 Layout.fillWidth: true
                 IconButton {
-                    visible: sheet.page === "wifi"
+                    visible: sheet.page !== "main"
                     icon: "left"
                     fill: Theme.surfaceAlt
                     onClicked: sheet.page = "main"
@@ -224,7 +229,7 @@ Popup {
                 Column {
                     Layout.fillWidth: true
                     Label {
-                        text: sheet.page === "wifi" ? qsTr("Wi-Fi") : qsTr("Settings")
+                        text: sheet.page === "wifi" ? qsTr("Wi-Fi") : sheet.page === "admin" ? qsTr("Admin") : qsTr("Settings")
                         color: Theme.text
                         font.pixelSize: Theme.fontLg
                         font.weight: Font.DemiBold
@@ -232,6 +237,7 @@ Popup {
                     Label {
                         text: sheet.page === "wifi"
                               ? (System.busy ? qsTr("Looking for networks…") : qsTr("Choose a network"))
+                              : sheet.page === "admin" ? qsTr("For working on McFly")
                               : qsTr("This display")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSm
@@ -904,6 +910,40 @@ Popup {
                             }
                         }
                     }
+
+                    // Admin: switches for working on McFly, on a page of
+                    // their own (as Wi-Fi's networks are).
+                    SectionLabel { Layout.topMargin: 12; text: qsTr("ADMIN") }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: adminCard.implicitHeight + 36
+                        radius: 24
+                        color: Theme.surfaceAlt
+                        ColumnLayout {
+                            id: adminCard
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 20
+                            anchors.rightMargin: 20
+                            spacing: 14
+                            Label {
+                                Layout.fillWidth: true
+                                text: Perf.enabled ? qsTr("The performance overlay is on.")
+                                                   : qsTr("For working on McFly: the performance overlay, and more to come.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontXs + 1
+                                wrapMode: Text.WordWrap
+                            }
+                            PillButton {
+                                Layout.fillWidth: true
+                                text: qsTr("Open admin")
+                                fill: Theme.surface
+                                ink: Theme.text
+                                onClicked: sheet.page = "admin"
+                            }
+                        }
+                    }
                 }
 
                 // Right: about, agents, calendars, memory and re-pair.
@@ -1202,6 +1242,48 @@ Popup {
                             }
                         }
                     }
+                }
+            }
+
+            // Admin: each switch is remembered on this display and changes
+            // nothing anyone sees anywhere else.
+            ColumnLayout {
+                visible: sheet.page === "admin"
+                Layout.fillWidth: true
+                spacing: 12
+
+                SectionLabel { text: qsTr("PERFORMANCE") }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: perfRow.implicitHeight
+                    radius: 24
+                    color: Theme.surfaceAlt
+                    ColumnLayout {
+                        id: perfRow
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 18
+                        anchors.rightMargin: 20
+                        SettingRow {
+                            icon: "chart"
+                            title: qsTr("Performance overlay")
+                            detail: Perf.forced
+                                    ? qsTr("Frames, GPU, CPU and temperature in the top right corner. On at every start: MCFLY_PERF_HUD is set in display.env.")
+                                    : qsTr("Frames, GPU, CPU and temperature in the top right corner, once a second.")
+                            Toggle {
+                                checked: Perf.enabled
+                                onToggled: function (on) { Perf.enabled = on }
+                            }
+                        }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 4
+                    text: qsTr("From a computer, display/scripts/pi-perf.sh shows the same and the rest of the Pi (docs/PI_SETUP.md).")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontXs
+                    wrapMode: Text.WordWrap
                 }
             }
 
