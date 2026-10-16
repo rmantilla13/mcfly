@@ -314,18 +314,28 @@ public struct Device: Codable, Identifiable, Hashable, Sendable {
     /// A display that checked in within this long counts as online (spec §1.6).
     public static let onlineWindow: TimeInterval = 15 * 60
 
+    /// The part of the display's settings (`devices.settings`) the app reads.
+    public struct Settings: Codable, Hashable, Sendable {
+        /// The screen savers' backdrop (`AccountBackdrop`): the mesh, or one of the skies.
+        public var backdrop: String?
+
+        public init(backdrop: String? = nil) { self.backdrop = backdrop }
+    }
+
     public let id: UUID
     public var userId: UUID?
     public var name: String
     public var lastSeenAt: Date?
     public var createdAt: Date
+    public var settings: Settings?
 
-    public init(id: UUID, userId: UUID? = nil, name: String, lastSeenAt: Date? = nil, createdAt: Date) {
+    public init(id: UUID, userId: UUID? = nil, name: String, lastSeenAt: Date? = nil, createdAt: Date, settings: Settings? = nil) {
         self.id = id; self.userId = userId; self.name = name; self.lastSeenAt = lastSeenAt; self.createdAt = createdAt
+        self.settings = settings
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, settings
         case userId = "user_id"
         case lastSeenAt = "last_seen_at"
         case createdAt = "created_at"

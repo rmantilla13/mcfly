@@ -16,7 +16,7 @@ struct HomeView: View {
     @Environment(AppModel.self) private var app
     @State private var showAsk = false
     @State private var showVoice = false
-    @State private var showAmbient = false
+    @State private var showAmbient = Config.opensAmbient
     @State private var weather = WeatherModel(isDemo: Config.isDemo)
 
     private var feeds: FeedStore { app.feeds }

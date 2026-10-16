@@ -13,7 +13,7 @@ apple/
 ├── Config/                xcconfig layering: Defaults → Signing → optional Local (secrets, team)
 ├── McFly/                 the app
 │   ├── App/               McFlyApp (scenes, links), AppModel (session, phase, services), Config
-│   ├── Theme/             mood palettes and Appearance, GradientTile (+ its Metal shader), glow, cards and pills
+│   ├── Theme/             mood palettes and Appearance, GradientTile and Backdrop (+ their Metal shaders), glow, cards and pills
 │   ├── Views/             one file per screen, Components.swift for shared pieces
 │   ├── Voice/             VoiceGlow (from Homestead), listener, speaker, session, VoiceModeView
 │   ├── Assets.xcassets    app icon (scripts/render_app_icon.py), launch color
@@ -133,7 +133,7 @@ says which.
 |---|---|
 | **Sign in** | Email + password, or **Email me a link** (a magic link that comes back to `mcfly://auth-callback`). After signing in, `is_platform_admin` is checked; a non-admin sees "This account isn't a McFly admin. The first account to sign up becomes the admin." with Sign out. |
 | **Home** | The display's Home in its portrait layout: the greeting and a big clock, **Up next** (the event on now, else the next one, on its colour), the first blocked project (on the Mac; on iPhone and iPad, where the status bar has the time, the date and four glance tiles instead: what's next, the weather here from Open-Meteo once location is allowed on the tile, what needs you from today's alerts and blocked projects, and the top story), **Ask McFly** on the voice glow (tap to type, the mic to talk), the markets in one strip, then **Today**: one stream in time order of today's Pulse reports, briefs, project updates and events (`Timeline` in the kit, the same rules as the display's FeedStore and the web's `lib/today.ts`). Past events fade, the one on now is outlined, the next is marked; each row opens its story, brief, project or event. Pull to refresh; coming back to the app after a minute refreshes too. |
-| **Ambient** | The moon on Home: the display's ambient screen saver full screen, for a stand or a nightstand. The moving gradient, the clock, the date, what's next and what follows, and a rail of cards (the latest brief, the markets, a blocked project, today's top story, later events). It drifts a few points a minute, keeps the screen awake, and a tap goes back. |
+| **Ambient** | The moon on Home: the display's ambient screen saver full screen, for a stand or a nightstand. The backdrop the displays show (their Settings → Backdrop, `devices.settings.backdrop`, read from the first display: the moving gradient with an aurora over it at night, or one of the display's five skies, `Backdrop`), the clock, the date, what's next and what follows, and a rail of cards (the latest brief, the markets, a blocked project, today's top story, later events). It drifts a few points a minute, keeps the screen awake, and a tap goes back. |
 | **Briefs** | Grouped by day; a reader lays out paragraphs and `- ` bullets. |
 | **Markets** | A tile per visible symbol in the console's order, with a sparkline from the history. A symbol's detail is the display's: on a gradient tile, green when it's up and coral when it's down, the price, the change, the sparkline, the note and who sent it; then the history on a card. The **Metrics** segment: a tile per visible metric (`metrics` history + `metric_settings` for label, group, order and hidden), grouped by the console's group, with the same sparklines; a metric's detail is on the same tile, green when the move is good news (down is, for latency, errors or open orders), then its history. |
 | **News** | The newest report by section, story cards with thumbnail, headline and takeaway; story detail with the image, takeaway, source domain and Open Link; a calendar menu picks an older report. |
@@ -172,6 +172,20 @@ The display's design language (`display/qml/Theme.qml`), in `McFly/Theme`:
   glow colours as the QML does. It only moves while on screen, with the app
   in front and Reduce Motion off. Given a frame it fills it; in a scroll
   view it is as tall as what's on it.
+- **Backdrop** is the display's five skies for the screen savers
+  (`display/shaders/{arc,ribbons,dawn,silk,pillars}.frag`, `Backdrop.qml`) as
+  SwiftUI colour effects (`Backdrop.metal`, one function each): the glow
+  stops in OKLCh, the light laid on the canvas by an OKLab mix (a pastel
+  wash by day, a glow on the near-black canvas at night, each style's own
+  strength) and a triangular dither, each run at a fraction of the view's
+  size and at the display saver's ten updates a second, only while on
+  screen, with the app in front and Reduce Motion off. Ambient draws whichever
+  the displays' `backdrop` setting names (`AccountBackdrop` in the kit, from
+  the first display, the mesh without the key); `-McFlyBackdrop arc` (or
+  `MCFLY_BACKDROP`) pins one for screenshots, and `-McFlyAmbient YES` opens
+  Ambient as the app starts. Text on a sky takes its inks
+  (`SkyColors`), which turn from dark to light in the middle of the dusk, as
+  the display's do, so they never sit grey on grey.
 - **Where the tiles are**, with the display's colours and seeds: Ambient's
   backdrop (the glow colours); a symbol's detail (`MarketsScreen.qml`'s:
   green `#3DB37A` up, coral `#F07F5A` down, seed 3.3, one ring toward the
@@ -254,7 +268,8 @@ mirrors `seed.sql` (feeds, projects with their updates, metrics, dashboards
 and the widget enum, events, settings with and without the newer columns),
 quote and metric grouping and ordering, pairing-code validation and link
 parsing, brief text blocks, sentence splitting for speech, formatting, the
-feed store's refresh and derived values, the demo admin service, and Home's
+feed store's refresh and derived values, the demo admin service, the
+backdrop read from the displays' settings, and Home's
 timeline: the web's cases from `admin/tests/today.test.mjs` (today's rows
 only, all-day first; an overnight report opening the day; past, now and
 next; up next; the labels), the mood's hours, and the demo's report dates.

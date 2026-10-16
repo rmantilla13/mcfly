@@ -1,4 +1,5 @@
 import Foundation
+import McFlyKit
 
 // The anon key is designed to ship in client apps; row-level security does the
 // protecting. A device or Mac build reads SupabaseURL and SupabaseAnonKey from
@@ -37,6 +38,27 @@ enum Config {
             return ["YES", "1", "true"].contains(arguments[i + 1])
         }
         return ProcessInfo.processInfo.environment["MCFLY_DEMO"] == "1"
+    }
+
+    /// `-McFlyBackdrop arc` (or MCFLY_BACKDROP, as on the display) pins Ambient's
+    /// backdrop whatever the displays say, for screenshots. Nil otherwise, or for
+    /// a style this build doesn't know.
+    static var pinnedBackdrop: String? {
+        let arguments = ProcessInfo.processInfo.arguments
+        var value = ProcessInfo.processInfo.environment["MCFLY_BACKDROP"]
+        if let i = arguments.firstIndex(of: "-McFlyBackdrop"), i + 1 < arguments.count { value = arguments[i + 1] }
+        guard let value = value?.lowercased(), AccountBackdrop.styles.contains(value) else { return nil }
+        return value
+    }
+
+    /// `-McFlyAmbient YES` (or MCFLY_AMBIENT=1) opens Ambient as the app
+    /// starts, for screenshots of the backdrops (the display's MCFLY_SCREENSAVER).
+    static var opensAmbient: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let i = arguments.firstIndex(of: "-McFlyAmbient"), i + 1 < arguments.count {
+            return ["YES", "1", "true"].contains(arguments[i + 1])
+        }
+        return ProcessInfo.processInfo.environment["MCFLY_AMBIENT"] == "1"
     }
 
     private static func string(forInfoKey key: String) -> String? {

@@ -2,9 +2,10 @@ import McFlyKit
 import SwiftUI
 
 /// The display's ambient screen saver (display/qml/screensaver/AmbientSaver.qml)
-/// full screen on the phone, for a stand or a nightstand: the moving
-/// gradient (with an aurora hanging over it at night, `AuroraGlow`, fading
-/// in), a big clock, the date, what's next and what follows, and a rail
+/// full screen on the phone, for a stand or a nightstand: the backdrop the
+/// displays show (`AccountBackdrop`: the moving gradient with an aurora
+/// hanging over it at night, `AuroraGlow`, fading in, or one of the display's
+/// skies, `Backdrop`), a big clock, the date, what's next and what follows, and a rail
 /// of cards from the feeds (the latest brief, the markets, a blocked
 /// project, today's top story, the rest of the day). With no feeds yet it is
 /// just the clock. The composition drifts a few points every minute, the
@@ -18,25 +19,33 @@ struct AmbientView: View {
 
     var body: some View {
         let night = Theme.palette.isDark
+        let backdrop = app.backdrop
         TimelineView(.everyMinute) { context in
             let now = context.date
             GeometryReader { geo in
                 let wide = geo.size.width > geo.size.height
-                GradientTile(colors: Theme.palette.glow, dark: night, radius: 0, ringScale: 1.3, period: 72, fps: 15) { tile in
-                    ZStack(alignment: .topLeading) {
-                        // At night an aurora in the night glow hangs over the
-                        // clock, edge to edge and still while the rest drifts,
-                        // as on the display's saver. It ticks with the gradient.
-                        if night {
-                            AuroraGlow(lightMode: false, hem: 0.36, amplitude: 1.1, blend: 0.7, layers: 2,
-                                       opacity: 0.5, speed: 0.35, maxFps: 15)
-                                .transition(.opacity)
+                // The backdrop (the displays' Settings → Backdrop): the mesh is
+                // the moving gradient with an aurora hanging over it at night; the
+                // rest are skies of their own (Backdrop), at the saver's pace.
+                Group {
+                    if backdrop == AccountBackdrop.mesh {
+                        GradientTile(colors: Theme.palette.glow, dark: night, radius: 0, ringScale: 1.3, period: 72, fps: 15) { tile in
+                            ZStack(alignment: .topLeading) {
+                                // At night an aurora in the night glow hangs over the
+                                // clock, edge to edge and still while the rest drifts,
+                                // as on the display's saver. It ticks with the gradient.
+                                if night {
+                                    AuroraGlow(lightMode: false, hem: 0.36, amplitude: 1.1, blend: 0.7, layers: 2,
+                                               opacity: 0.5, speed: 0.35, maxFps: 15)
+                                        .transition(.opacity)
+                                }
+                                placed(composition(now: now, tile: tile, night: night, wide: wide, size: geo.size), wide: wide, geo: geo)
+                            }
                         }
-                        composition(now: now, tile: tile, night: night, wide: wide, size: geo.size)
-                            .padding(.horizontal, wide ? 48 : 28)
-                            .padding(.top, geo.safeAreaInsets.top + (wide ? 28 : 24))
-                            .padding(.bottom, geo.safeAreaInsets.bottom + 24)
-                            .offset(shift)
+                    } else {
+                        Backdrop(style: backdrop, colors: Theme.palette.glow, dark: night) { sky in
+                            placed(composition(now: now, tile: sky, night: night, wide: wide, size: geo.size), wide: wide, geo: geo)
+                        }
                     }
                 }
                 .ignoresSafeArea()
@@ -56,6 +65,18 @@ struct AmbientView: View {
         #endif
         .onAppear { ScreenAwake.hold("ambient") }
         .onDisappear { ScreenAwake.release("ambient") }
+        // The displays' backdrop may have been changed since the app opened.
+        .task { await app.syncBackdrop() }
+    }
+
+    /// The composition in its place: in from the edges, clear of the notch and
+    /// the home indicator, and drifting.
+    private func placed(_ composition: some View, wide: Bool, geo: GeometryProxy) -> some View {
+        composition
+            .padding(.horizontal, wide ? 48 : 28)
+            .padding(.top, geo.safeAreaInsets.top + (wide ? 28 : 24))
+            .padding(.bottom, geo.safeAreaInsets.bottom + 24)
+            .offset(shift)
     }
 
     // MARK: What to say
@@ -95,7 +116,7 @@ struct AmbientView: View {
     // MARK: The look
 
     @ViewBuilder
-    private func composition(now: Date, tile: TileColors, night: Bool, wide: Bool, size: CGSize) -> some View {
+    private func composition(now: Date, tile: some BackdropInks, night: Bool, wide: Bool, size: CGSize) -> some View {
         let events = todaysEvents(now)
         let shown = Array(cards(events, now: now).prefix(wide ? 3 : 4))
         let face = Timeline.Clock().parts(now)

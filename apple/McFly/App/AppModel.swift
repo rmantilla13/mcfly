@@ -33,6 +33,10 @@ final class AppModel {
     var pendingPairCode: String?
     /// Set once a sign-in link has been emailed, so the screen can say so.
     var magicLinkSentTo: String?
+    /// The screen savers' backdrop (`AccountBackdrop`), read from the displays: the
+    /// mesh, or one of the skies Ambient draws (`Backdrop`). A build pinned to one
+    /// (`-McFlyBackdrop`, for screenshots) keeps it.
+    private(set) var backdrop = Config.pinnedBackdrop ?? AccountBackdrop.mesh
 
     private let client: McFlyClient?
     private let pairingClient: PairingClient?
@@ -90,7 +94,9 @@ final class AppModel {
         do {
             if try await admin.isPlatformAdmin() {
                 phase = .ready
+                async let backdropSynced: Void = syncBackdrop()
                 await feeds.refresh()
+                await backdropSynced
             } else {
                 phase = .notAdmin
             }
@@ -149,6 +155,15 @@ final class AppModel {
                 report(error)
             }
         }
+    }
+
+    // MARK: Backdrop
+
+    /// Catches up with the displays' backdrop, picked on the display or the web
+    /// (`AccountBackdrop`): the admin check asks, and Ambient as it opens.
+    func syncBackdrop() async {
+        guard Config.pinnedBackdrop == nil, let account = try? await admin.accountBackdrop() else { return }
+        backdrop = account
     }
 
     // MARK: Services
