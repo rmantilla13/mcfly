@@ -9,8 +9,8 @@ import McFly.Core
 // spectrum line runs along the rounded bottom edge. While a reply is
 // prepared everything gathers into one beam that travels side to side.
 // Decorative only; pair it with a text status. Drawn by
-// shaders/spectrumglow.frag in one pass; a plain gradient stands in where
-// shaders don't run.
+// shaders/spectrumglow.vert and .frag in one pass; a plain gradient stands
+// in where shaders don't run.
 //
 //   SpectrumGlow {
 //       level: Voice.level            // the microphone, 0..1
@@ -21,7 +21,10 @@ import McFly.Core
 //
 // Where each lobe is, how tall, how bright and what colour (mixed in OKLab)
 // is worked out here once per update and handed to the shader, so per pixel
-// it only draws. The lobes drift sideways at slightly uneven speeds and each
+// it only draws: what depends only on x once a column of a mesh (the vertex
+// shader), what depends on the height per pixel, and nothing at all above
+// the highest point anything is lit (`_cut`). On Home it fills most of a
+// 1920x1200 panel, so that is most of a frame's GPU work. The lobes drift sideways at slightly uneven speeds and each
 // breathes at its own rate, so the glow never settles into a loop. While it
 // only idles (ambient, nothing heard, said or thought) it updates `maxFps`
 // times a second; listening, speaking or thinking, every frame. With
@@ -95,6 +98,11 @@ Item {
     property vector4d _k5
     property vector4d _k6
     property vector4d _dome
+    // Per lobe, 1 / its height (lobes 0-3, then 4-6 and 1 / (2 _lobeBlur)),
+    // and where the light starts, from the top: none of it reaches above.
+    property vector4d _r0
+    property vector4d _r1
+    property real _cut: 0
 
     // The spectrum in OKLab, in the order the hue drifts.
     readonly property var _stops: Theme.spectrum.map(c => Theme.oklab(c))
@@ -175,7 +183,14 @@ Item {
 
         const bands = [_low, _mid, _high, _mid, _low, _high, _mid]
         const drift = t * 0.045
-        const l = [], k = []
+        const l = [], k = [], rh = []
+        // Where the light starts: the top of the highest lobe that shows
+        // (above its top a lobe adds exactly nothing, and one fainter than
+        // 2e-4 a twentieth of a level at most); the band at its highest,
+        // should the dome crest right at a corner; and the bottom line where
+        // it climbs the corners, out past its glow.
+        const r = Math.min(cornerRadius, Math.min(w, h) * 0.5)
+        let top = Math.min(h - r - 1.6 * _bandWidth - _bandBlur - crest, h - r - 14)
         for (let i = 0; i < 7; ++i) {
             // Along a slow conveyor, each a little ahead or behind its place.
             let flow = i / 7 + 0.05 * t + 0.035 * Math.sin(t * (0.23 + 0.071 * i) + 1.7 * i)
@@ -198,9 +213,15 @@ Item {
             const c = _colorAt(i + drift)
             l.push(Qt.vector4d(x, h - height, 1 / (2 * sigma * sigma), alpha))
             k.push(Qt.vector4d(c.r, c.g, c.b, weight))
+            rh.push(1 / Math.max(height, 1))
+            if (alpha > 2e-4)
+                top = Math.min(top, h - height)
         }
         _l0 = l[0]; _l1 = l[1]; _l2 = l[2]; _l3 = l[3]; _l4 = l[4]; _l5 = l[5]; _l6 = l[6]
         _k0 = k[0]; _k1 = k[1]; _k2 = k[2]; _k3 = k[3]; _k4 = k[4]; _k5 = k[5]; _k6 = k[6]
+        _r0 = Qt.vector4d(rh[0], rh[1], rh[2], rh[3])
+        _r1 = Qt.vector4d(rh[4], rh[5], rh[6], 1 / Math.max(2 * _lobeBlur, 1e-3))
+        _cut = Math.max(0, Math.floor(top - 2))
     }
 
     Component.onCompleted: {
@@ -211,6 +232,7 @@ Item {
     onWidthChanged: _update()
     onHeightChanged: _update()
     onKindChanged: _update()
+    onCornerRadiusChanged: _update()
 
     // Idling: a Timer on wall-clock slots of 1/maxFps s, the same slots the
     // tiles and the aurora keep, so anything beside it moving 10 or 20 times
@@ -252,6 +274,9 @@ Item {
         anchors.fill: parent
         visible: !glow.fallback
         blending: true
+        // Columns 2 px wide, one row: the vertex shader works out what
+        // depends only on x there, and brings the top edge down to `cut`.
+        mesh: GridMesh { resolution: Qt.size(Math.max(1, Math.ceil(fx.width / 2)), 1) }
         // Uniforms (names match shaders/spectrumglow.frag).
         readonly property size size: Qt.size(width, height)
         readonly property real radius: glow.cornerRadius
@@ -260,6 +285,7 @@ Item {
         readonly property real bandWidth: glow._bandWidth
         readonly property real bandBlur: glow._bandBlur
         readonly property real lobeBlur: glow._lobeBlur
+        readonly property real cut: glow._cut
         readonly property vector4d dome: glow._dome
         readonly property vector4d l0: glow._l0
         readonly property vector4d l1: glow._l1
@@ -275,6 +301,11 @@ Item {
         readonly property vector4d k4: glow._k4
         readonly property vector4d k5: glow._k5
         readonly property vector4d k6: glow._k6
+        readonly property vector4d r0: glow._r0
+        readonly property vector4d r1: glow._r1
+        // 1 / (2 bandBlur), 1 / (2 px), a px: the divisions done once.
+        readonly property vector4d r2: Qt.vector4d(1 / Math.max(2 * bandBlur, 1e-3), dpr / 2, 1 / dpr, 0)
+        vertexShader: "qrc:/McFly/shaders/spectrumglow.vert.qsb"
         fragmentShader: "qrc:/McFly/shaders/spectrumglow.frag.qsb"
     }
 

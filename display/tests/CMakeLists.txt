@@ -91,7 +91,7 @@ qt_add_resources(tst_quickanswer "demo_data_quick"
 qt_add_shaders(tst_quickanswer "quick_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
+    FILES ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.vert ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
 add_test(NAME tst_quickanswer COMMAND tst_quickanswer)
 set_tests_properties(tst_quickanswer PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
@@ -123,7 +123,7 @@ target_link_libraries(tst_motion PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
 qt_add_shaders(tst_motion "motion_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag)
+    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.vert)
 add_test(NAME tst_motion COMMAND tst_motion)
 set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
@@ -154,7 +154,7 @@ qt_add_resources(tst_screens "demo_data_screens"
 qt_add_shaders(tst_screens "screens_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag
+    FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.vert
           ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
 add_test(NAME tst_screens COMMAND tst_screens)
 set_tests_properties(tst_screens PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")

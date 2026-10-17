@@ -87,9 +87,10 @@ SystemController ─ Wi-Fi, speakers, restart, reboot (through a root helper)
   your account from the phone, the Mac or the console.
 - **Voice glow**: `SpectrumGlow` is the Homestead app's voice visual (colour
   lobes, the band of light bending with the voice, the spectrum edge line)
-  as one fragment shader (`shaders/spectrumglow.frag`), driven by the
-  microphone level, a spoken rhythm while the answer is read, and the beam
-  while the model thinks.
+  in one pass (`shaders/spectrumglow.vert` works out what depends only on x
+  once a column, `.frag` the rest, and the dark rows above the light aren't
+  drawn), driven by the microphone level, a spoken rhythm while the answer
+  is read, and the beam while the model thinks.
 - **Kiosk mode**: full screen on `eglfs`, one app per device, restarted by
   systemd; the boot video plays until the app takes the screen
   ([PI_SETUP.md](PI_SETUP.md)).

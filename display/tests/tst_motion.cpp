@@ -71,6 +71,7 @@ Item {
     property QtObject theme: Theme
     property alias tile: tile
     property alias glow: glow
+    property alias card: card
     property alias probe: probe
     // What the probe tile is fed, step by step, by paletteFadeHasNoPop.
     property var probeColors: ["#5B7CF5", "#F07F5A", "#F6B94A", "#FBE6B0"]
@@ -97,6 +98,15 @@ Item {
         height: 72
         kind: "input"
         ambient: true
+    }
+    // The card on Home (assistant layout) at 1280x800.
+    SpectrumGlow {
+        id: card
+        width: 778
+        height: 760
+        cornerRadius: 36
+        ambient: true
+        intensity: 0.7
     }
 }
 )";
@@ -387,6 +397,52 @@ private slots:
 
         m_device.setAnimatedTiles(true);
         QVERIFY(glow->property("_changing").toBool());
+    }
+
+    // Home's card: the rows above the light aren't drawn at all. The cut sits
+    // above everything that adds light (each lobe that shows, the band at its
+    // highest, the bottom line up the corners) whatever the glow is doing,
+    // and most of the way down the card while it idles. Each lobe's height
+    // comes with it as 1 / height, for the shader.
+    void glowCutsAboveTheLight()
+    {
+        QObject *card = child("card");
+        auto check = [card](const char *state) {
+            const double h = card->property("height").toDouble();
+            const double cut = card->property("_cut").toDouble();
+            const QVector4D dome = card->property("_dome").value<QVector4D>();
+            const double band = h - 36 - 1.6 * card->property("_bandWidth").toDouble()
+                                - card->property("_bandBlur").toDouble() - dome.z();
+            QVERIFY2(cut >= 0 && cut <= band && cut <= h - 36 - 14, state);
+            const QVector4D r0 = card->property("_r0").value<QVector4D>();
+            const QVector4D r1 = card->property("_r1").value<QVector4D>();
+            const float rh[7] = {r0.x(), r0.y(), r0.z(), r0.w(), r1.x(), r1.y(), r1.z()};
+            for (int i = 0; i < 7; ++i) {
+                const QVector4D l = card->property(qPrintable(QStringLiteral("_l%1").arg(i))).value<QVector4D>();
+                if (l.w() > 2e-4)
+                    QVERIFY2(cut <= l.y(), qPrintable(QStringLiteral("%1: lobe %2 lit above the cut").arg(state).arg(i)));
+                QVERIFY2(std::abs(rh[i] * std::max(h - l.y(), 1.0) - 1) < 1e-4, state);
+            }
+            QVERIFY2(std::abs(r1.w() * 2 * card->property("_lobeBlur").toDouble() - 1) < 1e-4, state);
+        };
+        auto run = [card](double seconds) {
+            for (int i = 0; i < seconds * 30; ++i)
+                QMetaObject::invokeMethod(card, "_tick", Q_ARG(QVariant, 1.0 / 30));
+        };
+        run(2);
+        check("idle");
+        QVERIFY2(card->property("_cut").toDouble() > 0.4 * 760, "idling, the top 40% isn't drawn");
+        card->setProperty("speaking", true);
+        for (int i = 0; i < 6; ++i) {
+            run(0.5);
+            check("speaking");
+        }
+        card->setProperty("speaking", false);
+        card->setProperty("processing", true);
+        for (int i = 0; i < 6; ++i) {
+            run(0.5);
+            check("thinking");
+        }
     }
 
     // A tile fed the glow colours through a palette fade changes smoothly:

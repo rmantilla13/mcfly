@@ -190,6 +190,7 @@ qt_add_shaders(mcfly-display "shaders"
     FILES
         shaders/gradienttile.frag
         shaders/spectrumglow.frag
+        shaders/spectrumglow.vert
         shaders/aurora.frag
         shaders/glow.frag
         shaders/lens.frag
