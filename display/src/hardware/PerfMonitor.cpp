@@ -63,6 +63,11 @@ PerfMonitor::PerfMonitor(bool enabled, QObject *parent) : QObject(parent), m_ena
     connect(&m_timer, &QTimer::timeout, this, &PerfMonitor::sample);
 }
 
+PerfMonitor::~PerfMonitor()
+{
+    endThrottleCheck();
+}
+
 void PerfMonitor::attach(QQuickWindow *window)
 {
     if (!window || m_window)
@@ -163,6 +168,7 @@ void PerfMonitor::stop()
         emit stressChanged();
     }
     m_timer.stop();
+    endThrottleCheck();
     m_lines.clear();
     m_warn = false;
     emit sampled();
@@ -257,6 +263,16 @@ void PerfMonitor::readThrottle()
         });
     }
     m_vcgencmd->start(program, {QStringLiteral("get_throttled")});
+}
+
+// A check still running ends with the overlay, or the app: its answer would
+// have nowhere to go (and QProcess warns when it is left running).
+void PerfMonitor::endThrottleCheck()
+{
+    if (m_vcgencmd && m_vcgencmd->state() != QProcess::NotRunning) {
+        m_vcgencmd->kill();
+        m_vcgencmd->waitForFinished(100);
+    }
 }
 
 qint64 PerfMonitor::residentKb(const QByteArray &status)

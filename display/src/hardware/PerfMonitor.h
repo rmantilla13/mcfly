@@ -65,6 +65,7 @@ public:
     explicit PerfMonitor(QObject *parent = nullptr);
     // On or off as told, remembering nothing (tests).
     PerfMonitor(bool enabled, QObject *parent);
+    ~PerfMonitor() override;
 
     // The window to watch: its frames are counted while this is on, from now
     // or from when it is switched on.
@@ -113,6 +114,7 @@ private:
     void stop();
     void startStress();
     void readThrottle();
+    void endThrottleCheck();
 
     bool m_enabled = false;
     bool m_forced = false;
