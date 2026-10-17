@@ -51,6 +51,8 @@ sudo dpkg --configure -a
 # Boot video: the ffmpeg package includes ffplay, which draws on the KMS/DRM
 # screen before the app starts. ffmpeg itself is the framebuffer fallback.
 # qt6-base-private-dev: lets the app switch the HDMI panel off when it sleeps.
+# qt6-image-formats-plugins: WebP pictures, which many News stories serve;
+# without it they fall back to a tinted tile.
 # Games (display/games/README.md): particles for Same Game and Maroon,
 # LocalStorage and SQLite for the scores, QtMultimedia for Maroon's sounds
 # (on Trixie its FFmpeg backend comes with libqt6multimedia6).
@@ -62,7 +64,7 @@ sudo apt-get "${apt_opts[@]}" update
 sudo apt-get "${apt_opts[@]}" install -y \
     build-essential cmake git \
     qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-websockets-dev qt6-qpa-plugins \
-    qt6-shadertools-dev libqt6websockets6 \
+    qt6-shadertools-dev libqt6websockets6 qt6-image-formats-plugins \
     qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
     qml6-module-qtquick-window qml6-module-qtquick-templates qml6-module-qtqml-workerscript \
     qml6-module-qtquick-shapes \

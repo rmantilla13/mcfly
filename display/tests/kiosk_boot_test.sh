@@ -236,6 +236,12 @@ printf '%s\n' "$stub_out" | grep -qE 'systemctl enable mcfly-display$' || fail "
 grep -q 'NAutoVTs=0' "$install" || fail "installer does not stop logind from spawning a login on tty1"
 grep -q 'QT_QPA_EGLFS_ALWAYS_SET_MODE=1' "$install" || fail "installer does not force Qt to set the HDMI mode"
 grep -q 'ensure_display_env QT_QPA_EGLFS_KMS_CONFIG' "$install" || fail "installer does not repair a stale display.env"
+# Comments stripped, as for the unit: the note above the package list names it too.
+# A here-string, not a pipe: grep -q quits at the match, and under pipefail
+# sed's SIGPIPE would fail the check.
+grep -Eq '(^|[[:space:]])qt6-image-formats-plugins([[:space:]]|$)' \
+    <<<"$(sed -E 's/[[:space:]]+#.*$//; /^[[:space:]]*#/d' "$install")" \
+    || fail "installer does not install Qt's WebP plugin (qt6-image-formats-plugins), so News pictures in .webp don't show"
 docs="$root/docs/PI_SETUP.md"
 grep -q 'only shows logs' "$docs" || fail "docs do not say journalctl only shows logs"
 grep -q 'sudo systemctl enable --now mcfly-display' "$docs" || fail "docs do not say how to put McFly on HDMI"
