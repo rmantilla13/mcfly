@@ -206,11 +206,19 @@ One grammar for movement, the same on every panel (`Theme.qml` tokens):
 - **Gating.** Loops run only while their screen is shown and the screen is
   not idle (and News' hero and a blocked card's edge only while on screen),
   and everything (arrivals included) is off with Settings → Animated tiles.
-  Animators (opacity, scale, rotation) where they can be; never `Layout.*`
-  or a font size. News' hero and a blocked project's edge keep the ambient
-  clock instead (`MotionClock`, `Theme.motionFps`): an Animator steps on
-  every frame the panel draws, 60 a second for a drift of a pixel a second.
-  A stopped loop leaves nothing half-way: its halo is hidden, not frozen.
+  Every slow loop (a status's breath, the now dot, a blocked project's edge,
+  News' hero) keeps the ambient clock (`MotionClock`, `Theme.motionFps`): an
+  Animator steps on every frame the panel draws, 60 a second for a drift of
+  a pixel a second, so a screen nobody is touching would never let the
+  render loop sleep. Animators (opacity, scale, rotation) are for motion
+  that ends (arrivals, glides, a fresh price's three rings) and for what
+  moves only while an answer is on its way (the Ask ring, the typing dots);
+  never `Layout.*` or a font size. Home's ticker tape is not ambient: it
+  glides every frame the panel draws, as a swipe does, and with Animated
+  tiles off too, since it is how the symbols past the strip get shown at
+  all. Setup, shown only until the display is paired, still floats on
+  Animations. A stopped loop leaves nothing half-way: its halo is hidden,
+  not frozen.
 - **Software.** Without a GPU (the fallback, and the offscreen pictures in
   `screenshots.sh`) there are no arrivals or sweeps: the pages are simply
   there. Qt's software renderer also draws a Shape (a ring, a line) past a

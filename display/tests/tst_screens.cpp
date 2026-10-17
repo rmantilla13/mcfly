@@ -431,6 +431,45 @@ private slots:
         shoot(QStringLiteral("boards-launch"));
     }
 
+    // A status that needs a look breathes on the ambient clock (30 updates a
+    // second, not every frame the panel draws): its halo swells from 0.6 of
+    // full size at 0.08 opacity to full size at 0.34 over Theme.breath, from
+    // the start each time it starts, and is gone, not frozen, while stopped.
+    void statusDotBreathesOnTheAmbientClock()
+    {
+        QVERIFY(show("StatusDot { size: 16; breathing: true }", 120, 120, QStringLiteral("compact")));
+        auto *halo = m_screen->findChild<QQuickItem *>(QStringLiteral("halo"));
+        auto *clock = m_screen->findChild<QObject *>(QStringLiteral("breath"));
+        QVERIFY(halo && clock);
+        QVERIFY(halo->isVisible());
+        QVERIFY(clock->property("running").toBool());
+        QCOMPARE(clock->property("fps").toInt(), 30);
+        QVERIFY(clock->property("interval").toInt() <= 34);
+        // Opacity and size move together, along the same eased curve.
+        auto f = [&]() { return (halo->opacity() - 0.08) / 0.26; };
+        auto inStep = [&]() { return qAbs(f() - (halo->scale() - 0.6) / 0.4) < 1e-6; };
+        QTRY_VERIFY(f() > 0.05);
+        QVERIFY(f() < 1 && inStep());
+        QTRY_VERIFY_WITH_TIMEOUT(f() > 0.98, 4000); // the top, Theme.breath in
+        QVERIFY(inStep());
+
+        m_device.setAnimatedTiles(false);
+        QVERIFY(!halo->isVisible());
+        QVERIFY(!clock->property("running").toBool());
+        m_device.setAnimatedTiles(true);
+        QVERIFY(halo->isVisible());
+        QVERIFY2(qAbs(f()) < 1e-6, qPrintable(QString::number(f()))); // from the start again
+        QTRY_VERIFY(f() > 0.05);
+
+        m_screen->setProperty("running", false);
+        QVERIFY(!halo->isVisible());
+        QVERIFY(!clock->property("running").toBool());
+        m_screen->setProperty("running", true);
+        m_screen->setProperty("breathing", false);
+        QVERIFY(!halo->isVisible());
+        QVERIFY(!clock->property("running").toBool());
+    }
+
     // A health strip's statuses line up along the top (the first in a row,
     // with no hairline to stretch it, used to sit lower), and a long run
     // wraps into rows of `perRow`, each starting at the left.

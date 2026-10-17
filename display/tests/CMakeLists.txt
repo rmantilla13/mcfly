@@ -134,7 +134,7 @@ set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscree
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
     components/SpectrumGlow.qml components/GradientTile.qml components/Sparkline.qml
-    components/Ring.qml components/StatusDot.qml components/Reveal.qml components/InsightLine.qml
+    components/Ring.qml components/StatusDot.qml components/MotionClock.qml components/Reveal.qml components/InsightLine.qml
     components/HealthStrip.qml components/SuggestionChips.qml components/FocusFlickable.qml
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
     components/MasterDetail.qml components/Tag.qml components/NavRail.qml

@@ -17,15 +17,27 @@ Item {
     implicitWidth: size
     implicitHeight: size
 
+    // The breath, on the ambient clock's 30 updates a second (MotionClock),
+    // not every frame the panel draws: from 0.08 to 0.34 and from 0.6 to
+    // full size and back, Theme.breath each way, eased in and out, from the
+    // start each time it starts.
+    readonly property bool breathes: breathing && running && visible && Device.animatedTiles && !Device.idle
+    property real breathFrom: 0
+    onBreathesChanged: if (breathes) breathFrom = clock.time
+    readonly property real _f: (1 - Math.cos(Math.PI * (clock.time - breathFrom) * 1000 / Theme.breath)) / 2
+    MotionClock { id: clock; objectName: "breath"; playing: dot.breathes }
+
     Rectangle {
         id: halo
+        objectName: "halo"
         anchors.centerIn: parent
         width: dot.size * 2.2
         height: width
         radius: width / 2
         color: dot.color
-        opacity: 0
-        visible: breath.running
+        visible: dot.breathes
+        opacity: 0.08 + 0.26 * dot._f
+        scale: 0.6 + 0.4 * dot._f
     }
     Rectangle {
         anchors.centerIn: parent
@@ -33,20 +45,5 @@ Item {
         height: width
         radius: width / 2
         color: dot.color
-    }
-
-    SequentialAnimation {
-        id: breath
-        running: dot.breathing && dot.running && dot.visible && Device.animatedTiles && !Device.idle
-        loops: Animation.Infinite
-        onStopped: { halo.opacity = 0; halo.scale = 1 }
-        ParallelAnimation {
-            OpacityAnimator { target: halo; from: 0.08; to: 0.34; duration: Theme.breath; easing.type: Easing.InOutSine }
-            ScaleAnimator { target: halo; from: 0.6; to: 1; duration: Theme.breath; easing.type: Easing.InOutSine }
-        }
-        ParallelAnimation {
-            OpacityAnimator { target: halo; from: 0.34; to: 0.08; duration: Theme.breath; easing.type: Easing.InOutSine }
-            ScaleAnimator { target: halo; from: 1; to: 0.6; duration: Theme.breath; easing.type: Easing.InOutSine }
-        }
     }
 }
