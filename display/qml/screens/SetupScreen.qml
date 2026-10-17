@@ -36,6 +36,18 @@ Item {
     property string joinSsid: ""
     onVisibleChanged: if (visible) System.refresh()
 
+    // The drifting lights, the card's float and the digits' wave keep the
+    // ambient clock's 30 updates a second (MotionClock), not every frame the
+    // panel draws. Stopped, each holds where it is, as its Animation did; a
+    // light rises from below the screen again each time the drift starts.
+    readonly property bool drifting: setup.visible && !Device.idle && Device.animatedTiles
+    readonly property bool waving: setup.visible && setup.haveCode && Device.animatedTiles
+    property real riseFrom: 0
+    onDriftingChanged: if (drifting) riseFrom = lightsClock.time
+    MotionClock { id: lightsClock; objectName: "lights"; playing: setup.drifting }
+    MotionClock { id: floatClock; objectName: "float"; playing: setup.drifting && setup.keyboardHeight === 0 }
+    MotionClock { id: waveClock; objectName: "wave"; playing: setup.waving }
+
     // The colour field.
     GradientTile {
         // Full screen: shaded at half its pixels (GradientTile.resolution).
@@ -51,27 +63,27 @@ Item {
         ringBias: 0.76
         grain: 0.02
     }
-    // Floating light: slow, soft discs drifting up.
+    // Floating light: slow, soft discs drifting up, from below the screen to
+    // above it in 26 s and 5 s more per disc, eased in and out, again and
+    // again. Each waits 1.8 s per disc, fades in to 0.22 over 4 s and down to
+    // 0.06 over 6 s, again and again (from nothing the first time).
     Repeater {
         model: 6
         delegate: Rectangle {
+            objectName: "light"
             required property int index
             readonly property real size: 120 + index * 46
+            readonly property real rise: 26 + index * 5
+            readonly property real wait: index * 1.8
             width: size; height: size; radius: size / 2
             color: index % 2 === 0 ? Theme.glowCream : Theme.glowAmber
-            opacity: 0
             x: setup.width * (0.08 + 0.15 * index)
-            SequentialAnimation on y {
-                running: setup.visible && !Device.idle && Device.animatedTiles
-                loops: Animation.Infinite
-                NumberAnimation { from: setup.height + 100; to: -200; duration: 26000 + index * 5000; easing.type: Easing.InOutSine }
-            }
-            SequentialAnimation on opacity {
-                running: setup.visible && !Device.idle && Device.animatedTiles
-                loops: Animation.Infinite
-                PauseAnimation { duration: index * 1800 }
-                NumberAnimation { to: 0.22; duration: 4000 }
-                NumberAnimation { to: 0.06; duration: 6000 }
+            y: setup.height + 100 - (setup.height + 300) * (1 - Math.cos(Math.PI * ((lightsClock.time - setup.riseFrom) % rise) / rise)) / 2
+            opacity: {
+                const n = Math.floor(lightsClock.time / (wait + 10))
+                const s = lightsClock.time - n * (wait + 10) - wait
+                const low = n === 0 ? 0 : 0.06
+                return s < 0 ? low : s < 4 ? low + (0.22 - low) * s / 4 : 0.22 - 0.16 * (s - 4) / 6
             }
         }
     }
@@ -87,9 +99,14 @@ Item {
     // The card.
     Rectangle {
         id: card
+        objectName: "card"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
-        anchors.verticalCenterOffset: -setup.keyboardHeight / 2 - 10
+        // A gentle float: up from -10 to -16 over 5 s, then down to -4 and
+        // back, 5 s each way, eased in and out.
+        anchors.verticalCenterOffset: -setup.keyboardHeight / 2 - 10 + (setup.keyboardHeight > 0 ? 0
+            : floatClock.time < 5 ? -3 * (1 - Math.cos(Math.PI * floatClock.time / 5))
+            : -6 * Math.cos(Math.PI * (floatClock.time - 5) / 5))
         width: Math.min(parent.width - 2 * Theme.pageMargin, Theme.compact ? 1120 : 1240)
         height: Math.min(parent.height - 2 * Theme.pageMargin - setup.keyboardHeight, content.implicitHeight + 2 * pad)
         readonly property int pad: Theme.mini ? 20 : Theme.compact ? 32 : 44
@@ -98,13 +115,6 @@ Item {
         border.color: Qt.rgba(1, 1, 1, Theme.dark ? 0.16 : 0.75)
         border.width: 1
         Behavior on height { NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
-        // A gentle float.
-        SequentialAnimation on anchors.verticalCenterOffset {
-            running: setup.visible && !Device.idle && Device.animatedTiles && setup.keyboardHeight === 0
-            loops: Animation.Infinite
-            NumberAnimation { to: -16; duration: 5000; easing.type: Easing.InOutSine }
-            NumberAnimation { to: -4; duration: 5000; easing.type: Easing.InOutSine }
-        }
 
         // Squeezed (the keyboard is up, or the panel is short), it scrolls.
         FocusFlickable {
@@ -363,6 +373,7 @@ Item {
                         Repeater {
                             model: setup.haveCode ? setup.code.split("") : ["", "", "", "", "", ""]
                             delegate: Rectangle {
+                                objectName: "digit"
                                 required property string modelData
                                 required property int index
                                 // Six digits always fit the column, whatever its width.
@@ -380,15 +391,16 @@ Item {
                                     font.pixelSize: Math.round(parent.width * 0.82)
                                     font.weight: Font.DemiBold
                                 }
-                                // Each digit lights up in turn while the code is fresh.
-                                SequentialAnimation on scale {
-                                    running: setup.visible && setup.haveCode && Device.animatedTiles
-                                    loops: Animation.Infinite
-                                    PauseAnimation { duration: index * 220 }
-                                    NumberAnimation { to: 1.06; duration: 420; easing.type: Easing.InOutSine }
-                                    NumberAnimation { to: 1.0; duration: 420; easing.type: Easing.InOutSine }
-                                    PauseAnimation { duration: 3400 - index * 220 }
-                                }
+                                // Each digit lights up in turn while the code is fresh:
+                                // to 1.06 and back, 420 ms each way, eased in and out,
+                                // 220 ms after the one before, every 4.24 s, from the
+                                // first digit each time it starts and for each new code.
+                                readonly property bool waves: setup.waving
+                                property real waveFrom: 0
+                                onWavesChanged: if (waves) waveFrom = waveClock.time
+                                Component.onCompleted: waveFrom = waveClock.time
+                                readonly property real wavePhase: (waveClock.time - waveFrom) % 4.24 - index * 0.22
+                                scale: wavePhase > 0 && wavePhase < 0.84 ? 1.03 - 0.03 * Math.cos(Math.PI * wavePhase / 0.42) : 1
                             }
                         }
                     }

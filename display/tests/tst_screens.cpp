@@ -19,13 +19,13 @@ class FakeDevice : public QObject
     Q_OBJECT
     Q_PROPERTY(QString mood READ mood CONSTANT)
     Q_PROPERTY(bool darkMode READ darkMode CONSTANT)
-    Q_PROPERTY(bool idle READ idle CONSTANT)
+    Q_PROPERTY(bool idle READ idle NOTIFY idleChanged)
     Q_PROPERTY(bool screenOff READ screenOff CONSTANT)
     Q_PROPERTY(bool animatedTiles READ animatedTiles WRITE setAnimatedTiles NOTIFY animatedTilesChanged)
 public:
     QString mood() const { return QStringLiteral("day"); }
     bool darkMode() const { return false; }
-    bool idle() const { return false; }
+    bool idle() const { return m_idle; }
     bool screenOff() const { return false; }
     bool animatedTiles() const { return m_animatedTiles; }
     // The rail's moon: counted, so a tap on it can be told from one on Settings.
@@ -38,11 +38,45 @@ public:
         m_animatedTiles = on;
         emit animatedTilesChanged();
     }
+    void setIdle(bool on)
+    {
+        if (on == m_idle)
+            return;
+        m_idle = on;
+        emit idleChanged();
+    }
 signals:
     void animatedTilesChanged();
+    void idleChanged();
 
 private:
     bool m_animatedTiles = true;
+    bool m_idle = false;
+};
+
+// Stands in for SystemController, for the setup screen: online over a wire,
+// with no Wi-Fi controls.
+class FakeSystem : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool wifiAvailable READ no CONSTANT)
+    Q_PROPERTY(bool wifiEnabled READ no CONSTANT)
+    Q_PROPERTY(QString wifiSsid READ none CONSTANT)
+    Q_PROPERTY(QString ipAddress READ ipAddress CONSTANT)
+    Q_PROPERTY(bool busy READ no CONSTANT)
+    Q_PROPERTY(QString message READ none CONSTANT)
+    Q_PROPERTY(QVariantList networks READ networks CONSTANT)
+public:
+    bool no() const { return false; }
+    QString none() const { return {}; }
+    QString ipAddress() const { return QStringLiteral("192.0.2.10"); }
+    QVariantList networks() const { return {}; }
+    Q_INVOKABLE void refresh() {}
+    Q_INVOKABLE void scanWifi() {}
+    Q_INVOKABLE void connectWifi(const QString &, const QString &, bool) {}
+signals:
+    void wifiChanged();
+    void ipChanged();
 };
 
 // The screens' motion and their new layouts against the real store, its demo
@@ -61,6 +95,7 @@ class TestScreens : public QObject
     Assistant *m_ai = nullptr;
     HomeGlance *m_glance = nullptr;
     FakeDevice m_device;
+    FakeSystem m_system;
     QDateTime m_fake;
     QQmlEngine *m_engine = nullptr;
     QQuickWindow *m_window = nullptr;
@@ -133,13 +168,18 @@ private slots:
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "AI", m_ai);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", m_voice);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &m_device);
+        qmlRegisterSingletonInstance("McFly.Core", 1, 0, "System", &m_system);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", m_glance);
         // One engine for them all: an instance singleton belongs to one.
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_TEST_QML_DIR));
     }
 
-    void init() { m_device.setAnimatedTiles(true); }
+    void init()
+    {
+        m_device.setAnimatedTiles(true);
+        m_device.setIdle(false);
+    }
 
     void cleanup()
     {
@@ -468,6 +508,104 @@ private slots:
         m_screen->setProperty("breathing", false);
         QVERIFY(!halo->isVisible());
         QVERIFY(!clock->property("running").toBool());
+    }
+
+    // Setup's drifting lights, the card's float and the digits' wave keep the
+    // ambient clock (30 updates a second, not every frame the panel draws),
+    // along the curves their Animations had. The lights and the float stop
+    // while the screen is idle, the float while the keyboard is up, all of
+    // them with Animated tiles off; started again, a light rises from below
+    // the screen and the digits wave from the first.
+    void setupMovesOnTheAmbientClock()
+    {
+        QVERIFY(show("SetupScreen { sample: true }", 1280, 800, QStringLiteral("compact")));
+        QObject *lights = m_screen->findChild<QObject *>(QStringLiteral("lights"));
+        QObject *floats = m_screen->findChild<QObject *>(QStringLiteral("float"));
+        QObject *wave = m_screen->findChild<QObject *>(QStringLiteral("wave"));
+        QQuickItem *card = find("card");
+        QVERIFY(lights && floats && wave && card);
+        QList<QQuickItem *> found;
+        QVector<QQuickItem *> light(6), digit(6);
+        collect(m_window->contentItem(), QStringLiteral("light"), found);
+        collect(m_window->contentItem(), QStringLiteral("digit"), found);
+        QCOMPARE(found.size(), 12);
+        for (QQuickItem *item : std::as_const(found))
+            (item->objectName() == QLatin1String("light") ? light : digit)[item->property("index").toInt()] = item;
+        const auto running = [](QObject *clock) { return clock->property("running").toBool(); };
+        const auto offset = [&]() { return QQmlProperty(card, QStringLiteral("anchors.verticalCenterOffset")).read().toReal(); };
+        const auto near = [](qreal a, qreal b) { return qAbs(a - b) < 1e-6; };
+        for (QObject *clock : {lights, floats, wave}) {
+            QVERIFY(running(clock));
+            QCOMPARE(clock->property("fps").toInt(), 30);   // Theme.motionFps
+            QVERIFY(clock->property("interval").toInt() <= 34);
+        }
+        const qreal y = light[0]->y(), at = offset();
+        QTRY_VERIFY(light[0]->y() < y && light[0]->opacity() > 0 && offset() < at && digit[0]->scale() > 1);
+
+        // The curves, at given times.
+        m_device.setAnimatedTiles(false);
+        for (QObject *clock : {lights, floats, wave})
+            QVERIFY(!running(clock));
+        // A light from 100 below the screen to 200 above it, 26 s for the first.
+        const qreal riseFrom = m_screen->property("riseFrom").toReal();
+        lights->setProperty("time", riseFrom + 13);
+        QVERIFY2(near(light[0]->y(), (900 - 200) / 2.0), qPrintable(QString::number(light[0]->y())));
+        lights->setProperty("time", riseFrom + 26);
+        QVERIFY(near(light[0]->y(), 900));
+        // Its light: up to 0.22 over 4 s and down to 0.06 over 6 s, from
+        // nothing the first time, after 1.8 s per light.
+        const QList<std::tuple<int, qreal, qreal>> glow = {
+            {0, 2, 0.11}, {0, 4, 0.22}, {0, 7, 0.14}, {0, 10, 0.06}, {0, 12, 0.14},
+            {2, 1, 0}, {2, 5.6, 0.11}, {2, 14.6, 0.06}};
+        for (const auto &[i, t, want] : glow) {
+            lights->setProperty("time", t);
+            QVERIFY2(near(light[i]->opacity(), want), qPrintable(QStringLiteral("light %1 at %2 s: %3").arg(i).arg(t).arg(light[i]->opacity())));
+        }
+        // The card: up from -10 to -16 over 5 s, then to -4 and back, 5 s each way.
+        const QList<std::pair<qreal, qreal>> lift = {{0, -10}, {2.5, -13}, {5, -16}, {7.5, -10}, {10, -4}, {15, -16}};
+        for (const auto &[t, want] : lift) {
+            floats->setProperty("time", t);
+            QVERIFY2(near(offset(), want), qPrintable(QStringLiteral("float at %1 s: %2").arg(t).arg(offset())));
+        }
+        // A digit: to 1.06 and back, 420 ms each way, 220 ms after the one
+        // before, every 4.24 s.
+        const qreal waveFrom = digit[0]->property("waveFrom").toReal();
+        for (const qreal cycle : {0.0, 4.24}) {
+            wave->setProperty("time", waveFrom + cycle + 0.22 + 0.42);
+            QVERIFY2(near(digit[1]->scale(), 1.06), qPrintable(QString::number(digit[1]->scale())));
+            QVERIFY(digit[0]->scale() > 1 && digit[0]->scale() < 1.06);
+            QVERIFY(near(digit[0]->scale(), digit[2]->scale()));
+            QCOMPARE(digit[3]->scale(), 1.0);
+        }
+
+        // Started again: each light from below the screen, the first digit first.
+        m_device.setAnimatedTiles(true);
+        for (QObject *clock : {lights, floats, wave})
+            QVERIFY(running(clock));
+        for (QQuickItem *item : std::as_const(light))
+            QVERIFY(near(item->y(), 900));
+        for (QQuickItem *item : std::as_const(digit))
+            QCOMPARE(item->scale(), 1.0);
+
+        // The keyboard up: no float, the card just above it.
+        m_screen->setProperty("keyboardHeight", 300);
+        QVERIFY(!running(floats));
+        QVERIFY(running(lights) && running(wave));
+        QCOMPARE(offset(), -160.0);
+        m_screen->setProperty("keyboardHeight", 0);
+        QVERIFY(running(floats));
+
+        // Idle: the lights and the float stop; the code's digits go on.
+        m_device.setIdle(true);
+        QVERIFY(!running(lights) && !running(floats));
+        QVERIFY(running(wave));
+        m_device.setIdle(false);
+        QVERIFY(running(lights) && running(floats));
+
+        // Hidden: nothing.
+        qobject_cast<QQuickItem *>(m_screen)->setVisible(false);
+        for (QObject *clock : {lights, floats, wave})
+            QVERIFY(!running(clock));
     }
 
     // A health strip's statuses line up along the top (the first in a row,

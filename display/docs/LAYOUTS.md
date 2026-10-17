@@ -216,9 +216,8 @@ One grammar for movement, the same on every panel (`Theme.qml` tokens):
   never `Layout.*` or a font size. Home's ticker tape is not ambient: it
   glides every frame the panel draws, as a swipe does, and with Animated
   tiles off too, since it is how the symbols past the strip get shown at
-  all. Setup, shown only until the display is paired, still floats on
-  Animations. A stopped loop leaves nothing half-way: its halo is hidden,
-  not frozen.
+  all. A stopped loop leaves nothing half-way: its halo is hidden, not
+  frozen.
 - **Software.** Without a GPU (the fallback, and the offscreen pictures in
   `screenshots.sh`) there are no arrivals or sweeps: the pages are simply
   there. Qt's software renderer also draws a Shape (a ring, a line) past a

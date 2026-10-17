@@ -130,15 +130,16 @@ set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscree
 # The screens' motion and layouts (Home, Boards, Briefs) against the real
 # store at a fixed time of day: the reveal, the insight line, Home's
 # countdown and now marker, board tiles from boardLayout, the Briefs outline,
-# the nav's thinking ring.
+# the nav's thinking ring, Setup's ambient loops.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
     components/SpectrumGlow.qml components/GradientTile.qml components/Sparkline.qml
     components/Ring.qml components/StatusDot.qml components/MotionClock.qml components/Reveal.qml components/InsightLine.qml
     components/HealthStrip.qml components/SuggestionChips.qml components/FocusFlickable.qml
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
-    components/MasterDetail.qml components/Tag.qml components/NavRail.qml
-    screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml)
+    components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FormField.qml
+    screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml
+    screens/SetupScreen.qml)
 qt_add_executable(tst_screens tst_screens.cpp
     ../src/models/FeedStore.h  ../src/models/FeedStore.cpp
     ../src/models/Assistant.h  ../src/models/Assistant.cpp
