@@ -71,8 +71,9 @@ static void preparePanelPlatform(int argc, char **argv)
         qputenv("QT_QPA_EGLFS_ALWAYS_SET_MODE", QByteArrayLiteral("1"));
 }
 
-// Says in the log what draws, so a look at the journal on the Pi shows
-// whether the GPU is in use ("drawing on V3D ...").
+// Says in the log what draws, so `journalctl -t mcfly-display` on the Pi
+// shows whether the GPU is in use ("drawing on V3D ..."). Not `-u`: the
+// kiosk's logind session files the app's lines under session-N.scope.
 static void reportGraphics(QQmlApplicationEngine &engine)
 {
     auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0));

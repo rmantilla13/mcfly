@@ -74,6 +74,12 @@ fi
 sudo systemctl restart "$service"
 echo "Restarted $service. Waiting for it to start..."
 sleep 8
-journalctl -u "$service" -n 15 --no-pager -o cat || true
+# The kiosk's logind session files the app's lines under session-N.scope, not
+# the unit; read them by name. The preview has no session, so its unit works.
+if [ "$service" = mcfly-display ]; then
+    journalctl -t mcfly-display -n 15 --no-pager -o cat || true
+else
+    journalctl -u "$service" -n 15 --no-pager -o cat || true
+fi
 echo
 echo "The screen (or the browser preview) should now show a 6-digit pairing code."

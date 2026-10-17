@@ -81,7 +81,7 @@ The script enables `mcfly-display` and starts it before it exits. When it
 finishes, `systemctl is-active mcfly-display` prints `active` and the panel
 shows McFly. Run it over SSH like this. Run from a login on the panel itself,
 it ends when McFly takes that console; McFly still starts, but finish an
-update with another run over SSH. `journalctl -u mcfly-display -f` only shows logs. It does not
+update with another run over SSH. `journalctl -t mcfly-display -f` only shows logs. It does not
 start the app and it does not draw on HDMI.
 
 Reboot once after that. A reboot applies the console options from the script,
@@ -142,7 +142,10 @@ McFly does not wait for Wi-Fi before painting (it connects when the network
 is up), and SSH works the whole time. The console login on the panel is
 masked; **Everyday commands** below shows how to get it back.
 
-`journalctl -u mcfly-display -f` only shows logs. It does not start McFly.
+`journalctl -t mcfly-display -f` only shows logs. It does not start McFly.
+The app logs under its own name: its login session on tty1 files what it
+prints under a `session-N.scope`, so `journalctl -u mcfly-display` shows only
+systemd's lines for the unit and the boot video helper's.
 If the panel is showing a terminal, put McFly on HDMI with:
 
 ```bash
@@ -161,14 +164,16 @@ sudo reboot
 ```
 
 If `systemctl is-active mcfly-display` stays something other than `active`,
-read why it exited. This only prints logs:
+read why it exited. These only print logs: the first what the app printed,
+the second systemd's lines (a unit that could not start, exit codes, restarts):
 
 ```bash
+journalctl -t mcfly-display -b --no-pager
 journalctl -u mcfly-display -b --no-pager
 ```
 
 If the service is `active` and the panel still shows a terminal, the process
-is up but it did not open the HDMI device. The same journal command shows
+is up but it did not open the HDMI device. The first journal command shows
 `Could not open DRM device`, `No modes available`, or `no screen`. Then check
 `cat /etc/mcfly/kms.json` against `ls -l /dev/dri/by-path/` and re-run
 `./display/deploy/install-pi.sh` so it points Qt at the HDMI port.
@@ -187,7 +192,7 @@ instead of offline and empty. To change the limit, set
 `/etc/mcfly/display.env`. If the network takes longer, McFly opens with
 **Offline — reconnecting…** and connects within a few seconds of the network
 coming up. `journalctl -u mcfly-display -b | grep bootscreen` shows how long
-the boot waited.
+the boot waited (the helper that stops the video logs under the unit).
 
 Tap the chores and rewards to try it. Videos under **Media** play with sound
 After two minutes without a touch, the screen saver (Ambient by
@@ -316,7 +321,7 @@ and FFmpeg sources; it has not been confirmed on a Pi yet.
 4. The app's log, after playing a video:
 
    ```bash
-   journalctl -u mcfly-display -b -o cat | grep -E 'McFly display:|Hwaccel V4L2 HEVC|Failed to open FFmpeg codec context|Error transferring|Cannot map a video frame'
+   journalctl -t mcfly-display -b -o cat | grep -E 'McFly display:|Hwaccel V4L2 HEVC|Failed to open FFmpeg codec context|Error transferring|Cannot map a video frame'
    ```
 
    - `McFly display: video decoding: drm` (`CPU only` after the off switch).
@@ -373,8 +378,8 @@ it powered with a black picture: add `MCFLY_PANEL_POWER=off` to
 |---|---|
 | Put McFly on the HDMI panel | `sudo systemctl enable --now mcfly-display` |
 | Check that the panel app is running | `systemctl is-active mcfly-display` (prints `active`) |
-| Read logs (does not start the screen) | `journalctl -u mcfly-display -f` |
-| Read logs when the service stays inactive | `journalctl -u mcfly-display -b --no-pager` |
+| Read the app's logs (does not start the screen) | `journalctl -t mcfly-display -f` |
+| Read logs when the service stays inactive | `journalctl -t mcfly-display -b --no-pager` (the app) and `journalctl -u mcfly-display -b --no-pager` (systemd) |
 | Restart the app | `sudo systemctl restart mcfly-display` |
 | Change Wi-Fi, volume, restart or reboot | On the screen, tap the gear. Wi-Fi and reboot need the helper from the install script |
 | Change app settings | `sudo nano /etc/mcfly/display.env`, then restart the app |
@@ -501,27 +506,28 @@ ethernet cable for the install.
 
 ## Troubleshooting
 
-`journalctl -u mcfly-display -f` only shows logs. It does not start McFly and it does not draw on the panel. To put McFly on HDMI:
+`journalctl -t mcfly-display -f` only shows logs. It does not start McFly and it does not draw on the panel. To put McFly on HDMI:
 
 ```bash
 sudo systemctl enable --now mcfly-display
 ```
 
-`systemctl is-active mcfly-display` prints `active` when that worked. Use the journal only when it stays inactive, or when it is `active` and the panel is still a terminal:
+`systemctl is-active mcfly-display` prints `active` when that worked. Use the journal only when it stays inactive, or when it is `active` and the panel is still a terminal. The app's own lines are under its name (`-t`); `-u` has systemd's lines for the unit:
 
 ```bash
+journalctl -t mcfly-display -b --no-pager
 journalctl -u mcfly-display -b --no-pager
 ```
 
 | Symptom | Fix |
 |---|---|
-| A terminal or login prompt is on the screen | `journalctl` will not change the picture. Run `sudo systemctl enable --now mcfly-display`. `systemctl is-active mcfly-display` should print `active`, and `systemctl is-enabled mcfly-display` should print `enabled`. If the unit could not be found, or a login prompt comes back after a reboot, re-run `./display/deploy/install-pi.sh`, then `sudo reboot`. It enables and starts `mcfly-display`, masks `getty@tty1` / `autovt@tty1` (`systemctl is-enabled getty@tty1` should say `masked`), and applies quiet boot. If it stays inactive, `journalctl -u mcfly-display -b --no-pager` shows why. |
-| The service is `active` but the panel is still a terminal | The app did not open the HDMI device. `journalctl -u mcfly-display -b --no-pager` and `cat /etc/mcfly/kms.json`. The device should be one of `ls -l /dev/dri/by-path/`, and the output name should be `HDMI1` for the HDMI0 port (kernel name `HDMI-A-1`). Re-run `./display/deploy/install-pi.sh`. |
+| A terminal or login prompt is on the screen | `journalctl` will not change the picture. Run `sudo systemctl enable --now mcfly-display`. `systemctl is-active mcfly-display` should print `active`, and `systemctl is-enabled mcfly-display` should print `enabled`. If the unit could not be found, or a login prompt comes back after a reboot, re-run `./display/deploy/install-pi.sh`, then `sudo reboot`. It enables and starts `mcfly-display`, masks `getty@tty1` / `autovt@tty1` (`systemctl is-enabled getty@tty1` should say `masked`), and applies quiet boot. If it stays inactive, `journalctl -u mcfly-display -b --no-pager` shows why, and `journalctl -t mcfly-display -b --no-pager` what the app printed. |
+| The service is `active` but the panel is still a terminal | The app did not open the HDMI device. `journalctl -t mcfly-display -b --no-pager` and `cat /etc/mcfly/kms.json`. The device should be one of `ls -l /dev/dri/by-path/`, and the output name should be `HDMI1` for the HDMI0 port (kernel name `HDMI-A-1`). Re-run `./display/deploy/install-pi.sh`. |
 | Boot text, the rainbow square, or `Completed socket interaction for boot stage final` stays on the screen, or the console shows until Wi-Fi connects | Re-run `./display/deploy/install-pi.sh`, then `sudo reboot`. Quiet boot is in `/boot/firmware/cmdline.txt`, `disable_splash=1` is in `/boot/firmware/config.txt`, cloud-init is sent to the log (`/etc/cloud/cloud.cfg.d/99-mcfly-quiet.cfg`), and the display service no longer waits for the network-online target. The boot video staying up while Wi-Fi joins (at most 30 seconds) is expected. The cloud-init line is a successful boot note, not a hang. |
 | The boot video never appears, or stays up over McFly | `journalctl -u mcfly-bootscreen -b`. The app stops that service before it uses the screen. `sudo systemctl stop mcfly-bootscreen` releases it if you need to. |
-| McFly says **Offline — reconnecting…** after a reboot | Wi-Fi took longer than the boot video waits (30 seconds). McFly connects within a few seconds of the network coming up. `journalctl -u mcfly-display -b \| grep -E 'bootscreen\|failed'` shows how long the boot waited and why the first sync failed. A slow router can be given longer: `MCFLY_BOOT_NETWORK_WAIT=60` in `/etc/mcfly/display.env`. |
+| McFly says **Offline — reconnecting…** after a reboot | Wi-Fi took longer than the boot video waits (30 seconds). McFly connects within a few seconds of the network coming up. `journalctl -b -t mcfly-display -t mcfly-stop-bootscreen \| grep -E 'bootscreen\|failed'` shows how long the boot waited and why the first sync failed. A slow router can be given longer: `MCFLY_BOOT_NETWORK_WAIT=60` in `/etc/mcfly/display.env`. |
 | Boot messages stay on the screen, and the log repeats `No modes available`, `Could not open DRM device` or a crash | The app can't find the screen and retries every second. Check that the cable is in **HDMI0** and the screen is on and set to HDMI. `cat /etc/mcfly/kms.json` should name a device from `ls -l /dev/dri/by-path/`; re-run `./display/deploy/install-pi.sh` to detect it again. |
-| Photos and videos from the phone never show (older ones do), or show as colored tiles | `journalctl -u mcfly-display -b -o cat \| grep -E 'media service\|signing blob media'`. `media service:` should name the admin app the phones upload through (`https://mcfly.bot` unless their build sets `MEDIA_API_URL`); fix `MCFLY_MEDIA_URL` in `/etc/mcfly/display.env` if not. `signing blob media failed: ... (HTTP 401)` means that admin app uses another Supabase project than the display. New items appear within a minute. |
+| Photos and videos from the phone never show (older ones do), or show as colored tiles | `journalctl -t mcfly-display -b -o cat \| grep -E 'media service\|signing blob media'`. `media service:` should name the admin app the phones upload through (`https://mcfly.bot` unless their build sets `MEDIA_API_URL`); fix `MCFLY_MEDIA_URL` in `/etc/mcfly/display.env` if not. `signing blob media failed: ... (HTTP 401)` means that admin app uses another Supabase project than the display. New items appear within a minute. |
 | A News story shows a tinted tile instead of its picture, and the log says `Unsupported image format` | The picture is WebP, which Qt reads only with its image-formats plugins. `ls /usr/lib/aarch64-linux-gnu/qt6/plugins/imageformats/` should list `libqwebp.so`. If it doesn't, re-run `./display/deploy/install-pi.sh`, or run `sudo apt-get install -y qt6-image-formats-plugins` and `sudo systemctl restart mcfly-display`. |
 | The gear menu says it isn't allowed to change Wi-Fi | Re-run `./display/deploy/install-pi.sh`. It installs `/usr/local/libexec/mcfly-system` and lets your user run that, and only that, without a password. |
 | `Permission denied` for `/dev/dri` or `/dev/input` in the log | Run `groups`: it should list `video render input audio tty`. Re-run the install script, then `sudo reboot`. |
@@ -535,7 +541,7 @@ journalctl -u mcfly-display -b --no-pager
 | Slow or hot (`vcgencmd measure_temp` above 80 °C), or McFly starts its spoken answers late and pauses between sentences | Check that the cooler's cable is in the **FAN** connector. The fan only spins above 50 °C. `tr -d '\0' < /proc/device-tree/cooling_fan/status` says `disabled` when the firmware found no fan on the FAN header at boot (the installer warns about that once the Pi has overheated); reseat the cable and reboot. A fan powered by something else, such as the screen's enclosure, works but isn't seen or slowed down by the Pi: keep it away from the USB mic, whose wake word it can drown out. One running McFly without a fan sat at 89–95 °C and slowed to 1–1.5 GHz (`vcgencmd measure_clock arm`; `get_throttled` sets 0x80000), and its voice rendered replies slower than it spoke them. |
 | `mcfly.local` not found, or Wi-Fi drops | Wait two minutes after power-on. Check the Wi-Fi name, password and country you set in Imager. A network cable always works. |
 | Typing lags in an SSH terminal | Re-run `./display/deploy/install-pi.sh`, or write `IPQoS cs0 cs0` and `UseDNS no` to `/etc/ssh/sshd_config.d/mcfly.conf` and run `sudo systemctl reload ssh`. Stay in this session; a reboot is not required. That fixes the stutter even when the Pi is idle. If keystrokes still stutter, run `top`: a `mcfly-display` restart loop pegging a core is a different problem. |
-| The screen turns black when it sleeps but stays lit | `journalctl -u mcfly-display -b \| grep -i panel`. `built without Qt's private headers` means the app can't switch the panel off: `git pull` and re-run `./display/deploy/install-pi.sh`. If it says `panel off` and the screen still glows, the screen ignores standby; look in its own menu for a power-saving or auto-off setting. |
+| The screen turns black when it sleeps but stays lit | `journalctl -t mcfly-display -b \| grep -i panel`. `built without Qt's private headers` means the app can't switch the panel off: `git pull` and re-run `./display/deploy/install-pi.sh`. If it says `panel off` and the screen still glows, the screen ignores standby; look in its own menu for a power-saving or auto-off setting. |
 | The screen shows "No signal" when it sleeps, or a tap doesn't wake it | Add `MCFLY_PANEL_POWER=off` to `display.env` and restart the app. The screen then turns black instead of going to standby. See [Sleep](#sleep). |
 | Sleep turns the screen off at the wrong time | Bedtime and wake-up follow the Pi's clock. Check the time zone (next row). |
 | Wrong time | `timedatectl` should say `System clock synchronized: yes` (it needs the internet). Set the zone with `sudo timedatectl set-timezone America/New_York` (or yours). |

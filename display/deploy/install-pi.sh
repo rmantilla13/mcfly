@@ -504,12 +504,13 @@ else
     echo "Reboot so the console settings apply:  sudo reboot"
     echo "That reboot hides boot text and plays a short video until the app is up."
     if [ "$state" != "active" ]; then
-        echo "The service is not active. Logs (this does not start the screen):" >&2
-        echo "  journalctl -u mcfly-display -b --no-pager" >&2
+        echo "The service is not active. Logs (these do not start the screen):" >&2
+        echo "  journalctl -t mcfly-display -b --no-pager   what the app printed (no screen, QML errors)" >&2
+        echo "  journalctl -u mcfly-display -b --no-pager   systemd's lines: why it did not start or stopped" >&2
     fi
 fi
 echo "On the screen, the gear icon changes Wi-Fi, speaker volume, and can restart or reboot."
-echo "Logs only (does not start the screen):  journalctl -u mcfly-display -f"
+echo "Logs only (does not start the screen):  journalctl -t mcfly-display -f"
 if [ "$with_voice" = "1" ]; then
     echo "Voice logs:              journalctl -u mcfly-voice -f"
 fi

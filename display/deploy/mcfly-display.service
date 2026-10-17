@@ -47,12 +47,17 @@ SupplementaryGroups=video render input audio tty
 # A logind session on tty1, so autovt does not put a login prompt back.
 # systemd opens the TTY as root before dropping to User=. The stack is
 # display/deploy/mcfly-display.pam, installed to /etc/pam.d/mcfly-display.
+# The session also moves this process into session-N.scope, and journald files
+# what it prints under that scope: `journalctl -t mcfly-display` reads the
+# app's lines, while `-u mcfly-display` shows only systemd's lines and the
+# boot video helper's (ExecStartPre runs outside the session).
 PAMName=mcfly-display
 # Qt platform, scaling and backend settings live in the file (scale, Supabase).
 # The Environment= lines below apply only when that file does not set the same
-# key. The installer writes these keys into the file. journald only stores
-# what this process prints. `journalctl -u mcfly-display -f` does not start
-# it and does not draw on HDMI. `systemctl enable --now mcfly-display` does.
+# key. The installer writes these keys into the file.
+# `journalctl -t mcfly-display -f` only reads what this process prints. It does
+# not start it and does not draw on HDMI. `systemctl enable --now mcfly-display`
+# does.
 EnvironmentFile=/etc/mcfly/display.env
 # Where the user's PipeWire (PulseAudio) socket lives.
 Environment=XDG_RUNTIME_DIR=/run/user/@UID@

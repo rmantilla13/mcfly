@@ -250,6 +250,24 @@ if grep -q 'should not need' "$docs"; then
     fail "docs still tell them not to start the kiosk"
 fi
 
+# PAMName= moves the app into session-N.scope, so journald files its lines
+# there and `journalctl -u mcfly-display` shows only systemd's. Every place
+# that says how to read the app's log names it with -t.
+connect="$root/display/deploy/connect-backend.sh"
+grep -q 'journalctl -t mcfly-display' "$unit" || fail "unit comment does not say how to read the app's lines"
+grep -q 'journalctl -t mcfly-display -b' "$install" || fail "installer's not-active hint misses the app's lines"
+grep -q 'journalctl -t mcfly-display -f' "$install" || fail "installer's log hint misses the app's lines"
+grep -q 'journalctl -t mcfly-display' "$connect" || fail "connect-backend.sh does not show the app's lines"
+grep -q 'journalctl -t mcfly-display' "$docs" || fail "docs do not say how to read the app's lines"
+for f in "$unit" "$install" "$docs" "$connect"; do
+    if grep -q 'journalctl -u mcfly-display -f' "$f"; then
+        fail "$(basename "$f") follows -u mcfly-display, which never shows the app's lines"
+    fi
+    if grep -Eq 'journalctl -u mcfly-display.*McFly display:' "$f"; then
+        fail "$(basename "$f") greps the app's lines out of -u mcfly-display"
+    fi
+done
+
 pick="$(awk '/# kms-pick-begin/,/# kms-pick-end/' "$install")"
 [ -n "$pick" ] || fail "hdmi pick function not found"
 # shellcheck disable=SC1090
