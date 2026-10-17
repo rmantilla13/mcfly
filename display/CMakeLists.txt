@@ -49,6 +49,7 @@ qt_add_executable(mcfly-display
     src/hardware/SystemController.h src/hardware/SystemController.cpp
     src/hardware/PanelPower.h      src/hardware/PanelPower.cpp
     src/hardware/PerfMonitor.h     src/hardware/PerfMonitor.cpp
+    src/hardware/StopSignals.h     src/hardware/StopSignals.cpp
 )
 
 target_include_directories(mcfly-display PRIVATE src)

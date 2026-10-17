@@ -13,10 +13,13 @@
 #include <QOpenGLFunctions>
 #endif
 
+#include <csignal>
+
 #include "backend/SupabaseClient.h"
 #include "hardware/DisplayController.h"
 #include "hardware/PanelPower.h"
 #include "hardware/PerfMonitor.h"
+#include "hardware/StopSignals.h"
 #include "hardware/SystemController.h"
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
@@ -105,6 +108,13 @@ int main(int argc, char *argv[])
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
         qputenv("QT_QUICK_CONTROLS_STYLE", QByteArrayLiteral("Basic"));
     QGuiApplication app(argc, argv);
+    // Right after the app: eglfs installs its own SIGTERM handler in there,
+    // which ends every systemctl stop with _exit(1). Quit cleanly instead.
+    StopSignals stopSignals;
+    QObject::connect(&stopSignals, &StopSignals::stopRequested, &app, [](int signal) {
+        qInfo("McFly display: %s, quitting", signal == SIGINT ? "SIGINT" : "SIGTERM");
+        QCoreApplication::quit();
+    });
     QGuiApplication::setOrganizationName("McFly");
     QGuiApplication::setApplicationName("display");
     QGuiApplication::setApplicationVersion(QStringLiteral(MCFLY_VERSION));

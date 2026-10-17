@@ -239,6 +239,15 @@ qt_add_shaders(tst_settings "settings_shaders"
 add_test(NAME tst_settings COMMAND tst_settings)
 set_tests_properties(tst_settings PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# A stop (SIGTERM, SIGINT) reaches the event loop as a quit request, even
+# when a handler like eglfs's, which exits 1 at once, was installed first.
+qt_add_executable(tst_stopsignals tst_stopsignals.cpp
+    ../src/hardware/StopSignals.h ../src/hardware/StopSignals.cpp)
+target_include_directories(tst_stopsignals PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_options(tst_stopsignals PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_stopsignals PRIVATE Qt6::Test)
+add_test(NAME tst_stopsignals COMMAND tst_stopsignals)
+
 # The settings bridge with a real DisplayController (no store, assistant or voice).
 qt_add_executable(tst_settingsbridge tst_settingsbridge.cpp
     ../src/models/SettingsBridge.h ../src/models/SettingsBridge.cpp
