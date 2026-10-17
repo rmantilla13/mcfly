@@ -15,6 +15,9 @@ import McFly.Core
 // tapped again, or the screen saver comes up (it takes the display back to
 // Home). Nothing keeps ticking, animating or making sounds behind the other
 // pages. Third-party code and licences: display/games/README.md.
+//
+// Scoop Shop, ours too, runs against the clock: a game with a pause()
+// function is paused while how to play or the assistant panel covers it.
 Item {
     id: games
     property bool shown: true
@@ -28,6 +31,8 @@ Item {
     // How to play: beside the game on the paned tiers, over it on the small ones.
     readonly property bool besides: Theme.paned
     property bool howToOpen: false
+    // A card's height: two rows and a part of the next on every panel.
+    readonly property int cardHeight: Theme.wide ? 380 : Theme.tall ? 300 : Theme.mini ? 128 : 280
 
     // `source` is the game's QML; `size` is a fixed-size game's own size,
     // scaled up to fit the stage (the rest fill it); `art` is the card picture.
@@ -78,6 +83,15 @@ Item {
             source: "../../games/maroon/maroon.qml",
             size: Qt.size(320, 480),
             art: artMaroon
+        },
+        {
+            title: qsTr("Scoop Shop"),
+            tagline: qsTr("Serve every order before they give up."),
+            howTo: qsTr("Pick who works the counter: Pip the penguin or Lotl the axolotl. Each customer's ticket shows their order: a cone or a cup, the scoops from the bottom up, and any toppings. Tap the pieces to build it, then tap the customer to hand it over. Right and quick scores more. A wrong order, or a customer who runs out of patience, costs a heart; lose three and the shop closes. Every five served it gets busier."),
+            players: qsTr("1 player"),
+            credit: qsTr("Made for McFly, Pip and Lotl too."),
+            source: "../games/ScoopShop.qml",
+            art: artScoopShop
         }
     ]
 
@@ -86,6 +100,14 @@ Item {
     // Main's closeDetails(): the tab tapped again, or the screen saver coming up.
     function closeDetail() { close() }
     onIsCurrentChanged: if (!isCurrent) close()
+    // How to play over the game, or the assistant panel: a game against the
+    // clock stops it, and carries on when the person says so.
+    readonly property bool covered: howToOpen || !shown
+    function pauseGame() {
+        if (covered && game && typeof game.pause === "function")
+            game.pause()
+    }
+    onCoveredChanged: pauseGame()
 
     Reveal { id: rv; shown: games.isCurrent && games.openGame === null }
 
@@ -102,66 +124,77 @@ Item {
             subtitle: qsTr("Puzzles and games for a break")
         }
 
-        GridLayout {
-            id: cards
+        // Fixed-height cards, scrolling: two rows show, and the top of the
+        // next one says there are more.
+        FocusFlickable {
+            id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
-            columns: Theme.tall ? 2 : 3
-            rowSpacing: Theme.spacing
-            columnSpacing: Theme.spacing
+            fadeColor: Theme.background
+            contentHeight: cards.height
 
-            Repeater {
-                model: games.catalog
-                delegate: Rectangle {
-                    id: card
-                    required property var modelData
-                    required property int index
+            Grid {
+                id: cards
+                // From the list's width, not the grid's own.
+                readonly property real cardWidth: (list.width - (columns - 1) * columnSpacing) / columns
+                width: list.width
+                columns: Theme.tall ? 2 : 3
+                rowSpacing: Theme.spacing
+                columnSpacing: Theme.spacing
 
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 1
-                    Layout.preferredHeight: 1
-                    radius: Theme.radius
-                    color: Theme.surface
-                    opacity: rv.at(index)
-                    scale: cardTap.pressed ? 0.97 : 1
-                    Behavior on scale { NumberAnimation { duration: Theme.quick } }
-                    transform: Translate { y: rv.rise(card.index) }
+                Repeater {
+                    model: games.catalog
+                    delegate: Rectangle {
+                        id: card
+                        required property var modelData
+                        required property int index
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: Theme.mini ? 10 : Theme.compact ? 14 : 20
-                        spacing: Theme.mini ? 4 : 6
+                        objectName: "card:" + modelData.title
+                        width: cards.cardWidth
+                        height: games.cardHeight
+                        radius: Theme.radius
+                        color: Theme.surface
+                        opacity: rv.at(index)
+                        scale: cardTap.pressed ? 0.97 : 1
+                        Behavior on scale { NumberAnimation { duration: Theme.quick } }
+                        transform: Translate { y: rv.rise(card.index) }
 
-                        Loader {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            Layout.bottomMargin: Theme.mini ? 2 : 6
-                            sourceComponent: card.modelData.art
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Label {
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.mini ? 10 : Theme.compact ? 14 : 20
+                            spacing: Theme.mini ? 4 : 6
+
+                            Loader {
                                 Layout.fillWidth: true
-                                text: card.modelData.title
-                                color: Theme.text
-                                font.pixelSize: Theme.mini ? Theme.fontSm : Theme.compact ? Theme.fontMd : Theme.fontLg
-                                font.weight: Font.DemiBold
+                                Layout.fillHeight: true
+                                Layout.bottomMargin: Theme.mini ? 2 : 6
+                                sourceComponent: card.modelData.art
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: card.modelData.title
+                                    color: Theme.text
+                                    font.pixelSize: Theme.mini ? Theme.fontSm : Theme.compact ? Theme.fontMd : Theme.fontLg
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Tag { visible: !Theme.mini; text: card.modelData.players }
+                            }
+                            Label {
+                                visible: !Theme.mini
+                                Layout.fillWidth: true
+                                text: card.modelData.tagline
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.compact ? Theme.fontXs : Theme.fontSm
                                 elide: Text.ElideRight
                             }
-                            Tag { visible: !Theme.mini; text: card.modelData.players }
                         }
-                        Label {
-                            visible: !Theme.mini
-                            Layout.fillWidth: true
-                            text: card.modelData.tagline
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.compact ? Theme.fontXs : Theme.fontSm
-                            elide: Text.ElideRight
-                        }
+                        // A flick of the list cancels the tap.
+                        TapHandler { id: cardTap; onTapped: games.open(card.index) }
                     }
-                    TapHandler { id: cardTap; onTapped: games.open(card.index) }
                 }
             }
         }
@@ -289,6 +322,8 @@ Item {
             color: "#ececec"
             Column {
                 anchors.centerIn: parent
+                // The pictures are drawn at their own size: shrink to the card.
+                scale: Math.min(1, (parent.height - 8) / Math.max(1, implicitHeight), (parent.width - 8) / Math.max(1, implicitWidth))
                 spacing: 18
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -327,6 +362,29 @@ Item {
                 width: Math.min(parent.width * 0.9, sourceSize.width)
                 height: width * sourceSize.height / Math.max(1, sourceSize.width)
                 source: Qt.resolvedUrl("../../games/maroon/content/gfx/logo.png")
+            }
+        }
+    }
+    Component {
+        id: artScoopShop
+        Rectangle {
+            id: shop
+            radius: Theme.radiusSm
+            color: Theme.sunken
+            readonly property real size: Math.min(height * 0.86, width / 2.6)
+            Row {
+                anchors.centerIn: parent
+                spacing: -shop.size * 0.08
+                ScoopCrew { width: shop.size * 0.8; height: shop.size * 0.96; anchors.bottom: parent.bottom; who: "pip" }
+                ScoopTreat {
+                    width: shop.size * 0.6
+                    height: shop.size
+                    base: "cone"
+                    scoops: ["mint", "strawberry"]
+                    toppings: ["sprinkles", "cherry"]
+                    units: 10.4
+                }
+                ScoopCrew { width: shop.size * 0.8; height: shop.size * 0.96; anchors.bottom: parent.bottom; who: "lotl" }
             }
         }
     }
@@ -414,7 +472,10 @@ Item {
                     focus: true
                     active: games.openGame !== null
                     source: active ? Qt.resolvedUrl(games.openGame.source) : ""
-                    onLoaded: item.forceActiveFocus() // arrow keys on a desktop
+                    onLoaded: {
+                        item.forceActiveFocus() // arrow keys on a desktop
+                        games.pauseGame()
+                    }
                     onStatusChanged: if (status === Loader.Error) console.warn("Games: could not load", source)
                 }
                 // Same Game's own Quit button.

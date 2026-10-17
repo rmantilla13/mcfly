@@ -41,10 +41,16 @@ button in glass, and a second shape for Traffic Jam, tic-tac-toe and 2048:
 on a stage much wider than tall (the 7" panel) the board sits on the left
 with its controls beside it. Same Game and Maroon are unchanged.
 
+Scoop Shop (`qml/games/ScoopShop.qml`, drawn by `ScoopTreat.qml` and
+`ScoopCrew.qml`, its rules in `scoops.js`) is written for this app too, and
+so is everything in it: Pip the penguin, Lotl the axolotl, the customers and
+the ice cream are QML shapes, not artwork from anywhere else.
+
 ## Saved scores
 
-Same Game, 2048 and Traffic Jam keep high scores, the 2048 game in progress
-and Traffic Jam progress in Qt's LocalStorage (SQLite), under
+Same Game, 2048, Traffic Jam and Scoop Shop keep high scores, the 2048 game
+in progress, Traffic Jam progress and Scoop Shop's last shopkeeper in Qt's
+LocalStorage (SQLite), under
 `~/.local/share/McFly/display/QML/OfflineStorage` on the Pi
 (`~/Library/Application Support/McFly/display/...` on a Mac). This needs the
 `qml6-module-qtquick-localstorage` and `libqt6sql6-sqlite` packages;

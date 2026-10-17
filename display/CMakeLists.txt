@@ -163,6 +163,10 @@ qt_add_qml_module(mcfly-display
         games/2048/game.js
         games/traffic/rush.js
         games/traffic/puzzles.js
+        qml/games/ScoopShop.qml
+        qml/games/ScoopTreat.qml
+        qml/games/ScoopCrew.qml
+        qml/games/scoops.js
     RESOURCES
         resources/demo/feed.json
         ${mcfly_vendored_games}
