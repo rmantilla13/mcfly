@@ -458,7 +458,7 @@ leave the panel alone for two minutes. It starts a few seconds after the app
 does, then puts everything back as it was:
 
 ```bash
-journalctl -u mcfly-display -b | grep 'bench:'
+journalctl -t mcfly-display -b | grep 'bench:'
 ```
 
 Each line has the screen, then what it delivers as it is (and the GPU's busy
