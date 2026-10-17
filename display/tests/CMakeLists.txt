@@ -115,7 +115,7 @@ set_tests_properties(tst_dialogs PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscre
 # Motion: the palette's fade lengths, GradientTile's drift and SpectrumGlow's
 # idle cap, against a stand-in DisplayController.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-motion
-    Theme.qml components/GradientTile.qml components/SpectrumGlow.qml)
+    Theme.qml components/GradientTile.qml components/SpectrumGlow.qml components/MotionClock.qml)
 qt_add_executable(tst_motion tst_motion.cpp)
 target_compile_options(tst_motion PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_motion PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-motion")

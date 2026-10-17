@@ -204,10 +204,13 @@ One grammar for movement, the same on every panel (`Theme.qml` tokens):
   News hero's picture drifts over most of a minute; the Ask button turns a
   ring while an answer is on its way and the panel is shut. Nothing blinks.
 - **Gating.** Loops run only while their screen is shown and the screen is
-  not idle, and everything (arrivals included) is off with Settings →
-  Animated tiles. Animators (opacity, scale, rotation) where they can be;
-  never `Layout.*` or a font size. A stopped loop leaves nothing half-way:
-  its halo is hidden, not frozen.
+  not idle (and News' hero and a blocked card's edge only while on screen),
+  and everything (arrivals included) is off with Settings → Animated tiles.
+  Animators (opacity, scale, rotation) where they can be; never `Layout.*`
+  or a font size. News' hero and a blocked project's edge keep the ambient
+  clock instead (`MotionClock`, `Theme.motionFps`): an Animator steps on
+  every frame the panel draws, 60 a second for a drift of a pixel a second.
+  A stopped loop leaves nothing half-way: its halo is hidden, not frozen.
 - **Software.** Without a GPU (the fallback, and the offscreen pictures in
   `screenshots.sh`) there are no arrivals or sweeps: the pages are simply
   there. Qt's software renderer also draws a Shape (a ring, a line) past a

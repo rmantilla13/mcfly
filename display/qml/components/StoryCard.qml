@@ -72,14 +72,12 @@ Rectangle {
                 visible: status === Image.Ready
                 opacity: visible ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: Theme.smooth } }
-                // In and out over most of a minute: from wherever it is, so
-                // stopping and starting again never jumps.
-                SequentialAnimation {
-                    running: card.kenBurns && picture.visible
-                    loops: Animation.Infinite
-                    ScaleAnimator { target: picture; to: 1.08; duration: 26000; easing.type: Easing.InOutSine }
-                    ScaleAnimator { target: picture; to: 1.0; duration: 26000; easing.type: Easing.InOutSine }
-                }
+                // In and out over most of a minute (to 1.08 and back, 26 s
+                // each way, eased in and out), on the ambient clock: 30
+                // updates a second for a drift of under a pixel a second.
+                // From wherever it is, so stopping and starting again never jumps.
+                scale: 1.04 - 0.04 * Math.cos(Math.PI * drift.time / 26)
+                MotionClock { id: drift; playing: card.kenBurns && picture.visible }
             }
             // Section tag over the picture.
             Rectangle {

@@ -4,6 +4,7 @@
 #include <QJSValue>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QSignalSpy>
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
@@ -72,6 +73,7 @@ Item {
     property alias tile: tile
     property alias glow: glow
     property alias card: card
+    property alias clock: clock
     property alias probe: probe
     // What the probe tile is fed, step by step, by paletteFadeHasNoPop.
     property var probeColors: ["#5B7CF5", "#F07F5A", "#F6B94A", "#FBE6B0"]
@@ -108,6 +110,7 @@ Item {
         ambient: true
         intensity: 0.7
     }
+    MotionClock { id: clock }
 }
 )";
 
@@ -443,6 +446,31 @@ private slots:
             run(0.5);
             check("thinking");
         }
+    }
+
+    // The clock for QML's own loops (News' Ken Burns, Projects' breath) keeps
+    // the ambient slots, 30 updates a second, not the panel's every frame.
+    // Stopped, it holds where it was, and starts again from there without a
+    // step for the time it stood.
+    void motionClockKeepsTheSlots()
+    {
+        QObject *clock = child("clock");
+        QCOMPARE(clock->property("fps").toInt(), 30);   // Theme.motionFps
+        QVERIFY(!clock->property("running").toBool());
+        clock->setProperty("playing", true);
+        QVERIFY(clock->property("running").toBool());
+        QVERIFY(clock->property("interval").toInt() <= 34);
+        QTRY_VERIFY(clock->property("time").toDouble() > 0.2);
+        clock->setProperty("playing", false);
+        QVERIFY(!clock->property("running").toBool());
+        const double held = clock->property("time").toDouble();
+        QTest::qWait(400);
+        QCOMPARE(clock->property("time").toDouble(), held);
+        QSignalSpy step(clock, SIGNAL(timeChanged()));
+        clock->setProperty("playing", true);
+        QVERIFY(step.wait(500));
+        const double first = clock->property("time").toDouble() - held;
+        QVERIFY2(first > 0 && first < 0.08, qPrintable(QString::number(first)));
     }
 
     // A tile fed the glow colours through a palette fade changes smoothly:

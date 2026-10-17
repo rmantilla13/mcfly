@@ -134,6 +134,7 @@ qt_add_qml_module(mcfly-display
         qml/components/Reveal.qml
         qml/components/Ring.qml
         qml/components/StatusDot.qml
+        qml/components/MotionClock.qml
         qml/components/InsightLine.qml
         qml/components/HealthStrip.qml
         qml/screens/HomeLayouts.qml

@@ -90,7 +90,8 @@ Item {
                     visible: Theme.pictures && !!news.hero.headline
                     story: news.hero
                     large: true
-                    kenBurns: news.moving && !news.storyOpen
+                    // Only while it is on screen: scrolled away, it holds.
+                    kenBurns: news.moving && !news.storyOpen && storiesView.contentY < y + height
                     opacity: rv.at(0)
                     transform: Translate { y: rv.rise(0) }
                     onOpened: s => news.story = s

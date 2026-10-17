@@ -24,6 +24,10 @@ Item {
     function closeDetail() { md.closeDetail() }
     // Loops run only while someone can see them.
     readonly property bool moving: shown && !Device.idle && Device.animatedTiles
+    // The blocked cards' breath, on the ambient clock's 30 updates a second
+    // (MotionClock). A card breathes only while it is on screen, so its
+    // edge changes, and a frame is drawn, only where someone can see it.
+    MotionClock { id: breath; playing: projects.moving && projects.blocked > 0 }
 
     Reveal { id: rv; shown: projects.isCurrent }
     // The detail's ring and updates, played again for each project picked.
@@ -88,25 +92,24 @@ Item {
                         // Chosen: active glass (Lens), as the nav pill is.
                         Lens { anchors.fill: parent; visible: card.chosen; kind: "active"; radius: card.radius }
                         // Blocked: a soft second edge inside the first breathes
-                        // in and out, slowly. Stopped, it is simply not there.
+                        // in and out, slowly (to 0.4 and back, Theme.breath each
+                        // way, eased in and out), from nothing each time it
+                        // starts. Stopped, or scrolled out of sight, it is
+                        // simply not there.
+                        readonly property bool breathes: isBlocked && !chosen && projects.moving
+                                                         && cell.y + cell.height > grid.contentY && cell.y < grid.contentY + grid.height
+                        property real breathFrom: 0
+                        onBreathesChanged: if (breathes) breathFrom = breath.time
+                        Component.onCompleted: if (breathes) breathFrom = breath.time
                         Rectangle {
-                            id: breathEdge
                             anchors.fill: parent
                             anchors.margins: 2
                             radius: parent.radius - 2
                             color: "transparent"
                             border.width: 4
                             border.color: Theme.danger
-                            opacity: 0
-                            visible: breathing.running
-                        }
-                        SequentialAnimation {
-                            id: breathing
-                            running: card.isBlocked && !card.chosen && projects.moving
-                            loops: Animation.Infinite
-                            onStopped: breathEdge.opacity = 0
-                            OpacityAnimator { target: breathEdge; from: 0; to: 0.4; duration: Theme.breath; easing.type: Easing.InOutSine }
-                            OpacityAnimator { target: breathEdge; from: 0.4; to: 0; duration: Theme.breath; easing.type: Easing.InOutSine }
+                            visible: card.breathes
+                            opacity: visible ? 0.2 * (1 - Math.cos(Math.PI * (breath.time - card.breathFrom) * 1000 / Theme.breath)) : 0
                         }
                         RowLayout {
                             anchors.fill: parent

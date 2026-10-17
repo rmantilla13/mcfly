@@ -430,10 +430,12 @@ motion (the gradients, the auroras, the savers' drift and weather, the voice
 glow while it idles) updates 30 times a second, every other frame:
 `Theme.motionFps`, and nothing is slower. Frames drawn aren't how often
 something moves: when the savers' drift updated 10 times a second, the
-saver still drew about 43 frames a second, and News and Projects draw
-every frame with nobody touching them (seen in the October bench, not yet
-explained). A screen with nothing moving draws next to nothing (its clock
-ticks once a second), so a low fps on the overlay then is fine.
+saver still drew about 43 frames a second. News and Projects drew every
+frame with nobody touching them: the hero's slow Ken Burns and a blocked
+card's breath were Animators, which step on every frame the panel draws.
+They keep the 30 now (`MotionClock`). A screen with nothing moving draws
+next to nothing (its clock ticks once a second), so a low fps on the
+overlay then is fine.
 
 To see what a screen could keep up, turn on **Draw every frame** under the
 overlay's switch on the Admin tab. Each frame then asks for the next, and
