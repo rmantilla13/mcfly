@@ -4,6 +4,8 @@
 #include <QJSValue>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQmlProperty>
+#include <QQuickItem>
 #include <QSignalSpy>
 #include <QVector2D>
 #include <QVector3D>
@@ -446,6 +448,32 @@ private slots:
             run(0.5);
             check("thinking");
         }
+    }
+
+    // Asked to (Setup's, the whole screen), the glow shades into a layer of
+    // that share of its pixels, its pixel ratio scaled with it so the edge
+    // and the bottom line stay a texel. At 1, as on Home's card and the Ask
+    // input, no layer.
+    void glowRunsSmallerWhenAsked()
+    {
+        QObject *card = child("card");
+        QQuickItem *fx = nullptr;
+        for (QQuickItem *item : qobject_cast<QQuickItem *>(card)->childItems())
+            if (item->inherits("QQuickShaderEffect"))
+                fx = item;
+        QVERIFY(fx);
+        const auto layered = [fx]() { return QQmlProperty::read(fx, QStringLiteral("layer.enabled")).toBool(); };
+        const double dpr = fx->property("dpr").toDouble();
+        QCOMPARE(card->property("resolution").toDouble(), 1.0);
+        QVERIFY(!layered());
+        card->setProperty("resolution", 0.5);
+        QVERIFY(layered());
+        QCOMPARE(fx->property("dpr").toDouble(), dpr * 0.5);
+        QCOMPARE(QQmlProperty::read(fx, QStringLiteral("layer.textureSize")).toSize(),
+                 QSize(std::ceil(778 * dpr * 0.5), std::ceil(760 * dpr * 0.5)));
+        card->setProperty("resolution", 1.0);
+        QVERIFY(!layered());
+        QCOMPARE(fx->property("dpr").toDouble(), dpr);
     }
 
     // The clock for QML's own loops (News' Ken Burns, Projects' breath) keeps

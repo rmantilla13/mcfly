@@ -88,7 +88,11 @@ Item {
         }
     }
     SpectrumGlow {
+        objectName: "glow"
         anchors.fill: parent
+        // The whole screen too, and most of a frame's GPU work: shaded at
+        // half its pixels as well (SpectrumGlow.resolution).
+        resolution: 0.5
         ambient: true
         intensity: 0.75
         cornerRadius: 0
@@ -404,10 +408,37 @@ Item {
                             }
                         }
                     }
-                    BusyIndicator {
+                    // Waiting for a code: ten dots round a ring fill one by
+                    // one over a second, then empty over the next. This was
+                    // the Basic style's BusyIndicator, drawn the same, which
+                    // redrew every frame the panel drew for dots that change
+                    // every 100 ms. On the ambient clock the screen draws
+                    // only when a dot changes.
+                    Item {
+                        id: busy
+                        objectName: "busy"
                         Layout.alignment: Qt.AlignHCenter
-                        running: !setup.haveCode
-                        visible: running
+                        visible: !setup.haveCode
+                        implicitWidth: 60
+                        implicitHeight: 60
+                        MotionClock { id: busyClock; objectName: "busyClock"; playing: busy.visible && !Device.screenOff }
+                        readonly property real cycle: (busyClock.time % 2) / 2
+                        Repeater {
+                            model: 10
+                            delegate: Rectangle {
+                                objectName: "busyDot"
+                                required property int index
+                                readonly property real angle: 2 * Math.PI * index / 10
+                                readonly property bool filled: busy.cycle <= 0.5 ? 2 * busy.cycle > index / 10
+                                                                                 : 2 * busy.cycle - 1 < index / 10
+                                width: 8; height: 8; radius: 4
+                                x: 30 + 20 * Math.sin(angle) - 4
+                                y: 30 - 20 * Math.cos(angle) - 4
+                                color: filled ? field.inkMuted : "transparent"
+                                border.color: field.inkMuted
+                                border.width: 1
+                            }
+                        }
                     }
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter

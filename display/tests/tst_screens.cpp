@@ -20,13 +20,13 @@ class FakeDevice : public QObject
     Q_PROPERTY(QString mood READ mood CONSTANT)
     Q_PROPERTY(bool darkMode READ darkMode CONSTANT)
     Q_PROPERTY(bool idle READ idle NOTIFY idleChanged)
-    Q_PROPERTY(bool screenOff READ screenOff CONSTANT)
+    Q_PROPERTY(bool screenOff READ screenOff NOTIFY screenOffChanged)
     Q_PROPERTY(bool animatedTiles READ animatedTiles WRITE setAnimatedTiles NOTIFY animatedTilesChanged)
 public:
     QString mood() const { return QStringLiteral("day"); }
     bool darkMode() const { return false; }
     bool idle() const { return m_idle; }
-    bool screenOff() const { return false; }
+    bool screenOff() const { return m_screenOff; }
     bool animatedTiles() const { return m_animatedTiles; }
     // The rail's moon: counted, so a tap on it can be told from one on Settings.
     Q_INVOKABLE void sleepNow() { ++sleeps; }
@@ -45,13 +45,22 @@ public:
         m_idle = on;
         emit idleChanged();
     }
+    void setScreenOff(bool off)
+    {
+        if (off == m_screenOff)
+            return;
+        m_screenOff = off;
+        emit screenOffChanged();
+    }
 signals:
     void animatedTilesChanged();
     void idleChanged();
+    void screenOffChanged();
 
 private:
     bool m_animatedTiles = true;
     bool m_idle = false;
+    bool m_screenOff = false;
 };
 
 // Stands in for SystemController, for the setup screen: online over a wire,
@@ -606,6 +615,56 @@ private slots:
         qobject_cast<QQuickItem *>(m_screen)->setVisible(false);
         for (QObject *clock : {lights, floats, wave})
             QVERIFY(!running(clock));
+    }
+
+    // Waiting for a code: ten dots round a ring, from the top and clockwise,
+    // fill one by one over a second and empty over the next, on the ambient
+    // clock (the Basic BusyIndicator before them redrew every frame). They
+    // stop once a code is in, with the panel off, and hidden. The glow
+    // behind is shaded at half its pixels, as the field is.
+    void setupWaitsOnTheAmbientClock()
+    {
+        QVERIFY(show("SetupScreen {}", 1280, 800, QStringLiteral("compact"))); // the demo store has no code
+        QQuickItem *busy = find("busy");
+        QObject *clock = m_screen->findChild<QObject *>(QStringLiteral("busyClock"));
+        QVERIFY(busy && clock);
+        QCOMPARE(find("glow")->property("resolution").toReal(), 0.5);
+        const auto running = [&]() { return clock->property("running").toBool(); };
+        QVERIFY(busy->isVisible() && running());
+        QCOMPARE(clock->property("fps").toInt(), 30);   // Theme.motionFps
+        QList<QQuickItem *> found;
+        collect(m_window->contentItem(), QStringLiteral("busyDot"), found);
+        QCOMPARE(found.size(), 10);
+        QVector<QQuickItem *> dot(10);
+        for (QQuickItem *item : std::as_const(found))
+            dot[item->property("index").toInt()] = item;
+        QVERIFY(dot[0]->y() < dot[5]->y() && qAbs(dot[0]->x() - dot[5]->x()) < 1e-6 && dot[2]->x() > dot[0]->x());
+        const auto filled = [&]() {
+            QString out;
+            for (QQuickItem *item : std::as_const(dot))
+                out += item->property("filled").toBool() ? QLatin1Char('#') : QLatin1Char('.');
+            return out;
+        };
+        const QList<std::pair<qreal, QString>> ring = {
+            {0, QStringLiteral("..........")}, {0.05, QStringLiteral("#.........")},
+            {0.45, QStringLiteral("#####.....")}, {1, QStringLiteral("##########")},
+            {1.25, QStringLiteral("...#######")}, {1.5, QStringLiteral("......####")},
+            {1.95, QStringLiteral("..........")}, {2.45, QStringLiteral("#####.....")}};
+        for (const auto &[t, want] : ring) {
+            clock->setProperty("time", t);
+            QVERIFY2(filled() == want, qPrintable(QStringLiteral("at %1 s: %2").arg(t).arg(filled())));
+        }
+
+        m_screen->setProperty("sample", true);   // a code
+        QVERIFY(!busy->isVisible() && !running());
+        m_screen->setProperty("sample", false);
+        QVERIFY(busy->isVisible() && running());
+        m_device.setScreenOff(true);
+        QVERIFY(!running());
+        m_device.setScreenOff(false);
+        QVERIFY(running());
+        qobject_cast<QQuickItem *>(m_screen)->setVisible(false);
+        QVERIFY(!running());
     }
 
     // A health strip's statuses line up along the top (the first in a row,

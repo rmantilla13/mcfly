@@ -433,9 +433,12 @@ something moves: when the savers' drift updated 10 times a second, the
 saver still drew about 43 frames a second. News and Projects drew every
 frame with nobody touching them: the hero's slow Ken Burns and a blocked
 card's breath were Animators, which step on every frame the panel draws.
-They keep the 30 now (`MotionClock`). A screen with nothing moving draws
-next to nothing (its clock ticks once a second), so a low fps on the
-overlay then is fine.
+They keep the 30 now (`MotionClock`). A full-screen shader cached at a
+fraction of its pixels (the savers' skies, Setup's field and voice glow)
+draws one more frame after each update, a cheap one that only redraws the
+cached picture: Setup reads 60 for its 30 updates. A screen with nothing
+moving draws next to nothing (its clock ticks once a second), so a low fps
+on the overlay then is fine.
 
 To see what a screen could keep up, turn on **Draw every frame** under the
 overlay's switch on the Admin tab. Each frame then asks for the next, and

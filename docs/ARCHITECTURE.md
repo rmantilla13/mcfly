@@ -81,7 +81,8 @@ SystemController ─ Wi-Fi, speakers, restart, reboot (through a root helper)
 
 - **Setup screen**: the first-run screen is a full-screen drifting colour
   field (the `GradientTile` mesh gradient with its soft glass rings) and the
-  `SpectrumGlow` along the bottom, with two steps on a glass card: Wi-Fi
+  `SpectrumGlow` along the bottom, both shaded at half their pixels
+  (`resolution: 0.5`), with two steps on a glass card: Wi-Fi
   (networks and password, with the on-screen keyboard) and the 6-digit code
   plus a QR code (`https://mcfly.bot/pair?code=…`) to connect the screen to
   your account from the phone, the Mac or the console.

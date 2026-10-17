@@ -46,6 +46,13 @@ Item {
     property int maxFps: Theme.motionFps  // updates per second while it only idles (0 = every
                                           // frame): every other frame at 60 Hz, an even cadence,
                                           // and on the same frames as the tiles beside it
+    // ---- Cost
+    // The share of its physical pixels the shader runs at, scaled up after,
+    // as GradientTile's. 1 for the cards and the Ask input. Setup's, the
+    // whole screen, at 0.5 shades a quarter of the pixels: the lobes and the
+    // band are soft at any size, and the line along the bottom spreads over
+    // a texel.
+    property real resolution: 1.0
 
     // ---- Smoothed state: fast attack, slower release, eased beam.
     property real _level: 0
@@ -269,18 +276,27 @@ Item {
         onTriggered: glow._tick(Math.max(0, Math.min(frameTime, 0.1)))
     }
 
+    readonly property real _screenDpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    readonly property bool _reduced: resolution > 0 && resolution < 1
     ShaderEffect {
         id: fx
         anchors.fill: parent
         visible: !glow.fallback
         blending: true
+        // Run smaller and scaled up when asked (`resolution`): the texture's
+        // pixel ratio is then the shader's, so the edge and the line are a
+        // texel. The layer asks Qt for one more frame after each update, a
+        // cheap one: it redraws the texture, not the glow.
+        layer.enabled: glow._reduced
+        layer.textureSize: Qt.size(Math.max(1, Math.ceil(width * dpr)), Math.max(1, Math.ceil(height * dpr)))
+        layer.smooth: true
         // Columns 2 px wide, one row: the vertex shader works out what
         // depends only on x there, and brings the top edge down to `cut`.
         mesh: GridMesh { resolution: Qt.size(Math.max(1, Math.ceil(fx.width / 2)), 1) }
         // Uniforms (names match shaders/spectrumglow.frag).
         readonly property size size: Qt.size(width, height)
         readonly property real radius: glow.cornerRadius
-        readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+        readonly property real dpr: glow._reduced ? glow._screenDpr * glow.resolution : glow._screenDpr
         readonly property real intensity: glow.intensity
         readonly property real bandWidth: glow._bandWidth
         readonly property real bandBlur: glow._bandBlur
