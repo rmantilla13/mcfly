@@ -3,8 +3,9 @@ import Foundation
 /// What the games keep on this device, in UserDefaults as the app's other
 /// local settings are (the voice, `mcfly.voice`): 2048's best score and the
 /// game in progress, Traffic Jam's and Penguin March's level and each
-/// level's best, Scoop Shop's best and who worked last. Tic-tac-toe and Four
-/// in a Row keep their score only while open, as on the display.
+/// level's best, Scoop Shop's best and who worked last, and every Color by
+/// Number picture as far as it's painted. Tic-tac-toe and Four in a Row keep
+/// their score only while open, as on the display.
 public final class GameProgress: @unchecked Sendable {
     public static let shared = GameProgress()
 
@@ -96,5 +97,20 @@ public final class GameProgress: @unchecked Sendable {
         if let old = best[level], old >= saved { return }
         best[level] = saved
         setTable(best, "penguins.best")
+    }
+
+    // MARK: Color by Number
+
+    /// Each picture's progress (`ColorBoard.saved`), by the picture's id.
+    public var colorProgress: [String: String] {
+        defaults.dictionary(forKey: Self.prefix + "colors.progress") as? [String: String] ?? [:]
+    }
+
+    /// Keeps a picture's progress.
+    public func saveColors(_ saved: String, for id: String) {
+        var all = colorProgress
+        guard all[id] != saved else { return }
+        all[id] = saved
+        defaults.set(all, forKey: Self.prefix + "colors.progress")
     }
 }

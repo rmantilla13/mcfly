@@ -144,6 +144,7 @@ struct GameScreen: View {
         case .game2048: Game2048View()
         case .scoopShop: ScoopShopView(covered: covered)
         case .penguinMarch: PenguinMarchView(covered: covered)
+        case .colorByNumber: ColorByNumberView()
         }
     }
 
@@ -195,6 +196,8 @@ private struct HowToCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        // The game doesn't peek out past the card's rounded corners.
+        .background(Theme.background)
         .contentShape(Rectangle())
         // A tap closes it; the licence's disclosure takes its own taps first.
         .onTapGesture(perform: close)
@@ -228,7 +231,8 @@ struct GameIconButton: View {
 
 /// `-McFlyGame <name>` (screenshots): opens on the Games list with that
 /// game open (`list` for the list alone). Names: traffic, tictactoe,
-/// fourinarow, 2048, scoops, penguins. `-McFlyGameClock` slows the clock.
+/// fourinarow, 2048, scoops, penguins, colors. `-McFlyGameClock` slows the
+/// clock; `-McFlyColorPicture <id>` opens Color by Number on that picture.
 enum GameLaunch {
     static let requested: String? = {
         let arguments = ProcessInfo.processInfo.arguments
@@ -253,7 +257,15 @@ enum GameLaunch {
         case "2048": return .game2048
         case "scoops": return .scoopShop
         case "penguins": return .penguinMarch
+        case "colors": return .colorByNumber
         default: return nil
         }
+    }()
+
+    /// `-McFlyColorPicture <id>` (heart, pip…): Color by Number opens painting it.
+    static let colorPicture: String? = {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let i = arguments.firstIndex(of: "-McFlyColorPicture"), i + 1 < arguments.count else { return nil }
+        return arguments[i + 1].lowercased()
     }()
 }

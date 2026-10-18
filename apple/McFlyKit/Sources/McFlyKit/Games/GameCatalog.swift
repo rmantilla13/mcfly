@@ -4,7 +4,7 @@ import Foundation
 /// with each game's how to play and its credit, word for word. Same Game and
 /// Maroon in Trouble, the Qt demos, aren't in the app yet.
 public enum GameID: String, Sendable, CaseIterable, Identifiable {
-    case trafficJam, ticTacToe, fourInARow, game2048, scoopShop, penguinMarch
+    case trafficJam, ticTacToe, fourInARow, game2048, scoopShop, penguinMarch, colorByNumber
 
     public var id: Self { self }
 
@@ -16,6 +16,7 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .game2048: return "2048"
         case .scoopShop: return "Scoop Shop"
         case .penguinMarch: return "Penguin March"
+        case .colorByNumber: return "Color by Number"
         }
     }
 
@@ -27,6 +28,7 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .game2048: return "Slide and join the tiles to reach 2048."
         case .scoopShop: return "Serve every order before they give up."
         case .penguinMarch: return "Get the penguins home to the igloo."
+        case .colorByNumber: return "Fill in the picture, one number at a time."
         }
     }
 
@@ -44,6 +46,8 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
             return "Pick who works the counter: Pip the penguin or Lotl the axolotl. Each customer's ticket shows their order: a cone or a cup, the scoops from the bottom up, and any toppings. Tap the pieces to build it, then tap the customer to hand it over. Right and quick scores more. A wrong order, or a customer who runs out of patience, costs a heart; lose three and the shop closes. Every five served it gets busier, and new flavours and toppings join the menu."
         case .penguinMarch:
             return "Penguins drop in and keep walking, turning at walls, and a long fall is the end of one. Pick a skill, then tap a penguin: Block turns the others back, Dig goes down, Bash goes through a wall, Build lays steps and Float opens an umbrella. Get enough of them into the igloo to win."
+        case .colorByNumber:
+            return "Pick a picture, then a colour: its number lights up on the picture. Tap or sweep across those cells to fill them in. Only cells with that number take the colour, so a sweep can't go wrong. Tap a cell with another number to switch to its colour. Zoom in with + and −, and drag from any other cell to move around. Your pictures are saved as you go."
         }
     }
 
@@ -61,6 +65,7 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .ticTacToe, .fourInARow, .penguinMarch: return "Made for McFly."
         case .game2048: return "2048 by Gabriele Cirulli. MIT License."
         case .scoopShop: return "Made for McFly, Pip and Lotl too."
+        case .colorByNumber: return "Made for McFly, after Araib Karim's Color by Number for iOS. The pictures are ours."
         }
     }
 

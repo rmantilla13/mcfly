@@ -14,6 +14,7 @@ struct GameArt: View {
         case .game2048: Art2048()
         case .scoopShop: ScoopArt()
         case .penguinMarch: PenguinArtCard()
+        case .colorByNumber: ColorsArt()
         }
     }
 }
@@ -166,5 +167,19 @@ private struct PenguinArtCard: View {
                 }
             }
         }
+    }
+}
+
+/// Pip, the top half coloured in, as on the display's card.
+private struct ColorsArt: View {
+    private static let saved: String = {
+        let total = ColorSheet(picture: 10).cellCount
+        let n = total * 55 / 100
+        return String(repeating: "1", count: n) + String(repeating: "0", count: total - n)
+    }()
+
+    var body: some View {
+        ColorPictureView(picture: 10, saved: Self.saved)
+            .padding(10)
     }
 }

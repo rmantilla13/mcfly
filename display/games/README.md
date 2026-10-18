@@ -61,17 +61,17 @@ That project has no licence, so none of its code, pictures or fonts is used:
 the twelve pixel pictures are our own. `tests/tst_colors.cpp` checks every
 picture.
 
-The iPhone and Mac app has all of these but Same Game, Maroon and Color by
-Number (still to come), written again in Swift
-(`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
+The iPhone and Mac app has all of these but Same Game and Maroon, written
+again in Swift (`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
 `apple/McFly/Games` for the screens), with the same rules, levels and
 credits. 2048's and Rush Hour's Swift carry their MIT notices at the top of
 the file, and the app shows them under how to play. `apple/McFlyKit/Tests`
 hold the Swift to the display: Four in a Row's search against
 `FourInARowEngine`'s node counts, Scoop Shop's orders against `scoops.js`,
-and Penguin March's terrain and solution replays, cell for cell and tick for
-tick, against `PenguinSim`. Scoop Shop's parlour (the awning, the ticket
-rail, the freezer case and shelves, the prep bench) is drawn again in
+Penguin March's terrain and solution replays, cell for cell and tick for
+tick, against `PenguinSim`, and Color by Number's pictures, zoom, pan and
+sweeps against `ColorByNumber.cpp`. Scoop Shop's parlour (the awning, the
+ticket rail, the freezer case and shelves, the prep bench) is drawn again in
 SwiftUI from the same shapes and colours.
 
 ## Saved scores
