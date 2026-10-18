@@ -47,11 +47,17 @@ Scoop Shop (`qml/games/ScoopShop.qml`, drawn by `ScoopTreat.qml` and
 so is everything in it: Pip the penguin, Lotl the axolotl, the customers and
 the ice cream are QML shapes, not artwork from anywhere else.
 
+Penguin March (`qml/games/PenguinMarch.qml`, with its rules, levels and
+drawing in `src/games/`) is written for this app too: an original game in
+the genre of Lemmings and Pingus, sharing no code, pictures, sounds, levels
+or names with either. `tests/tst_penguins.cpp` replays a recorded solution
+for every level to prove it can be won.
+
 ## Saved scores
 
-Same Game, 2048, Traffic Jam and Scoop Shop keep high scores, the 2048 game
-in progress, Traffic Jam progress and Scoop Shop's last shopkeeper in Qt's
-LocalStorage (SQLite), under
+Same Game, 2048, Traffic Jam, Scoop Shop and Penguin March keep high scores,
+the 2048 game in progress, Traffic Jam and Penguin March progress and Scoop
+Shop's last shopkeeper in Qt's LocalStorage (SQLite), under
 `~/.local/share/McFly/display/QML/OfflineStorage` on the Pi
 (`~/Library/Application Support/McFly/display/...` on a Mac). This needs the
 `qml6-module-qtquick-localstorage` and `libqt6sql6-sqlite` packages;

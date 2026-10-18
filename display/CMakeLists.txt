@@ -39,6 +39,19 @@ add_library(mcfly-qr STATIC
 target_include_directories(mcfly-qr PUBLIC src third_party/qrcodegen)
 target_link_libraries(mcfly-qr PUBLIC Qt6::Gui Qt6::Quick)
 
+# Penguin March (qml/games/PenguinMarch.qml): the rules and the levels, and
+# the view that draws them. A library so tests/tst_penguins.cpp can replay
+# every level's solution without a window.
+add_library(mcfly-penguins STATIC
+    src/games/PenguinSim.h         src/games/PenguinSim.cpp
+    src/games/PenguinLevels.h      src/games/PenguinLevels.cpp
+    src/games/PenguinArt.h         src/games/PenguinArt.cpp
+    src/games/PenguinWorld.h       src/games/PenguinWorld.cpp
+)
+target_include_directories(mcfly-penguins PUBLIC src)
+target_compile_options(mcfly-penguins PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(mcfly-penguins PUBLIC Qt6::Gui Qt6::Quick)
+
 qt_add_executable(mcfly-display
     src/main.cpp
     src/models/FeedStore.h         src/models/FeedStore.cpp
@@ -162,6 +175,7 @@ qt_add_qml_module(mcfly-display
         qml/games/TrafficJam.qml
         qml/games/TicTacToe.qml
         qml/games/FourInARow.qml
+        qml/games/PenguinMarch.qml
         games/2048/game.js
         games/traffic/rush.js
         games/traffic/puzzles.js
@@ -209,7 +223,7 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/pillars.frag
 )
 
-target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr
+target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr mcfly-penguins
     Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebSockets)
 
 install(TARGETS mcfly-display RUNTIME DESTINATION bin)

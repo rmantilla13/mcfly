@@ -32,6 +32,14 @@ foreach(name tst_sseparser tst_streamfunction tst_voiceclient)
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 endforeach()
 
+# Penguin March's rules on small made-up levels, and every level won by its
+# recorded solution.
+qt_add_executable(tst_penguins tst_penguins.cpp)
+target_compile_options(tst_penguins PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_penguins PRIVATE mcfly-penguins Qt6::Test)
+add_test(NAME tst_penguins COMMAND tst_penguins)
+set_tests_properties(tst_penguins PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # QR codes: the modules of a known text, and the image provider's scaling.
 qt_add_executable(tst_qrcode tst_qrcode.cpp)
 target_compile_options(tst_qrcode PRIVATE ${MCFLY_WARNINGS})
@@ -304,7 +312,7 @@ qt_add_executable(tst_games tst_games.cpp
 target_include_directories(tst_games PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_compile_options(tst_games PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_games PRIVATE MCFLY_GAMES_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/games-qml")
-target_link_libraries(tst_games PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+target_link_libraries(tst_games PRIVATE mcfly-penguins Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
 qt_add_shaders(tst_games "games_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}

@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 
 #include "games/FourInARowEngine.h"
+#include "games/PenguinWorld.h"
 
 // Stands in for DisplayController: the theme reads the mood and dark mode,
 // the screen's entrance whether tiles animate.
@@ -214,6 +215,8 @@ private slots:
         QVERIFY(m_storage.isValid());
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &m_device);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "FourInARowEngine", &m_fourInARow);
+        qmlRegisterType<PenguinWorld>("McFly.Core", 1, 0, "PenguinWorld");
+        qmlRegisterType<PenguinPicture>("McFly.Core", 1, 0, "PenguinPicture");
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_GAMES_QML_DIR));
         m_engine->setOfflineStoragePath(m_storage.path());
@@ -241,7 +244,7 @@ private slots:
         QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), {1180, 800}));
         QVERIFY(screen);
         const int count = eval(screen.get(), QStringLiteral("catalog.length")).toInt();
-        QCOMPARE(count, 7);
+        QCOMPARE(count, 8);
         for (int i = 0; i < count; ++i) {
             QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, i)));
             QTRY_VERIFY2(eval(screen.get(), QStringLiteral("game !== null")).toBool(),
@@ -265,6 +268,23 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, 1)));
         QTRY_VERIFY(eval(screen.get(), QStringLiteral("game !== null")).toBool());
         QVERIFY(QMetaObject::invokeMethod(screen.get(), "closeDetail"));
+        QTRY_VERIFY(eval(screen.get(), QStringLiteral("game === null")).toBool());
+
+        // Penguin March pauses while it can't be seen (the assistant panel
+        // over it), and waits for Play after.
+        QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, count - 1)));
+        QTRY_VERIFY(eval(screen.get(), QStringLiteral("game !== null")).toBool());
+        QCOMPARE(eval(screen.get(), QStringLiteral("openGame.title")).toString(), QStringLiteral("Penguin March"));
+        QVERIFY(QMetaObject::invokeMethod(screen->property("game").value<QObject *>(), "start"));
+        QTRY_VERIFY(eval(screen.get(), QStringLiteral("game.world.ticks() > 0")).toBool());
+        screen->setProperty("shown", false);
+        QVERIFY(!eval(screen.get(), QStringLiteral("game.playing")).toBool());
+        const int held = eval(screen.get(), QStringLiteral("game.world.ticks()")).toInt();
+        QTest::qWait(200);
+        QCOMPARE(eval(screen.get(), QStringLiteral("game.world.ticks()")).toInt(), held);
+        screen->setProperty("shown", true);
+        QVERIFY(!eval(screen.get(), QStringLiteral("game.playing")).toBool());
+        QVERIFY(QMetaObject::invokeMethod(screen.get(), "close"));
         QTRY_VERIFY(eval(screen.get(), QStringLiteral("game === null")).toBool());
     }
 
@@ -665,6 +685,65 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(game.get(), "undo"));
         QCOMPARE(eval(game.get(), QStringLiteral("positions.join(',')")).toString(), before);
         QCOMPARE(game->property("moves").toInt(), 0);
+    }
+
+    // Penguin March: the level runs on its own clock while it's drawn and
+    // stops when paused; a tap gives the chosen skill to the penguin under
+    // it; a win is kept, and so is the level, across a reopen. "Show me"
+    // plays the level's solution through without counting as a win. The
+    // rules and every level's solution are tests/tst_penguins.cpp.
+    void penguinMarchPlaysAndRemembers()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/PenguinMarch.qml"), {900, 760}));
+        QVERIFY(game);
+        QVERIFY(game->property("levelCount").toInt() >= 12);
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "load", Q_ARG(QVariant, 0)));
+        QVERIFY(!game->property("briefed").toBool()); // the level's card first
+        QCOMPARE(eval(game.get(), QStringLiteral("world.ticks()")).toInt(), 0);
+        QCOMPARE(game->property("skill").toString(), QStringLiteral("dig")); // its one skill, chosen
+
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "start"));
+        QTRY_VERIFY(eval(game.get(), QStringLiteral("world.released")).toInt() >= 1);
+        game->setProperty("playing", false);
+        const int paused = eval(game.get(), QStringLiteral("world.ticks()")).toInt();
+        QTest::qWait(200);
+        QCOMPARE(eval(game.get(), QStringLiteral("world.ticks()")).toInt(), paused);
+
+        // The first penguin walking in the pen, away from the hatch (a hole
+        // under it would drop the next ones too far): a tap a little off it digs.
+        for (int i = 0; i < 200 && !eval(game.get(), QStringLiteral("world.penguins()[0].x > 110 * zoom")).toBool(); ++i)
+            eval(game.get(), QStringLiteral("world.advance(1)"));
+        QCOMPARE(eval(game.get(), QStringLiteral("world.penguins()[0].state")).toString(), QStringLiteral("walking"));
+        QVERIFY(!eval(game.get(), QStringLiteral("world.tapAt(5, 5)")).toBool()); // nobody there
+        QVERIFY(eval(game.get(), QStringLiteral("(function () { const p = world.penguins()[0];"
+                                                " return world.tapAt(p.x + 20, p.y - 20) })()")).toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("world.penguins()[0].state")).toString(), QStringLiteral("digging"));
+        QCOMPARE(eval(game.get(), QStringLiteral("world.skillsLeft.dig")).toInt(), 1);
+
+        eval(game.get(), QStringLiteral("world.advance(3000)"));
+        QVERIFY(eval(game.get(), QStringLiteral("world.finished && world.won")).toBool());
+        const int saved = eval(game.get(), QStringLiteral("world.saved")).toInt();
+        QVERIFY(saved >= eval(game.get(), QStringLiteral("world.need")).toInt());
+        QCOMPARE(eval(game.get(), QStringLiteral("best[0]")).toInt(), saved);
+        QVERIFY(!game->property("playing").toBool());
+
+        // Show me, on the next level: it wins, and isn't kept.
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "load", Q_ARG(QVariant, 1)));
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "showMe"));
+        QVERIFY(eval(game.get(), QStringLiteral("world.demo")).toBool());
+        eval(game.get(), QStringLiteral("world.advance(3000)"));
+        QVERIFY(eval(game.get(), QStringLiteral("world.finished && world.won")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("best[1] === undefined")).toBool());
+
+        game.reset();
+        game.reset(create(QStringLiteral("qml/games/PenguinMarch.qml"), {800, 300})); // the 7" shape
+        QVERIFY(game);
+        QCOMPARE(game->property("level").toInt(), 1);
+        QCOMPARE(eval(game.get(), QStringLiteral("best[0]")).toInt(), saved);
+        QVERIFY(game->property("slim").toBool());
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "start"));
+        QTest::qWait(300); // drawn running, in the other layout
+        QVERIFY(eval(game.get(), QStringLiteral("world.ticks()")).toInt() > 0);
     }
 
     void sameGamePlaysAndQuitsToTheList()

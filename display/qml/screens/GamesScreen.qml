@@ -17,8 +17,9 @@ import McFly.Core
 // Home). Nothing keeps ticking, animating or making sounds behind the other
 // pages. Third-party code and licences: display/games/README.md.
 //
-// Scoop Shop, ours too, runs against the clock: a game with a pause()
-// function is paused while how to play or the assistant panel covers it.
+// Scoop Shop and Penguin March, ours too, run against the clock: a game
+// with a pause() function is paused while how to play or the assistant
+// panel covers it.
 Item {
     id: games
     property bool shown: true
@@ -102,6 +103,15 @@ Item {
             credit: qsTr("Made for McFly, Pip and Lotl too."),
             source: "../games/ScoopShop.qml",
             art: artScoopShop
+        },
+        {
+            title: qsTr("Penguin March"),
+            tagline: qsTr("Get the penguins home to the igloo."),
+            howTo: qsTr("Penguins drop in and keep walking, turning at walls, and a long fall is the end of one. Pick a skill, then tap a penguin: Block turns the others back, Dig goes down, Bash goes through a wall, Build lays steps and Float opens an umbrella. Get enough of them into the igloo to win."),
+            players: qsTr("1 player"),
+            credit: qsTr("Made for McFly."),
+            source: "../games/PenguinMarch.qml",
+            art: artPenguins
         }
     ]
 
@@ -431,6 +441,64 @@ Item {
                     units: 10.4
                 }
                 ScoopCrew { width: shop.size * 0.8; height: shop.size * 0.96; anchors.bottom: parent.bottom; who: "lotl" }
+            }
+        }
+    }
+
+    Component {
+        id: artPenguins
+        Rectangle {
+            id: scene
+            radius: Theme.radiusSm
+            gradient: Gradient {
+                GradientStop { position: 0; color: Theme.dark ? "#0B1424" : "#B9DCF3" }
+                GradientStop { position: 1; color: Theme.dark ? "#1D2C47" : "#EDF6FC" }
+            }
+            readonly property real unit: Math.min(width / 9, height / 4.2)
+            // Ice under a cap of snow, as the levels have it; the rounded
+            // corners at the foot in the ice's deepest colour.
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 2 * Theme.radiusSm
+                radius: Theme.radiusSm
+                color: Theme.dark ? "#3F6489" : "#86B3D9"
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                y: parent.height * 0.7
+                height: parent.height * 0.3 - Theme.radiusSm
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Theme.dark ? "#A9C6DE" : "#D6EAF8" }
+                    GradientStop { position: 1; color: Theme.dark ? "#3F6489" : "#86B3D9" }
+                }
+                Rectangle {
+                    width: parent.width
+                    height: Math.max(4, scene.unit * 0.25)
+                    color: Theme.dark ? "#E4EEF7" : "#FFFFFF"
+                }
+            }
+            PenguinPicture {
+                x: parent.width * 0.62
+                width: scene.unit * 2.6
+                height: width * 40 / 48
+                y: parent.height * 0.7 - height
+                kind: "igloo"
+                dark: Theme.dark
+            }
+            Repeater {
+                model: [{ x: 0.1, kind: "walk" }, { x: 0.27, kind: "walk" }, { x: 0.42, kind: "float", up: 1.3 }]
+                delegate: PenguinPicture {
+                    required property var modelData
+                    x: scene.width * modelData.x
+                    width: scene.unit * 1.5
+                    height: width
+                    y: scene.height * 0.7 - height * 26 / 28 - (modelData.up || 0) * scene.unit
+                    kind: modelData.kind
+                    dark: Theme.dark
+                }
             }
         }
     }
