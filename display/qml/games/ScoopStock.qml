@@ -12,7 +12,9 @@ Item {
     property string key: "vanilla"
     readonly property bool tub: Scoops.FLAVOURS.indexOf(key) >= 0
     readonly property bool jar: ["sprinkles", "cherry", "wafer", "crunch", "rings"].indexOf(key) >= 0
-    readonly property real s: Math.min(width, height)
+    // Never below 0: a button smaller than its padding and label lays this
+    // out at a negative size, and everything here scales from s.
+    readonly property real s: Math.max(0, Math.min(width, height))
     readonly property bool dark: Theme.dark
 
     Item {

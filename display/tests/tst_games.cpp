@@ -1393,6 +1393,25 @@ private slots:
         }
     }
 
+    // A button laid out smaller than its padding and label hands Scoop
+    // Shop's stock pictures a negative size (CI's Linux fonts did, from
+    // bad3e31 on): they draw nothing then, and warn about nothing.
+    void scoopStockAtANegativeSize()
+    {
+        for (const char *key : {"vanilla", "cone", "cup", "sprinkles", "syrup", "cream"}) {
+            QScopedPointer<QQuickItem> stock(create(QStringLiteral("qml/games/ScoopStock.qml")));
+            QVERIFY(stock);
+            stock->setProperty("key", QString::fromLatin1(key));
+            stock->setSize(QSizeF(-8, -8));
+            QTest::qWait(10);
+            // Qt 6.8 (the Pi's, and CI's) warns about a negative corner
+            // radius; later Qts don't, so look at the size itself too.
+            QVERIFY2(eval(stock.get(), QStringLiteral("s")).toReal() >= 0, key);
+            stock->setSize(QSizeF(0, 0));
+            stock->setSize(QSizeF(80, 80));
+        }
+    }
+
     void maroonStartsAWave()
     {
         QScopedPointer<QQuickItem> game(create(QStringLiteral("games/maroon/maroon.qml")));
