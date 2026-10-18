@@ -4,8 +4,13 @@
 .pragma library
 
 var BASES = ["cone", "cup"]
-var FLAVOURS = ["vanilla", "chocolate", "strawberry", "mint"]
-var TOPPINGS = ["sprinkles", "cherry", "wafer"]
+// In the order they join the menu: the first four flavours from the start,
+// the rest from level NEW_FLAVOURS; the first three toppings from the start,
+// the rest from level NEW_TOPPINGS.
+var FLAVOURS = ["vanilla", "chocolate", "strawberry", "mint", "mango", "blueberry", "cookies"]
+var TOPPINGS = ["sprinkles", "cherry", "wafer", "syrup", "crunch", "rings", "cream"]
+var NEW_FLAVOURS = 3
+var NEW_TOPPINGS = 4
 var MAX_SCOOPS = 3
 var MAX_LEVEL = 10
 // Customers served to reach the next level.
@@ -13,6 +18,8 @@ var PER_LEVEL = 5
 var HEARTS = 3
 // Seats at the counter, at most (the layout has room for this many).
 var MAX_SEATS = 4
+// The share of their patience left when a customer flips out.
+var FURIOUS = 0.2
 // The shop's pace: every wait and every gap between customers is this share
 // of the times below. 0.9 gives a tenth less time, a tenth harder.
 var PACE = 0.9
@@ -49,6 +56,9 @@ function rules(lv) {
         maxScoops: lv < 2 ? 1 : lv < 4 ? 2 : 3,
         minToppings: lv < 7 ? 0 : 1,
         maxToppings: lv < 2 ? 0 : lv < 4 ? 1 : 2,
+        // What orders are made of at this level.
+        flavours: FLAVOURS.slice(0, lv < NEW_FLAVOURS ? 4 : FLAVOURS.length),
+        toppings: TOPPINGS.slice(0, lv < NEW_TOPPINGS ? 3 : TOPPINGS.length),
         // How long a customer waits: a little for being there, more for
         // each thing on the order, both shorter as the shop gets busy.
         wait: Math.round(PACE * Math.max(10000, 24000 - 1600 * (lv - 1))),
@@ -71,8 +81,8 @@ function makeOrder(lv, rand) {
     var scoops = []
     var n = between(rand, r.minScoops, r.maxScoops)
     for (var i = 0; i < n; ++i)
-        scoops.push(pick(rand, FLAVOURS))
-    var left = TOPPINGS.slice()
+        scoops.push(pick(rand, r.flavours))
+    var left = r.toppings.slice()
     var toppings = []
     var t = between(rand, r.minToppings, r.maxToppings)
     for (var j = 0; j < t; ++j)

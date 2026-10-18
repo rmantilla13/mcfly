@@ -7,16 +7,16 @@ import McFly
 // one being built and the card on the Games list all use it, so an order
 // reads the same everywhere.
 //
-// It draws to a unit `u`: at the default 12 units tall a cone with three
-// scoops and a cherry fits, and every ticket is at the same scale whatever
-// is on it. A button's icon sets `units` to its one piece and `lift` to
+// It draws to a unit `u`: at the default 12.4 units tall a cone with three
+// scoops, whipped cream and a cherry fits, and every ticket is at the same
+// scale whatever is on it. A button's icon sets `units` to its one piece and `lift` to
 // raise it off the bottom.
 Item {
     id: treat
     property string base: ""
     property var scoops: []
     property var toppings: []
-    property real units: 12
+    property real units: 12.4
     property real lift: 0
 
     readonly property real u: Math.max(0, Math.min(width / 5, height / units))
@@ -30,12 +30,17 @@ Item {
     // clips as it should. The GPU draws the shapes as they are.
     layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
 
+    // Each flavour's colours, and its bits: [width, height] in units, round or not.
     readonly property var flavours: ({
-        vanilla: { fill: "#F7E6B0", rim: "#D7B86C", bits: "#B88A4E" },
-        chocolate: { fill: "#8B5332", rim: "#5C331C", bits: "#C9946A" },
-        strawberry: { fill: "#F59BB6", rim: "#D7638A", bits: "#C9374F" },
-        mint: { fill: "#9FE2C4", rim: "#56AE8A", bits: "#3B271C" }
+        vanilla: { fill: "#F7E6B0", rim: "#D7B86C", bits: "#B88A4E", bit: [0.22, 0.22, false] },
+        chocolate: { fill: "#8B5332", rim: "#5C331C", bits: "#C9946A", bit: [0.42, 0.3, false] },
+        strawberry: { fill: "#F59BB6", rim: "#D7638A", bits: "#C9374F", bit: [0.42, 0.3, false] },
+        mint: { fill: "#9FE2C4", rim: "#56AE8A", bits: "#3B271C", bit: [0.42, 0.3, false] },
+        mango: { fill: "#FFB547", rim: "#DB8A1C", bits: "#FFE08F", bit: [0.46, 0.34, false] },
+        blueberry: { fill: "#97A3EE", rim: "#5F6BC8", bits: "#3A3488", bit: [0.34, 0.34, true] },
+        cookies: { fill: "#F4F0E9", rim: "#B9AE9F", bits: "#2E2622", bit: [0.56, 0.42, false] }
     })
+    readonly property bool hasCream: toppings.indexOf("cream") >= 0
     // On the dark canvas a dark rim disappears: lift it instead.
     function rim(f) {
         const c = flavours[f] || flavours.vanilla
@@ -194,16 +199,16 @@ Item {
                     }
                 }
                 // Bits in it: vanilla's specks, chocolate's swirl, strawberry
-                // pieces, mint's chips.
+                // and mango pieces, mint's chips, blueberries, cookie chunks.
                 Repeater {
                     model: [[-0.75, -0.55, 25], [0.35, -0.95, -30], [0.7, -0.15, 60], [-0.2, 0.05, -10]]
                     delegate: Rectangle {
                         required property var modelData
                         x: modelData[0] * scoop.u
                         y: modelData[1] * scoop.u
-                        width: (scoop.modelData === "vanilla" ? 0.22 : 0.42) * scoop.u
-                        height: (scoop.modelData === "vanilla" ? 0.22 : 0.3) * scoop.u
-                        radius: width / 3
+                        width: scoop.f.bit[0] * scoop.u
+                        height: scoop.f.bit[1] * scoop.u
+                        radius: scoop.f.bit[2] ? width / 2 : width / 3
                         rotation: modelData[2]
                         color: scoop.f.bits
                         opacity: scoop.modelData === "chocolate" ? 0.55 : 0.9
@@ -220,6 +225,112 @@ Item {
                     color: "white"
                     opacity: 0.55
                 }
+            }
+        }
+
+        // ---- A crunch coat, then chocolate syrup, over the top scoop: a cap
+        // round its top with a dripping edge.
+        Repeater {
+            model: [["crunch", "#C8873F", "#9A6128", 0.12], ["syrup", "#5A2E1A", "#3A1C0F", 0.1]]
+            delegate: Item {
+                id: coat
+                required property var modelData
+                visible: treat.count > 0 && treat.toppings.indexOf(modelData[0]) >= 0
+                z: treat.count + modelData[3]
+                y: treat.topY * treat.u
+                readonly property bool drips: modelData[0] === "syrup"
+                Shape {
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        fillColor: coat.modelData[1]
+                        strokeColor: treat.dark ? Qt.lighter(coat.modelData[1], 1.6) : coat.modelData[2]
+                        strokeWidth: Math.max(1, treat.u * 0.1)
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg {
+                            path: {
+                                const r = treat.r * treat.u, d = coat.drips ? 1 : 0.35
+                                const P = (x, y) => (x * r).toFixed(1) + " " + (y * r).toFixed(1)
+                                return "M " + P(-0.95, -0.12) + " A " + (0.98 * r).toFixed(1) + " " + (0.98 * r).toFixed(1)
+                                     + " 0 0 1 " + P(0.95, -0.12)
+                                     + " Q " + P(0.9, 0.08) + " " + P(0.74, 0.02)
+                                     + " Q " + P(0.62, 0.55 * d) + " " + P(0.5, 0.02)
+                                     + " Q " + P(0.3, 0.1) + " " + P(0.16, 0.02)
+                                     + " Q " + P(0.04, 0.7 * d) + " " + P(-0.1, 0.02)
+                                     + " Q " + P(-0.3, 0.1) + " " + P(-0.44, 0.02)
+                                     + " Q " + P(-0.56, 0.45 * d) + " " + P(-0.68, 0.0)
+                                     + " Q " + P(-0.88, 0.04) + " " + P(-0.95, -0.12) + " Z"
+                            }
+                        }
+                    }
+                }
+                // The crunch: golden crumbs. The syrup: a shine.
+                Repeater {
+                    model: coat.drips ? [] : [[-1.0, -0.7, 20, "#F0BE62"], [-0.45, -1.25, -30, "#8E5726"], [0.15, -1.4, 45, "#F0BE62"],
+                                              [0.7, -1.05, -15, "#E3A94F"], [1.1, -0.45, 30, "#8E5726"], [-0.7, -0.15, -40, "#E3A94F"],
+                                              [-0.05, -0.75, 10, "#8E5726"], [0.5, -0.35, 60, "#F0BE62"], [-0.35, -0.45, 75, "#F7D486"]]
+                    delegate: Rectangle {
+                        required property var modelData
+                        x: (modelData[0] - 0.14) * treat.u
+                        y: modelData[1] * treat.u
+                        width: 0.3 * treat.u
+                        height: 0.24 * treat.u
+                        radius: width * 0.25
+                        rotation: modelData[2]
+                        color: modelData[3]
+                    }
+                }
+                Rectangle {
+                    visible: coat.drips
+                    x: -0.95 * treat.u
+                    y: -1.25 * treat.u
+                    width: 0.7 * treat.u
+                    height: 0.22 * treat.u
+                    radius: height / 2
+                    rotation: -30
+                    color: "white"
+                    opacity: 0.35
+                }
+            }
+        }
+
+        // ---- Fruit rings: cereal hoops in bright colours on the top scoop.
+        Repeater {
+            model: treat.count > 0 && treat.toppings.indexOf("rings") >= 0
+                   ? [[-1.0, -0.95, "#E5484D"], [0.15, -1.45, "#F59A2F"], [0.85, -0.75, "#F2CF3B"],
+                      [-0.35, -0.35, "#4DBF6A"], [0.55, 0.0, "#9B6BD8"]]
+                   : []
+            delegate: Rectangle {
+                required property var modelData
+                z: treat.count + 0.25
+                x: (modelData[0] - 0.33) * treat.u
+                y: (treat.topY + modelData[1]) * treat.u
+                width: 0.66 * treat.u
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.width: Math.max(2, 0.19 * treat.u)
+                border.color: modelData[2]
+            }
+        }
+
+        // ---- Whipped cream: a swirl in tiers on the top scoop.
+        Repeater {
+            // [x, y from the top of the top scoop, width, height] in units, bottom tier first.
+            model: treat.count > 0 && treat.hasCream ? [[-1.25, -0.45, 2.5, 0.75], [-0.95, -0.85, 1.9, 0.62],
+                                                         [-0.6, -1.15, 1.2, 0.52], [-0.2, -1.38, 0.45, 0.45]] : []
+            delegate: Rectangle {
+                required property var modelData
+                required property int index
+                z: treat.count + 0.3 + index * 0.01
+                x: modelData[0] * treat.u
+                y: (treat.topY - treat.r + modelData[1]) * treat.u
+                width: modelData[2] * treat.u
+                height: modelData[3] * treat.u
+                radius: height / 2
+                rotation: index === 3 ? 20 : 0
+                color: "#FFFFFF"
+                border.width: Math.max(1, treat.u * 0.08)
+                border.color: treat.dark ? "#F2EEE8" : "#DDD6CC"
             }
         }
 
@@ -249,7 +360,8 @@ Item {
         Item {
             visible: treat.toppings.indexOf("cherry") >= 0
             z: treat.count + 0.4
-            y: (treat.count > 0 ? treat.topY - treat.r - 0.05 : treat.topY + 0.45) * treat.u
+            // On the cream, when there is some.
+            y: (treat.count > 0 ? treat.topY - treat.r - (treat.hasCream ? 1.0 : 0.05) : treat.topY + 0.45) * treat.u
             Shape {
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {

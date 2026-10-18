@@ -849,12 +849,13 @@ private slots:
         QScopedPointer<QQuickItem> game(shop());
         QVERIFY(game);
         QCOMPARE(game->property("phase").toString(), QStringLiteral("ready"));
-        // Every order is a cone or a cup, with scoops and toppings from the
-        // menu, as many as its level allows; level 10 asks for the most.
+        // Every order is a cone or a cup, with scoops and toppings from what
+        // its level offers, as many as it allows. Levels 1 and 2 keep to the
+        // first four flavours and level 3 the first three toppings; by
+        // level 10 every flavour and topping turns up, and the biggest orders.
         const QString orders = QStringLiteral(R"((function () {
-            const flavours = ["vanilla", "chocolate", "strawberry", "mint"]
-            const toppings = ["sprinkles", "cherry", "wafer"]
             let biggest = 0
+            const seenFlavours = new Set(), seenToppings = new Set()
             for (let lv = 1; lv <= 10; ++lv) {
                 const r = rulesFor(lv)
                 for (let s = 1; s <= 300; ++s) {
@@ -862,15 +863,24 @@ private slots:
                     const bad = "level " + lv + ": " + JSON.stringify(o)
                     if (o.base !== "cone" && o.base !== "cup")
                         return bad
-                    if (o.scoops.length < r.minScoops || o.scoops.length > r.maxScoops || o.scoops.some(f => flavours.indexOf(f) < 0))
+                    if (o.scoops.length < r.minScoops || o.scoops.length > r.maxScoops || o.scoops.some(f => r.flavours.indexOf(f) < 0))
                         return bad
                     if (o.toppings.length < r.minToppings || o.toppings.length > r.maxToppings
-                            || o.toppings.some(t => toppings.indexOf(t) < 0) || new Set(o.toppings).size !== o.toppings.length)
+                            || o.toppings.some(t => r.toppings.indexOf(t) < 0) || new Set(o.toppings).size !== o.toppings.length)
                         return bad
-                    if (lv === 10)
+                    if (lv === 10) {
                         biggest = Math.max(biggest, o.scoops.length + o.toppings.length)
+                        o.scoops.forEach(f => seenFlavours.add(f))
+                        o.toppings.forEach(t => seenToppings.add(t))
+                    }
                 }
             }
+            if (rulesFor(2).flavours.length !== 4 || rulesFor(3).flavours.length !== 7)
+                return "flavours join at the wrong level"
+            if (rulesFor(3).toppings.length !== 3 || rulesFor(4).toppings.length !== 7)
+                return "toppings join at the wrong level"
+            if (seenFlavours.size !== 7 || seenToppings.size !== 7)
+                return "level 10 never asks for some: " + seenFlavours.size + " flavours, " + seenToppings.size + " toppings"
             return biggest === 5 ? "" : "the biggest order at level 10 has " + biggest
         })())");
         QCOMPARE(eval(game.get(), orders).toString(), QString());
@@ -1010,6 +1020,36 @@ private slots:
         QCOMPARE(game->property("served").toInt(), 0);
     }
 
+    void scoopShopCustomersFlipOut()
+    {
+        QScopedPointer<QQuickItem> game(shop());
+        QVERIFY(game);
+        eval(game.get(), QStringLiteral("start('pip')"));
+        const int wait = eval(game.get(), QStringLiteral("seat(0, { base: 'cone', scoops: ['mango'], toppings: [] })")).toInt();
+        const QString face = QStringLiteral("faceFor(patienceOf(0), seats[0].gone)");
+        QCOMPARE(eval(game.get(), face).toString(), QStringLiteral("smile"));
+        QVERIFY(!game->property("alarm").toBool());
+        eval(game.get(), QStringLiteral("advance(%1)").arg(wait * 6 / 10));
+        QCOMPARE(eval(game.get(), face).toString(), QStringLiteral("flat"));
+        eval(game.get(), QStringLiteral("advance(%1)").arg(wait * 15 / 100));
+        QCOMPARE(eval(game.get(), face).toString(), QStringLiteral("frown"));
+        QVERIFY(!game->property("alarm").toBool());
+        // The last fifth: they flip out, and the shopkeeper panics.
+        eval(game.get(), QStringLiteral("advance(%1)").arg(wait * 1 / 10));
+        QCOMPARE(eval(game.get(), face).toString(), QStringLiteral("furious"));
+        QVERIFY(game->property("alarm").toBool());
+        QTest::qWait(100); // the steam and the shaking run without a warning
+        // Served in time, they're happy; the panic stays only while someone
+        // else is that close (the customer who came in a second later is).
+        QCOMPARE(eval(game.get(), QStringLiteral("pickBase('cone') && addScoop('mango') && deliver(0)")).toString(),
+                 QStringLiteral("right"));
+        QCOMPARE(eval(game.get(), face).toString(), QStringLiteral("happy"));
+        const QString others = QStringLiteral("seats.some((c, i) => i !== 0 && c && !c.gone && patienceOf(i) <= 0.2)");
+        QCOMPARE(game->property("alarm").toBool(), eval(game.get(), others).toBool());
+        eval(game.get(), QStringLiteral("advance(%1)").arg(wait));
+        QVERIFY(!eval(game.get(), others).toBool() || game->property("alarm").toBool());
+    }
+
     void scoopShopClosesAfterThreeHearts()
     {
         QScopedPointer<QQuickItem> game(shop());
@@ -1138,7 +1178,7 @@ private slots:
             game->setSize(size);
             QTest::qWait(30);
             QCOMPARE(eval(game.get(), QStringLiteral("shape")).toString(), shape);
-            checkTargets(game.get(), 13); // ten buttons, two open seats, pause
+            checkTargets(game.get(), 20); // seventeen buttons, two open seats, pause
             if (QTest::currentTestFailed())
                 return;
         }

@@ -61,11 +61,28 @@ Item {
     readonly property var tints: ({ bear: "#C49A6C", bunny: "#E6DCF0", cat: "#F3B36B", frog: "#86CF7E", chick: "#F7D65A" })
     readonly property var names: ({
         cone: qsTr("Cone"), cup: qsTr("Cup"), vanilla: qsTr("Vanilla"), chocolate: qsTr("Chocolate"),
-        strawberry: qsTr("Strawberry"), mint: qsTr("Mint"), sprinkles: qsTr("Sprinkles"),
-        cherry: qsTr("Cherry"), wafer: qsTr("Wafer"), undo: qsTr("Undo")
+        strawberry: qsTr("Strawberry"), mint: qsTr("Mint"), mango: qsTr("Mango"), blueberry: qsTr("Blueberry"),
+        cookies: qsTr("Cookies & cream"), sprinkles: qsTr("Sprinkles"), cherry: qsTr("Cherry"), wafer: qsTr("Wafer"),
+        syrup: qsTr("Choc syrup"), crunch: qsTr("Crunch coat"), rings: qsTr("Fruit rings"), cream: qsTr("Whipped cream"),
+        undo: qsTr("Undo")
     })
 
     function emptyBuild() { return { base: "", scoops: [], toppings: [] } }
+
+    // The share of patience the customer in seat `index` has left, 1 to 0.
+    function patienceOf(index) {
+        const c = seats[index]
+        return c && !c.gone ? Math.max(0, 1 - (now - c.arrived) / c.patience) : 0
+    }
+    // How a customer looks: by how it went, or by the patience they have
+    // left. Near the end they flip out.
+    function faceFor(left, gone) {
+        return gone === "right" ? "happy" : gone ? "cross"
+             : left > 0.5 ? "smile" : left > 0.3 ? "flat" : left > Scoops.FURIOUS ? "frown" : "furious"
+    }
+    // Someone at the counter is about to give up: the shopkeeper panics.
+    readonly property bool alarm: phase === "playing"
+                                  && seats.some(c => c && !c.gone && 1 - (now - c.arrived) / c.patience <= Scoops.FURIOUS)
 
     // mulberry32 (scoops.js), its state kept here.
     function random() {
@@ -287,7 +304,9 @@ Item {
     property string news: ""
     onLevelChanged: {
         if (phase === "playing" && level > 1) {
-            news = qsTr("Level %1: busier!").arg(level)
+            news = level === Scoops.NEW_FLAVOURS ? qsTr("Level %1: new flavours!").arg(level)
+                 : level === Scoops.NEW_TOPPINGS ? qsTr("Level %1: new toppings!").arg(level)
+                 : qsTr("Level %1: busier!").arg(level)
             newsTimer.restart()
         }
     }
@@ -366,24 +385,29 @@ Item {
     readonly property string shape: geo.shape
 
     function layout(w, h) {
-        const g = gap, pg = padGap, t = Theme.touchTarget
+        // The buttons are a grid seven across (`keys`): the cone, the cup
+        // and undo, the flavours, the toppings. Beside the counter the first
+        // row moves up the side column, over the prep bench, and leaves the
+        // counter its height.
+        const g = gap, pg = padGap, t = Theme.touchTarget, cols = 7
         if (w > h * 1.4) {
-            const sw = Math.round(Math.min(520, Math.max(200, w * 0.3)))
+            const sw = Math.round(Math.min(520, Math.max(3 * t + 2 * pg, w * 0.3)))
             const lw = w - sw - g
-            const bh = Math.max(t, Math.min(112, Math.floor((h - g) * 0.22)))
+            const bh = Math.max(t, Math.min(112, Math.floor((h - g) * 0.17)))
             const ph = 2 * bh + pg
             return {
                 shape: "side",
                 hud: { x: lw + g, y: 0, w: sw, h: t },
                 counter: { x: 0, y: 0, w: lw, h: h - ph - g },
-                station: { x: lw + g, y: t + g, w: sw, h: h - t - g },
-                pad: { x: 0, y: h - ph, w: lw, h: ph, bw: (lw - 5 * pg) / 6, bh: bh }
+                base: { x: lw + g, y: t + g, w: sw, h: bh, bw: (sw - 2 * pg) / 3, bh: bh },
+                station: { x: lw + g, y: t + g + bh + g, w: sw, h: Math.max(0, h - t - g - bh - g) },
+                pad: { x: 0, y: h - ph, w: lw, h: ph, bw: (lw - (cols - 1) * pg) / cols, bh: bh }
             }
         }
         const top = t + g
         if (h > w * 1.25) {
-            const bw = (w - 3 * pg) / 4
-            const bh = Math.max(t, Math.min(104, Math.floor(bw * 0.75)))
+            const bw = (w - (cols - 1) * pg) / cols
+            const bh = Math.max(t, Math.min(100, Math.floor(bw)))
             const ph = 3 * bh + 2 * pg
             const ch = Math.max(150, Math.min(w / 4 * 1.75, h - top - g - ph - g - 200))
             return {
@@ -395,7 +419,7 @@ Item {
             }
         }
         const slot = Math.min(w / 4, 320)
-        const pw = Math.min(w * 0.6, 4 * 180 + 3 * pg)
+        const pw = Math.max(cols * t + (cols - 1) * pg, Math.min(w * 0.62, cols * 160 + (cols - 1) * pg))
         const ch = Math.max(150, Math.min(slot * 1.6, h - top - g - (3 * t + 2 * pg)))
         const sh = Math.max(0, h - top - ch - g)
         const bh = Math.max(t, Math.min(110, Math.floor((sh - 2 * pg) / 3)))
@@ -405,17 +429,19 @@ Item {
             hud: { x: 0, y: 0, w: w, h: t },
             counter: { x: 0, y: top, w: w, h: ch },
             station: { x: 0, y: top + ch + g, w: Math.max(0, w - pw - g), h: sh },
-            pad: { x: w - pw, y: h - ph, w: pw, h: ph, bw: (pw - 3 * pg) / 4, bh: bh }
+            pad: { x: w - pw, y: h - ph, w: pw, h: ph, bw: (pw - (cols - 1) * pg) / cols, bh: bh }
         }
     }
 
-    // The buttons: [key, column, row, columns spanned] in the side shape's
-    // 6 × 2 grid and the others' 4 × 3.
-    readonly property var keys: shape === "side"
-        ? [["cone", 0, 0, 1], ["cup", 1, 0, 1], ["vanilla", 2, 0, 1], ["chocolate", 3, 0, 1], ["strawberry", 4, 0, 1],
-           ["mint", 5, 0, 1], ["sprinkles", 0, 1, 1], ["cherry", 1, 1, 1], ["wafer", 2, 1, 1], ["undo", 5, 1, 1]]
-        : [["cone", 0, 0, 2], ["cup", 2, 0, 2], ["vanilla", 0, 1, 1], ["chocolate", 1, 1, 1], ["strawberry", 2, 1, 1],
-           ["mint", 3, 1, 1], ["sprinkles", 0, 2, 1], ["cherry", 1, 2, 1], ["wafer", 2, 2, 1], ["undo", 3, 2, 1]]
+    // The buttons: [key, column, row, columns spanned] in a grid seven
+    // across: the cone, the cup and undo, then the freezer case, then the
+    // toppings shelf. Beside the counter the first row is `baseKeys`, three
+    // across in the side column.
+    readonly property bool baseApart: geo.base !== undefined
+    readonly property var baseKeys: baseApart ? [["cone", 0, 0, 1], ["cup", 1, 0, 1], ["undo", 2, 0, 1]] : []
+    readonly property var keys: (baseApart ? [] : [["cone", 0, 0, 2], ["cup", 2, 0, 2], ["undo", 5, 0, 2]])
+        .concat(Scoops.FLAVOURS.map((f, i) => [f, i, baseApart ? 0 : 1, 1]))
+        .concat(Scoops.TOPPINGS.map((t, i) => [t, i, baseApart ? 1 : 2, 1]))
 
     // ---- The score, the best, the level, hearts and pause
     Item {
@@ -571,6 +597,7 @@ Item {
                 // Patience left, 1 down to 0.
                 readonly property real patienceLeft: customer && !gone
                                              ? Math.max(0, 1 - (game.now - customer.arrived) / customer.patience) : 0
+                readonly property string face: game.faceFor(patienceLeft, gone)
                 readonly property real pad: Theme.mini ? 6 : 10
                 property real arrive: 1
                 property real leave: 0
@@ -602,8 +629,7 @@ Item {
                     kind: seat.customer ? seat.customer.kind : "bear"
                     tint: game.tints[kind] || "#C49A6C"
                     shirt: game.shirts[seat.customerId % game.shirts.length]
-                    face: seat.gone === "right" ? "happy" : seat.gone ? "cross"
-                        : seat.patienceLeft > 0.5 ? "smile" : seat.patienceLeft > 0.25 ? "flat" : "frown"
+                    face: seat.face
                 }
 
                 // The ticket, clipped to the rail: what they'd like, and how
@@ -625,7 +651,8 @@ Item {
                         height: parent.height
                         radius: 3
                         color: game.paper.sheet
-                        border.width: seat.gone === "wrong" || seat.gone === "late" ? 3 : 0
+                        // Red-edged once they've flipped out, or it went wrong.
+                        border.width: seat.gone === "wrong" || seat.gone === "late" || seat.face === "furious" ? 3 : 0
                         border.color: game.paper.bad
                     }
                     // A torn bottom edge.
@@ -865,10 +892,11 @@ Item {
                 elide: Text.ElideRight
                 text: game.hint ? game.hint
                     : game.news ? game.news
+                    : game.alarm ? qsTr("Hurry!")
                     : !game.build.base ? qsTr("Cone or cup?")
                     : !game.build.scoops.length ? qsTr("Now the scoops")
                     : qsTr("Tap a customer to serve")
-                color: game.hint ? "#FFB3C1" : game.news ? "#F6D57A" : "#F4F1E8"
+                color: game.hint || (!game.news && game.alarm) ? "#FFB3C1" : game.news ? "#F6D57A" : "#F4F1E8"
                 font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
                 font.weight: Font.DemiBold
             }
@@ -903,7 +931,7 @@ Item {
                     bottomPadding: 4
                 }
                 Repeater {
-                    model: Scoops.FLAVOURS
+                    model: game.rules.flavours
                     delegate: Row {
                         required property string modelData
                         height: menu.row
@@ -936,6 +964,7 @@ Item {
             y: station.benchY + station.benchHeight * 0.55 - height
             who: game.worker
             mood: game.mood
+            panic: game.alarm
         }
 
         // The bench: a marble top over a mint front, rounded with the card.
@@ -1023,7 +1052,7 @@ Item {
 
         // The freezer case round the tubs.
         Rectangle {
-            readonly property rect r: pad.span(["vanilla", "chocolate", "strawberry", "mint"])
+            readonly property rect r: pad.span(Scoops.FLAVOURS)
             x: r.x - pad.g / 2
             y: r.y - pad.g / 2
             width: r.width + pad.g
@@ -1035,7 +1064,7 @@ Item {
         }
         // Shelves under the cones and cups, and under the jars.
         Repeater {
-            model: [["cone", "cup"], ["sprinkles", "cherry", "wafer"]]
+            model: game.baseApart ? [Scoops.TOPPINGS] : [["cone", "cup"], Scoops.TOPPINGS]
             delegate: Rectangle {
                 required property var modelData
                 readonly property rect r: pad.span(modelData)
@@ -1057,6 +1086,36 @@ Item {
                 y: modelData[2] * (pad.bh + pad.g)
                 width: modelData[3] * pad.bw + (modelData[3] - 1) * pad.g
                 height: pad.bh
+            }
+        }
+    }
+
+    // ---- Beside the counter: the cones, the cups and undo, over the bench.
+    Item {
+        id: base
+        visible: game.showing && game.baseApart
+        x: game.baseApart ? game.geo.base.x : 0
+        y: game.baseApart ? game.geo.base.y : 0
+        width: game.baseApart ? game.geo.base.w : 0
+        height: game.baseApart ? game.geo.base.h : 0
+        readonly property real bw: game.baseApart ? game.geo.base.bw : 0
+        readonly property real g: game.padGap
+        Rectangle {
+            x: -base.g / 2
+            y: base.height - height / 2
+            width: 2 * base.bw + 2 * base.g
+            height: Math.max(6, base.g)
+            radius: height / 2
+            color: game.look.shelf
+        }
+        Repeater {
+            model: game.baseKeys
+            delegate: PadButton {
+                required property var modelData
+                key: modelData[0]
+                x: modelData[1] * (base.bw + base.g)
+                width: base.bw
+                height: base.height
             }
         }
     }
@@ -1133,6 +1192,9 @@ Item {
             color: button.chosen ? Glass.ink : Theme.text
             font.pixelSize: Theme.fontXs
             font.weight: Font.Medium
+            // A long name shrinks to fit rather than lose its end.
+            fontSizeMode: Text.HorizontalFit
+            minimumPixelSize: 10
         }
         TapHandler {
             id: tap
@@ -1196,6 +1258,32 @@ Item {
         readonly property real c: Math.min(width / 10, height / 9)
         readonly property color edge: Qt.darker(tint, 1.3)
         readonly property color ink: "#2B2230"
+        // About to give up: red in the face, steaming, shaking, shouting.
+        readonly property bool furious: face === "furious"
+        readonly property bool fuming: furious && visible
+        property real puff: 0
+        property real jitter: 0
+        NumberAnimation on puff { running: critter.fuming; from: 0; to: 1; duration: 900; loops: Animation.Infinite }
+        SequentialAnimation on jitter {
+            running: critter.fuming
+            loops: Animation.Infinite
+            NumberAnimation { to: 1; duration: 45 }
+            NumberAnimation { to: -1; duration: 90 }
+            NumberAnimation { to: 1; duration: 90 }
+            NumberAnimation { to: 0; duration: 45 }
+            PauseAnimation { duration: 140 }
+        }
+        // And stomping up and down.
+        property real stomp: 0
+        SequentialAnimation on stomp {
+            running: critter.fuming
+            loops: Animation.Infinite
+            NumberAnimation { to: 1; duration: 110; easing.type: Easing.OutQuad }
+            NumberAnimation { to: 0; duration: 130; easing.type: Easing.InQuad }
+            PauseAnimation { duration: 240 }
+        }
+        onFumingChanged: if (!fuming) { jitter = 0; stomp = 0 }
+        transform: Translate { x: critter.jitter * critter.c * 0.35; y: -critter.stomp * critter.c * 0.8 }
         // In software, one picture rather than loose shapes (see ScoopTreat),
         // ears and shoulders included.
         layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
@@ -1260,8 +1348,25 @@ Item {
                 color: Qt.darker(critter.tint, 1.15)
             }
         }
-        // The head.
+        // The head, red in it when furious.
         Bit { px: 2.0; py: 2.6; pw: 6.0; ph: 6.0; color: critter.tint; border.width: critter.c * 0.12; border.color: critter.edge }
+        Bit { visible: critter.furious; px: 2.0; py: 2.6; pw: 6.0; ph: 6.0; color: "#FF3B30"; opacity: 0.4 }
+        // Steam off both sides of the head, two puffs a side.
+        Repeater {
+            model: critter.furious ? [[1.7, -1, 0], [1.7, -1, 0.5], [8.3, 1, 0.25], [8.3, 1, 0.75]] : []
+            delegate: Bit {
+                required property var modelData
+                readonly property real p: (critter.puff + modelData[2]) % 1
+                px: modelData[0] - pw / 2 + modelData[1] * p * 1.0
+                py: 3.0 - p * 2.9
+                pw: 1.0 + p * 1.3
+                ph: pw
+                color: "#FFFFFF"
+                border.width: Math.max(1, critter.c * 0.08)
+                border.color: "#D9D2CA"
+                opacity: (1 - p) * 0.9
+            }
+        }
         // Eyes (a frog's are on top), and brows when cross.
         Repeater {
             model: critter.kind === "frog" ? [] : [3.8, 6.2]
@@ -1275,7 +1380,7 @@ Item {
             }
         }
         Repeater {
-            model: critter.face === "cross" ? [[3.3, 18], [5.7, -18]] : []
+            model: critter.face === "cross" || critter.furious ? [[3.3, 18], [5.7, -18]] : []
             delegate: Bit {
                 required property var modelData
                 px: modelData[0]; py: critter.kind === "frog" ? 1.5 : 4.3; pw: 1.0; ph: 0.28; rotation: modelData[1]
@@ -1284,6 +1389,22 @@ Item {
         }
         Bit { px: 2.9; py: 6.1; pw: 0.9; ph: 0.5; color: "#FF8FA8"; opacity: 0.55 }
         Bit { px: 6.2; py: 6.1; pw: 0.9; ph: 0.5; color: "#FF8FA8"; opacity: 0.55 }
+        // A cross mark, top right of the head.
+        Repeater {
+            model: critter.furious ? [[6.9, 2.75, 0.18, 0.5], [6.9, 3.65, 0.18, 0.5], [6.35, 3.31, 0.5, 0.18], [7.25, 3.31, 0.5, 0.18]] : []
+            delegate: Bit {
+                required property var modelData
+                px: modelData[0]; py: modelData[1]; pw: modelData[2]; ph: modelData[3]
+                color: "#E5383B"
+            }
+        }
+        // Shouting.
+        Bit {
+            visible: critter.furious && critter.kind !== "chick"
+            px: 4.35; py: 6.1; pw: 1.3; ph: 1.05
+            color: critter.ink
+            Bit { px: 0.3; py: 0.55; pw: 0.7; ph: 0.4; color: "#E5484D" }
+        }
         // A beak for the chick, a mouth for the rest.
         Bit {
             visible: critter.kind === "chick"
@@ -1291,7 +1412,7 @@ Item {
             color: "#F39A3B"
         }
         Shape {
-            visible: critter.kind !== "chick"
+            visible: critter.kind !== "chick" && !critter.furious
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
                 fillColor: "transparent"

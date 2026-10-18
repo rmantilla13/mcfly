@@ -1,16 +1,17 @@
 import QtQuick
 import McFly
+import "scoops.js" as Scoops
 
 // What Scoop Shop's buttons show: a tub of a flavour in the freezer case,
-// a stack of cones or of cups, a jar of a topping. Drawn in a square that
-// fits the box, standing on its bottom edge.
+// a stack of cones or of cups, a jar of a topping (a squeeze bottle of
+// syrup, a bowl of whipped cream). Drawn in a square that fits the box,
+// standing on its bottom edge.
 Item {
     id: stock
-    // "vanilla", "chocolate", "strawberry", "mint", "cone", "cup",
-    // "sprinkles", "cherry" or "wafer".
+    // A flavour, "cone" or "cup", or a topping (scoops.js).
     property string key: "vanilla"
-    readonly property bool tub: ["vanilla", "chocolate", "strawberry", "mint"].indexOf(key) >= 0
-    readonly property bool jar: ["sprinkles", "cherry", "wafer"].indexOf(key) >= 0
+    readonly property bool tub: Scoops.FLAVOURS.indexOf(key) >= 0
+    readonly property bool jar: ["sprinkles", "cherry", "wafer", "crunch", "rings"].indexOf(key) >= 0
     readonly property real s: Math.min(width, height)
     readonly property bool dark: Theme.dark
 
@@ -106,7 +107,8 @@ Item {
         Item {
             anchors.fill: parent
             visible: stock.jar
-            readonly property color lidColor: stock.key === "sprinkles" ? "#F28DB2" : stock.key === "cherry" ? "#4E9D5B" : "#E8BC74"
+            readonly property color lidColor: ({ sprinkles: "#F28DB2", cherry: "#4E9D5B", wafer: "#E8BC74",
+                                                  crunch: "#B9793A", rings: "#9B6BD8" })[stock.key] || "#E8BC74"
             // Wafers stand up out of an open jar.
             Repeater {
                 model: stock.key === "wafer" ? [[0.34, -8], [0.47, 4], [0.58, 12]] : []
@@ -175,6 +177,40 @@ Item {
                     }
                 }
             }
+            Repeater {
+                model: stock.key === "crunch"
+                       ? [[0.28, 0.66, 20, "#F0BE62"], [0.42, 0.74, -30, "#8E5726"], [0.56, 0.62, 45, "#E3A94F"],
+                          [0.34, 0.84, -15, "#E3A94F"], [0.5, 0.86, 30, "#F0BE62"], [0.62, 0.78, -40, "#8E5726"],
+                          [0.3, 0.55, 60, "#F7D486"], [0.46, 0.52, 10, "#8E5726"], [0.6, 0.5, -60, "#F0BE62"]]
+                       : []
+                delegate: Rectangle {
+                    required property var modelData
+                    x: box.width * modelData[0]
+                    y: box.height * modelData[1]
+                    width: box.width * 0.1
+                    height: box.width * 0.08
+                    radius: width * 0.25
+                    rotation: modelData[2]
+                    color: modelData[3]
+                }
+            }
+            Repeater {
+                model: stock.key === "rings"
+                       ? [[0.27, 0.74, "#E5484D"], [0.45, 0.8, "#F2CF3B"], [0.6, 0.72, "#4DBF6A"],
+                          [0.34, 0.58, "#9B6BD8"], [0.52, 0.6, "#F59A2F"], [0.42, 0.44, "#E5484D"]]
+                       : []
+                delegate: Rectangle {
+                    required property var modelData
+                    x: box.width * modelData[0]
+                    y: box.height * modelData[1]
+                    width: box.width * 0.15
+                    height: width
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: Math.max(2, box.width * 0.045)
+                    border.color: modelData[2]
+                }
+            }
             // The glass.
             Rectangle {
                 x: box.width * 0.2
@@ -205,6 +241,106 @@ Item {
                 color: parent.lidColor
                 border.width: Math.max(1, box.width * 0.015)
                 border.color: Qt.darker(parent.lidColor, 1.25)
+            }
+        }
+
+        // ---- A squeeze bottle of chocolate syrup.
+        Item {
+            anchors.fill: parent
+            visible: stock.key === "syrup"
+            Rectangle {
+                x: box.width * 0.47
+                y: box.height * 0.1
+                width: box.width * 0.06
+                height: box.height * 0.16
+                radius: width / 2
+                color: "#D8263C"
+            }
+            Rectangle {
+                x: box.width * 0.38
+                y: box.height * 0.22
+                width: box.width * 0.24
+                height: box.height * 0.13
+                radius: box.width * 0.04
+                color: "#D8263C"
+                border.width: Math.max(1, box.width * 0.015)
+                border.color: "#9E1428"
+            }
+            Rectangle {
+                x: box.width * 0.3
+                y: box.height * 0.33
+                width: box.width * 0.4
+                height: box.height * 0.63
+                radius: box.width * 0.1
+                color: "#5A2E1A"
+                border.width: Math.max(1, box.width * 0.015)
+                border.color: stock.dark ? "#A0705A" : "#3A1C0F"
+                Rectangle {
+                    y: parent.height * 0.34
+                    width: parent.width
+                    height: parent.height * 0.3
+                    color: "#F6E2C0"
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width * 0.36
+                        height: parent.height * 0.5
+                        radius: height / 2
+                        color: "#5A2E1A"
+                    }
+                }
+                Rectangle {
+                    x: parent.width * 0.14
+                    y: parent.height * 0.06
+                    width: parent.width * 0.12
+                    height: parent.height * 0.24
+                    radius: width / 2
+                    color: "white"
+                    opacity: 0.4
+                }
+            }
+        }
+
+        // ---- A bowl of whipped cream.
+        Item {
+            anchors.fill: parent
+            visible: stock.key === "cream"
+            Repeater {
+                model: [[0.18, 0.5, 0.64, 0.2], [0.26, 0.38, 0.48, 0.17], [0.35, 0.28, 0.3, 0.14], [0.45, 0.2, 0.12, 0.12]]
+                delegate: Rectangle {
+                    required property var modelData
+                    required property int index
+                    x: box.width * modelData[0]
+                    y: box.height * modelData[1]
+                    width: box.width * modelData[2]
+                    height: box.height * modelData[3]
+                    radius: height / 2
+                    rotation: index === 3 ? 20 : 0
+                    color: "#FFFFFF"
+                    border.width: Math.max(1, box.width * 0.015)
+                    border.color: stock.dark ? "#E8E2DA" : "#D8D0C4"
+                }
+            }
+            Rectangle {
+                x: box.width * 0.12
+                y: box.height * 0.62
+                width: box.width * 0.76
+                height: box.height * 0.32
+                topLeftRadius: box.width * 0.04
+                topRightRadius: box.width * 0.04
+                bottomLeftRadius: height * 0.9
+                bottomRightRadius: height * 0.9
+                color: stock.dark ? "#6E9DB6" : "#BFE0F2"
+                border.width: Math.max(1, box.width * 0.015)
+                border.color: stock.dark ? "#9CC4D8" : "#8FC1DC"
+                Rectangle {
+                    x: parent.width * 0.1
+                    y: parent.height * 0.18
+                    width: parent.width * 0.5
+                    height: Math.max(1, parent.height * 0.1)
+                    radius: height / 2
+                    color: "white"
+                    opacity: 0.6
+                }
             }
         }
     }

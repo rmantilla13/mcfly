@@ -97,7 +97,7 @@ Item {
         {
             title: qsTr("Scoop Shop"),
             tagline: qsTr("Serve every order before they give up."),
-            howTo: qsTr("Pick who works the counter: Pip the penguin or Lotl the axolotl. Each customer's ticket shows their order: a cone or a cup, the scoops from the bottom up, and any toppings. Tap the pieces to build it, then tap the customer to hand it over. Right and quick scores more. A wrong order, or a customer who runs out of patience, costs a heart; lose three and the shop closes. Every five served it gets busier."),
+            howTo: qsTr("Pick who works the counter: Pip the penguin or Lotl the axolotl. Each customer's ticket shows their order: a cone or a cup, the scoops from the bottom up, and any toppings. Tap the pieces to build it, then tap the customer to hand it over. Right and quick scores more. A wrong order, or a customer who runs out of patience, costs a heart; lose three and the shop closes. Every five served it gets busier, and new flavours and toppings join the menu."),
             players: qsTr("1 player"),
             credit: qsTr("Made for McFly, Pip and Lotl too."),
             source: "../games/ScoopShop.qml",
@@ -446,8 +446,8 @@ Item {
                     width: shop.size * 0.6
                     height: shop.size
                     base: "cone"
-                    scoops: ["mint", "strawberry"]
-                    toppings: ["sprinkles", "cherry"]
+                    scoops: ["mango", "strawberry"]
+                    toppings: ["syrup", "cherry"]
                     units: 10.4
                 }
                 ScoopCrew { width: shop.size * 0.8; height: shop.size * 0.96; anchors.bottom: parent.bottom; who: "lotl" }

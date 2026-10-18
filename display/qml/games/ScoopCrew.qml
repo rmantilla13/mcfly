@@ -5,16 +5,19 @@ import McFly
 // Scoop Shop's two shopkeepers, drawn for McFly: Pip the penguin and Lotl
 // the axolotl, each in the shop's paper hat. `mood` is "" (at work),
 // "happy" (an order went out right: a hop and a squint) or "oops" (a wrong
-// order or a customer gone: a shake). They are drawn on a 10 × 12 grid,
+// order or a customer gone: a shake). With `panic` (a customer about to
+// give up) they sweat, look worried and tremble. They are drawn on a 10 × 12 grid,
 // scaled to fit and standing on the bottom edge.
 Item {
     id: crew
     property string who: "pip"
     property string mood: ""
+    property bool panic: false
 
     readonly property real k: Math.max(0, Math.min(width / 10, height / 12))
     readonly property bool happy: mood === "happy"
     readonly property bool oops: mood === "oops"
+    readonly property bool worried: panic && mood === ""
     readonly property bool dark: Theme.dark
 
     // In software, one picture rather than loose shapes (see ScoopTreat),
@@ -24,6 +27,16 @@ Item {
 
     property real hop: 0
     property real shake: 0
+    property real tremble: 0
+    SequentialAnimation on tremble {
+        running: crew.worried && crew.visible
+        loops: Animation.Infinite
+        NumberAnimation { to: 1; duration: 40 }
+        NumberAnimation { to: -1; duration: 80 }
+        NumberAnimation { to: 0; duration: 40 }
+        PauseAnimation { duration: 180 }
+    }
+    onWorriedChanged: if (!worried) tremble = 0
     onMoodChanged: {
         if (happy)
             hopAnim.restart()
@@ -60,7 +73,7 @@ Item {
         id: figure
         width: 10 * crew.k
         height: 12 * crew.k
-        x: (crew.width - width) / 2 + crew.shake * 0.35 * crew.k
+        x: (crew.width - width) / 2 + (crew.shake + crew.tremble * 0.6) * 0.35 * crew.k
         y: crew.height - height - crew.hop * 1.1 * crew.k
 
         // ================= Pip, the penguin
@@ -104,8 +117,12 @@ Item {
             Part { px: 2.6; py: 4.45; pw: 1.0; ph: 0.55; color: "#FF9AAE"; opacity: 0.75 }
             Part { px: 6.4; py: 4.45; pw: 1.0; ph: 0.55; color: "#FF9AAE"; opacity: 0.75 }
             Part { px: 4.48; py: 3.95; pw: 1.04; ph: 1.04; radius: crew.k * 0.22; rotation: 45; color: parent.orange }
-            // A drop of worry.
-            Part { visible: crew.oops; px: 8.3; py: 1.6; pw: 0.7; ph: 1.0; color: "#7CC4F2" }
+            // Drops of worry.
+            Part { visible: crew.oops || crew.worried; px: 8.3; py: 1.6; pw: 0.7; ph: 1.0; color: "#7CC4F2" }
+            Part { visible: crew.worried; px: 1.0; py: 2.4; pw: 0.6; ph: 0.85; color: "#7CC4F2" }
+            // Brows up in the middle.
+            Part { visible: crew.worried; px: 3.45; py: 2.55; pw: 1.1; ph: 0.24; rotation: -18; color: "#1E2333" }
+            Part { visible: crew.worried; px: 5.45; py: 2.55; pw: 1.1; ph: 0.24; rotation: 18; color: "#1E2333" }
         }
 
         // ================= Lotl, the axolotl
@@ -179,9 +196,14 @@ Item {
             }
             Part { px: 2.2; py: 4.55; pw: 1.0; ph: 0.55; color: "#FF7FA8"; opacity: 0.6 }
             Part { px: 6.8; py: 4.55; pw: 1.0; ph: 0.55; color: "#FF7FA8"; opacity: 0.6 }
+            // Drops of worry, and brows up in the middle.
+            Part { visible: crew.oops || crew.worried; px: 8.0; py: 0.9; pw: 0.7; ph: 1.0; color: "#7CC4F2" }
+            Part { visible: crew.worried; px: 1.4; py: 1.2; pw: 0.6; ph: 0.85; color: "#7CC4F2" }
+            Part { visible: crew.worried; px: 2.8; py: 2.85; pw: 1.1; ph: 0.24; rotation: -18; color: "#2B1E2A" }
+            Part { visible: crew.worried; px: 6.1; py: 2.85; pw: 1.1; ph: 0.24; rotation: 18; color: "#2B1E2A" }
             // A smile, a wider one when happy, an "o" when not.
             Shape {
-                visible: !crew.oops
+                visible: !crew.oops && !crew.worried
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
                     fillColor: "transparent"
@@ -195,7 +217,7 @@ Item {
                     }
                 }
             }
-            Part { visible: crew.oops; px: 4.7; py: 4.75; pw: 0.6; ph: 0.6; color: "transparent"; border.width: crew.k * 0.22; border.color: "#9A3A60" }
+            Part { visible: crew.oops || crew.worried; px: 4.7; py: 4.75; pw: 0.6; ph: 0.6; color: "transparent"; border.width: crew.k * 0.22; border.color: "#9A3A60" }
         }
 
         // ================= The shop's paper hat, on both
