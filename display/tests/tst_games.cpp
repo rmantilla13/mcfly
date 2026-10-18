@@ -8,6 +8,7 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 
+#include "games/ColorByNumber.h"
 #include "games/FourInARowEngine.h"
 #include "games/PenguinWorld.h"
 
@@ -217,6 +218,7 @@ private slots:
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "FourInARowEngine", &m_fourInARow);
         qmlRegisterType<PenguinWorld>("McFly.Core", 1, 0, "PenguinWorld");
         qmlRegisterType<PenguinPicture>("McFly.Core", 1, 0, "PenguinPicture");
+        qmlRegisterType<ColorByNumberBoard>("McFly.Core", 1, 0, "ColorByNumberBoard");
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_GAMES_QML_DIR));
         m_engine->setOfflineStoragePath(m_storage.path());
@@ -244,7 +246,7 @@ private slots:
         QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), {1180, 800}));
         QVERIFY(screen);
         const int count = eval(screen.get(), QStringLiteral("catalog.length")).toInt();
-        QCOMPARE(count, 8);
+        QCOMPARE(count, 9);
         for (int i = 0; i < count; ++i) {
             QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, i)));
             QTRY_VERIFY2(eval(screen.get(), QStringLiteral("game !== null")).toBool(),
@@ -272,7 +274,9 @@ private slots:
 
         // Penguin March pauses while it can't be seen (the assistant panel
         // over it), and waits for Play after.
-        QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, count - 1)));
+        const int penguins = eval(screen.get(), QStringLiteral("catalog.findIndex(g => g.source.endsWith('PenguinMarch.qml'))")).toInt();
+        QVERIFY(penguins >= 0);
+        QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, penguins)));
         QTRY_VERIFY(eval(screen.get(), QStringLiteral("game !== null")).toBool());
         QCOMPARE(eval(screen.get(), QStringLiteral("openGame.title")).toString(), QStringLiteral("Penguin March"));
         QVERIFY(QMetaObject::invokeMethod(screen->property("game").value<QObject *>(), "start"));
@@ -1234,6 +1238,159 @@ private slots:
         screen->setHeight(500);
         QTRY_VERIFY(eval(screen.get(), QStringLiteral("list.interactive")).toBool());
         screen->setHeight(800);
+    }
+
+    // Color by Number by touch: a sweep from a cell of the chosen number
+    // paints that number and nothing else, a tap on another number picks
+    // it, a drag from anywhere else moves the zoomed picture, progress
+    // outlives the game, and a finished picture offers the next one.
+    void colorByNumberPaintsByTouch()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/ColorByNumber.qml"), {1152, 752}));
+        QVERIFY(game);
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "open", Q_ARG(QVariant, 0))); // the heart, 12 x 10
+        QQuickItem *board = find(game.get(), QStringLiteral("board"));
+        QVERIFY(board);
+        QTest::qWait(30);
+        const auto at = [&](int column, int row) {
+            QPointF p;
+            QMetaObject::invokeMethod(board, "cellCenter", Q_RETURN_ARG(QPointF, p), Q_ARG(int, column), Q_ARG(int, row));
+            return board->mapToScene(p).toPoint();
+        };
+        const Colors::Sheet heart(0);
+        QCOMPARE(board->property("selected").toInt(), 1);
+
+        // Row 3 is eleven 1s and a 2: a sweep along it paints the eleven.
+        QCOMPARE(heart.numberAt(11, 3), 2);
+        QTest::mousePress(m_window, Qt::LeftButton, {}, at(0, 3));
+        for (int column = 1; column < 12; column += 2)
+            QTest::mouseMove(m_window, at(column, 3));
+        QTest::mouseRelease(m_window, Qt::LeftButton, {}, at(11, 3));
+        QCOMPARE(board->property("painted").toInt(), 11);
+
+        // A tap on the 2 picks it.
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, at(11, 3));
+        QCOMPARE(board->property("selected").toInt(), 2);
+        QCOMPARE(board->property("painted").toInt(), 11);
+
+        // Zoomed in, a drag from a 1 (not the chosen 2) moves the picture.
+        QVERIFY(QMetaObject::invokeMethod(board, "zoomIn"));
+        QTest::qWait(10);
+        const QPoint from = at(5, 5), corner = at(0, 0);
+        QTest::mousePress(m_window, Qt::LeftButton, {}, from);
+        QTest::mouseMove(m_window, from + QPoint(-50, -40));
+        QTest::mouseMove(m_window, from + QPoint(-100, -80));
+        QTest::mouseRelease(m_window, Qt::LeftButton, {}, from + QPoint(-100, -80));
+        QCOMPARE(at(0, 0), corner + QPoint(-100, -80));
+        QCOMPARE(board->property("painted").toInt(), 11);
+        QVERIFY(QMetaObject::invokeMethod(board, "fit"));
+
+        // Closed and opened again: the heart is as it was left.
+        game.reset();
+        game.reset(create(QStringLiteral("qml/games/ColorByNumber.qml"), {1152, 752}));
+        QVERIFY(game);
+        QCOMPARE(eval(game.get(), QStringLiteral("share(progress['heart']) > 0")).toBool(), true);
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "open", Q_ARG(QVariant, 0)));
+        board = find(game.get(), QStringLiteral("board"));
+        QCOMPARE(board->property("painted").toInt(), 11);
+
+        // One cell to go (the last 2, at the heart's tip): painting it
+        // finishes the picture, and Next picture opens the strawberry.
+        eval(game.get(), QStringLiteral("board.saved = '1'.repeat(board.total - 1) + '0'"));
+        QCOMPARE(board->property("selected").toInt(), 2);
+        QTest::qWait(10);
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, at(6, 9));
+        QVERIFY(board->property("done").toBool());
+        tap(game.get(), QStringLiteral("tap:next"));
+        QCOMPARE(board->property("picture").toInt(), 1);
+        QVERIFY(!board->property("done").toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("share(progress['heart'])")).toDouble(), 1.0);
+    }
+
+    // The same on a touchscreen, as on the Pi: one finger sweeps paint, a
+    // tap that wobbles a little still picks a colour, and two fingers
+    // spreading apart zoom in.
+    void colorByNumberByTouchscreen()
+    {
+        static QPointingDevice *screen = QTest::createTouchDevice();
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/ColorByNumber.qml"), {1152, 752}));
+        QVERIFY(game);
+        eval(game.get(), QStringLiteral("open(1)")); // the strawberry, 12 x 13
+        QQuickItem *board = find(game.get(), QStringLiteral("board"));
+        QVERIFY(board);
+        eval(game.get(), QStringLiteral("board.clear()"));
+        QTest::qWait(30);
+        const auto at = [&](int column, int row) {
+            QPointF p;
+            QMetaObject::invokeMethod(board, "cellCenter", Q_RETURN_ARG(QPointF, p), Q_ARG(int, column), Q_ARG(int, row));
+            return board->mapToScene(p).toPoint();
+        };
+        const Colors::Sheet strawberry(1);
+        // Row 6 ("rrryrrrrrrrd"): the 1s are the reds.
+        int reds = 0;
+        for (int column = 0; column < strawberry.width(); ++column)
+            reds += strawberry.numberAt(column, 6) == 1 ? 1 : 0;
+        QCOMPARE(board->property("selected").toInt(), 1);
+        QTest::touchEvent(m_window, screen).press(0, at(0, 6));
+        for (int column = 1; column < 12; ++column)
+            QTest::touchEvent(m_window, screen).move(0, at(column, 6));
+        QTest::touchEvent(m_window, screen).release(0, at(11, 6));
+        QCOMPARE(board->property("painted").toInt(), reds);
+
+        // A tap on a seed (3) that moves 5 px picks the seeds.
+        QCOMPARE(strawberry.numberAt(3, 6), 3);
+        QTest::touchEvent(m_window, screen).press(0, at(3, 6));
+        QTest::touchEvent(m_window, screen).move(0, at(3, 6) + QPoint(4, 3));
+        QTest::touchEvent(m_window, screen).release(0, at(3, 6) + QPoint(4, 3));
+        QCOMPARE(board->property("selected").toInt(), 3);
+        QCOMPARE(board->property("painted").toInt(), reds);
+
+        // Two fingers apart: bigger cells.
+        const qreal before = board->property("cellSize").toReal();
+        const QPoint middle = at(6, 6);
+        QTest::touchEvent(m_window, screen).press(0, middle - QPoint(40, 0)).press(1, middle + QPoint(40, 0));
+        for (int step = 1; step <= 10; ++step)
+            QTest::touchEvent(m_window, screen).move(0, middle - QPoint(40 + step * 12, 0)).move(1, middle + QPoint(40 + step * 12, 0));
+        QTest::touchEvent(m_window, screen).release(0, middle - QPoint(160, 0)).release(1, middle + QPoint(160, 0));
+        QVERIFY2(board->property("cellSize").toReal() > before * 1.2,
+                 qPrintable(QStringLiteral("%1 -> %2").arg(before).arg(board->property("cellSize").toReal())));
+        QCOMPARE(board->property("painted").toInt(), reds);
+    }
+
+    // Every control a full touch target, on the stage of every panel:
+    // the gallery's cards, the tools and the palette (nine colours at most
+    // fit the portrait row), and the buttons of a finished picture.
+    void colorByNumberFitsEveryPanel()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/ColorByNumber.qml"), {768, 372}));
+        QVERIFY(game);
+        const QList<QSize> stages = {{768, 372}, {1152, 752}, {680, 1160}, {1752, 1000}};
+        for (const QSize size : stages) {
+            game->setSize(size);
+            eval(game.get(), QStringLiteral("showGallery()"));
+            QTest::qWait(30);
+            const QString where = QStringLiteral("%1x%2").arg(size.width()).arg(size.height());
+            QQuickItem *card = find(game.get(), QStringLiteral("picture:0"));
+            QVERIFY2(card && card->width() >= 64 && card->height() >= 64, qPrintable(where));
+            for (int picture : {9, 10}) { // the house has nine colours, Pip eight
+                QVERIFY(QMetaObject::invokeMethod(game.get(), "open", Q_ARG(QVariant, picture)));
+                QTest::qWait(30);
+                const int colours = eval(game.get(), QStringLiteral("board.colors.length")).toInt();
+                checkTargets(game.get(), 4 + colours);
+                if (QTest::currentTestFailed())
+                    return;
+                // The picture gets most of the stage.
+                QQuickItem *board = find(game.get(), QStringLiteral("board"));
+                QVERIFY2(qMin(board->width(), board->height()) >= qMin(size.width(), size.height()) * 0.55, qPrintable(where));
+            }
+            // Finished: the tools and Next / All pictures.
+            eval(game.get(), QStringLiteral("board.saved = '1'.repeat(board.total)"));
+            QTest::qWait(30);
+            checkTargets(game.get(), 6);
+            if (QTest::currentTestFailed())
+                return;
+            eval(game.get(), QStringLiteral("board.clear()"));
+        }
     }
 
     void maroonStartsAWave()

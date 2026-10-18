@@ -17,7 +17,9 @@ import McFly.Core
 // Home). Nothing keeps ticking, animating or making sounds behind the other
 // pages. Third-party code and licences: display/games/README.md.
 //
-// Scoop Shop and Penguin March, ours too, run against the clock: a game
+// Scoop Shop, Penguin March and Color by Number are ours too (Color by
+// Number after Araib Karim's iOS game, none of its code or pictures). Scoop
+// Shop and Penguin March run against the clock: a game
 // with a pause() function is paused while how to play or the assistant
 // panel covers it.
 Item {
@@ -111,6 +113,15 @@ Item {
             credit: qsTr("Made for McFly."),
             source: "../games/PenguinMarch.qml",
             art: artPenguins
+        },
+        {
+            title: qsTr("Color by Number"),
+            tagline: qsTr("Fill in the picture, one number at a time."),
+            howTo: qsTr("Pick a picture, then a colour: its number lights up on the picture. Tap or sweep across those cells to fill them in. Only cells with that number take the colour, so a sweep can't go wrong. Tap a cell with another number to switch to its colour. Zoom in with + and −, and drag from any other cell to move around. Your pictures are saved as you go."),
+            players: qsTr("1 player"),
+            credit: qsTr("Made for McFly, after Araib Karim's Color by Number for iOS. The pictures are ours."),
+            source: "../games/ColorByNumber.qml",
+            art: artColors
         }
     ]
 
@@ -335,6 +346,24 @@ Item {
                         radius: width / 2
                         color: mark === "X" ? "#F07F5A" : mark === "O" ? "#4F7CF7" : Theme.sunken
                     }
+                }
+            }
+        }
+    }
+    Component {
+        id: artColors
+        Rectangle {
+            radius: Theme.radiusSm
+            color: Theme.dark ? Theme.background : Theme.sunken
+            ColorByNumberBoard {
+                anchors.fill: parent
+                anchors.margins: 10
+                picture: 10 // Pip, the top half coloured in
+                preview: true
+                dark: Theme.dark
+                Component.onCompleted: {
+                    const n = Math.floor(total * 0.55)
+                    saved = "1".repeat(n) + "0".repeat(total - n)
                 }
             }
         }

@@ -17,6 +17,7 @@
 
 #include "backend/SupabaseClient.h"
 #include "games/FourInARowEngine.h"
+#include "games/ColorByNumber.h"
 #include "games/PenguinWorld.h"
 #include "hardware/DisplayController.h"
 #include "hardware/PanelPower.h"
@@ -188,6 +189,8 @@ int main(int argc, char *argv[])
     // Penguin March's world and pictures (qml/games/PenguinMarch.qml).
     qmlRegisterType<PenguinWorld>("McFly.Core", 1, 0, "PenguinWorld");
     qmlRegisterType<PenguinPicture>("McFly.Core", 1, 0, "PenguinPicture");
+    // Color by Number's board and thumbnails (qml/games/ColorByNumber.qml).
+    qmlRegisterType<ColorByNumberBoard>("McFly.Core", 1, 0, "ColorByNumberBoard");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);

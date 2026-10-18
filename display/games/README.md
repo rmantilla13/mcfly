@@ -54,8 +54,16 @@ the genre of Lemmings and Pingus, sharing no code, pictures, sounds, levels
 or names with either. `tests/tst_penguins.cpp` replays a recorded solution
 for every level to prove it can be won.
 
-The iPhone and Mac app has all of these but Same Game and Maroon, written
-again in Swift (`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
+Color by Number (`qml/games/ColorByNumber.qml`, with its pictures, progress
+and board in `src/games/ColorByNumber.cpp`) is written for this app too,
+after Araib Karim's [Color by Number for iOS](https://github.com/AraibKarim/ColorByNumber-iOS).
+That project has no licence, so none of its code, pictures or fonts is used:
+the twelve pixel pictures are our own. `tests/tst_colors.cpp` checks every
+picture.
+
+The iPhone and Mac app has all of these but Same Game, Maroon and Color by
+Number (still to come), written again in Swift
+(`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
 `apple/McFly/Games` for the screens), with the same rules, levels and
 credits. 2048's and Rush Hour's Swift carry their MIT notices at the top of
 the file, and the app shows them under how to play. `apple/McFlyKit/Tests`
@@ -69,8 +77,9 @@ menu, the furious customers and the parlour look are still to come there.
 ## Saved scores
 
 Same Game, 2048, Traffic Jam, Scoop Shop and Penguin March keep high scores,
-the 2048 game in progress, Traffic Jam and Penguin March progress and Scoop
-Shop's last shopkeeper in Qt's LocalStorage (SQLite), under
+the 2048 game in progress, Traffic Jam and Penguin March progress, Scoop
+Shop's last shopkeeper and every Color by Number picture as far as it's
+painted in Qt's LocalStorage (SQLite), under
 `~/.local/share/McFly/display/QML/OfflineStorage` on the Pi
 (`~/Library/Application Support/McFly/display/...` on a Mac). This needs the
 `qml6-module-qtquick-localstorage` and `libqt6sql6-sqlite` packages;

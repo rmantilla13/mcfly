@@ -52,6 +52,14 @@ target_include_directories(mcfly-penguins PUBLIC src)
 target_compile_options(mcfly-penguins PRIVATE ${MCFLY_WARNINGS})
 target_link_libraries(mcfly-penguins PUBLIC Qt6::Gui Qt6::Quick)
 
+# Color by Number's pictures, progress and board (qml/games/ColorByNumber.qml).
+add_library(mcfly-colors STATIC
+    src/games/ColorByNumber.h      src/games/ColorByNumber.cpp
+)
+target_include_directories(mcfly-colors PUBLIC src)
+target_compile_options(mcfly-colors PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(mcfly-colors PUBLIC Qt6::Gui Qt6::Quick)
+
 qt_add_executable(mcfly-display
     src/main.cpp
     src/models/FeedStore.h         src/models/FeedStore.cpp
@@ -175,6 +183,7 @@ qt_add_qml_module(mcfly-display
         qml/games/TrafficJam.qml
         qml/games/TicTacToe.qml
         qml/games/FourInARow.qml
+        qml/games/ColorByNumber.qml
         qml/games/PenguinMarch.qml
         games/2048/game.js
         games/traffic/rush.js
@@ -225,7 +234,7 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/pillars.frag
 )
 
-target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr mcfly-penguins
+target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr mcfly-penguins mcfly-colors
     Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebSockets)
 
 install(TARGETS mcfly-display RUNTIME DESTINATION bin)
