@@ -17,6 +17,11 @@ Item {
     readonly property bool oops: mood === "oops"
     readonly property bool dark: Theme.dark
 
+    // In software, one picture rather than loose shapes (see ScoopTreat),
+    // with room round it for the hop and the shake.
+    layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
+    layer.sourceRect: Qt.rect(-k, -2 * k, width + 2 * k, height + 2 * k)
+
     property real hop: 0
     property real shake: 0
     onMoodChanged: {

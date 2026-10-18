@@ -868,6 +868,10 @@ Item {
         readonly property real c: Math.min(width / 10, height / 9)
         readonly property color edge: Qt.darker(tint, 1.3)
         readonly property color ink: "#2B2230"
+        // In software, one picture rather than loose shapes (see ScoopTreat),
+        // ears and shoulders included.
+        layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
+        layer.sourceRect: Qt.rect(0, -c, width, height + 2 * c)
 
         Bit { px: 1.6; py: 7.0; pw: 6.8; ph: 3.0; color: Qt.darker(critter.tint, 1.08); border.width: critter.c * 0.12; border.color: critter.edge }
         // Ears, or a frog's eye bumps, or a chick's tuft.

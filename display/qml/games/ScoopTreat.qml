@@ -22,6 +22,12 @@ Item {
     readonly property real u: Math.max(0, Math.min(width / 5, height / units))
     readonly property bool dark: Theme.dark
 
+    // Drawn in software (the offscreen pictures, a panel with no GPU), a
+    // Shape that moves leaves its old place painted and paints past a
+    // scrolling list's clip. There the treat is one picture, which moves and
+    // clips as it should. The GPU draws the shapes as they are.
+    layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
+
     readonly property var flavours: ({
         vanilla: { fill: "#F7E6B0", rim: "#D7B86C", bits: "#B88A4E" },
         chocolate: { fill: "#8B5332", rim: "#5C331C", bits: "#C9946A" },
