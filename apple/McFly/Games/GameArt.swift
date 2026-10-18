@@ -114,18 +114,26 @@ private struct Art2048: View {
     }
 }
 
-/// Pip, a cone of mint and strawberry with sprinkles and a cherry, and Lotl.
+/// The shop front: the awning over Pip, a cone of mango and strawberry
+/// with syrup and a cherry, and Lotl.
 private struct ScoopArt: View {
     var body: some View {
+        let dark = Theme.palette.isDark
         GeometryReader { geo in
-            let size = min(geo.size.height * 0.86, geo.size.width / 2.6)
-            HStack(alignment: .bottom, spacing: -size * 0.08) {
-                ScoopCrewView(who: .pip).frame(width: size * 0.8, height: size * 0.96)
-                ScoopTreatView(order: ScoopOrder(base: .cone, scoops: [.mint, .strawberry], toppings: [.sprinkles, .cherry]), units: 10.4)
-                    .frame(width: size * 0.6, height: size)
-                ScoopCrewView(who: .lotl).frame(width: size * 0.8, height: size * 0.96)
+            let size = min(geo.size.height * 0.72, geo.size.width / 2.6)
+            let awning = max(10, (geo.size.height * 0.18).rounded())
+            ZStack(alignment: .top) {
+                ScoopAwning(look: .of(dark: dark), stripeWidth: max(14, awning * 1.1)).equatable()
+                    .frame(width: max(0, geo.size.width - 2 * Theme.radiusSm), height: awning)
+                HStack(alignment: .bottom, spacing: -size * 0.08) {
+                    ScoopCrewView(who: .pip).frame(width: size * 0.8, height: size * 0.96)
+                    ScoopTreatView(order: ScoopOrder(base: .cone, scoops: [.mango, .strawberry], toppings: [.syrup, .cherry]), units: 10.4)
+                        .frame(width: size * 0.6, height: size)
+                    ScoopCrewView(who: .lotl).frame(width: size * 0.8, height: size * 0.96)
+                }
+                .frame(width: geo.size.width, height: geo.size.height * 0.94, alignment: .bottom)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
     }
 }

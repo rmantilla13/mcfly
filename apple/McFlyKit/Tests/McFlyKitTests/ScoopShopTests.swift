@@ -8,9 +8,9 @@ final class ScoopShopTests: XCTestCase {
         ScoopOrder(base: base, scoops: scoops, toppings: toppings)
     }
 
-    /// The same numbers and orders as scoops.js (as of display f8fc4d6, before
-    /// the menu grew to seven and seven), run under node with the same
-    /// seeds: a shift can be replayed on either.
+    /// The same numbers and orders as scoops.js, run under node with the same
+    /// seeds: a shift can be replayed on either. Levels 1 and 2 keep to the
+    /// first four flavours, level 3 adds the rest, level 4 the new toppings.
     func testTheGeneratorIsScoopsJs() {
         var state: UInt32 = 7
         let units = (0..<5).map { _ -> Double in
@@ -24,18 +24,24 @@ final class ScoopShopTests: XCTestCase {
             (1, 1, [order(.cup, [.vanilla]), order(.cup, [.chocolate]), order(.cone, [.mint])], 0.13893358339555562),
             (2, 7, [order(.cup, [.vanilla], [.wafer]), order(.cup, [.chocolate]), order(.cone, [.chocolate, .vanilla], [.cherry])],
              0.3679585934150964),
-            (3, 42, [order(.cup, [.chocolate, .mint], [.sprinkles]), order(.cone, [.strawberry], [.cherry]),
-                     order(.cup, [.strawberry, .chocolate])], 0.6866120179183781),
-            (5, 1234, [order(.cone, [.strawberry, .mint], [.sprinkles, .cherry]), order(.cup, [.chocolate, .vanilla, .strawberry]),
-                       order(.cup, [.chocolate, .chocolate, .chocolate])], 0.8682829476892948),
-            (7, 99999, [order(.cup, [.strawberry, .strawberry, .strawberry], [.sprinkles]), order(.cup, [.vanilla, .mint, .chocolate], [.wafer]),
-                        order(.cone, [.mint, .strawberry, .strawberry], [.sprinkles, .wafer])], 0.06572708999738097),
-            (10, 4_294_967_295, [order(.cone, [.vanilla, .strawberry, .mint], [.cherry, .wafer]), order(.cup, [.mint, .mint], [.cherry]),
-                                 order(.cone, [.mint, .mint], [.sprinkles])], 0.9202409950084984),
-            (10, 23767, [order(.cup, [.mint, .vanilla, .vanilla], [.sprinkles, .cherry]), order(.cup, [.chocolate, .strawberry], [.sprinkles, .cherry]),
-                         order(.cone, [.strawberry, .strawberry], [.cherry])], 0.8146749250590801),
-            (4, 2026, [order(.cone, [.chocolate, .strawberry], [.sprinkles]), order(.cup, [.mint, .chocolate, .vanilla]),
-                       order(.cone, [.vanilla, .vanilla])], 0.9208663781173527),
+            (3, 42, [order(.cup, [.mint, .blueberry], [.sprinkles]), order(.cone, [.mango], [.cherry]),
+                     order(.cup, [.blueberry, .strawberry])], 0.6866120179183781),
+            (5, 1234, [order(.cone, [.mango, .cookies], [.sprinkles, .cherry]), order(.cup, [.strawberry, .vanilla, .mint]),
+                       order(.cup, [.chocolate, .strawberry, .mint])], 0.8682829476892948),
+            (7, 99999, [order(.cup, [.mint, .mango, .mango], [.sprinkles]), order(.cup, [.chocolate, .cookies, .strawberry], [.rings]),
+                        order(.cone, [.cookies, .mint, .mango], [.wafer, .cream])], 0.06572708999738097),
+            (10, 4_294_967_295, [order(.cone, [.chocolate, .blueberry, .cookies], [.syrup, .rings]), order(.cup, [.cookies, .cookies], [.wafer]),
+                                 order(.cone, [.blueberry, .cookies], [.cherry])], 0.9202409950084984),
+            (10, 23767, [order(.cup, [.cookies, .vanilla, .vanilla], [.cherry, .syrup]), order(.cup, [.strawberry, .mint], [.wafer, .syrup]),
+                         order(.cone, [.mango, .mint], [.syrup])], 0.8146749250590801),
+            (4, 2026, [order(.cone, [.strawberry, .mango], [.cherry]), order(.cup, [.blueberry, .strawberry, .vanilla]),
+                       order(.cone, [.vanilla, .chocolate])], 0.9208663781173527),
+            (3, 5, [order(.cup, [.blueberry, .chocolate], [.sprinkles]), order(.cup, [.mint, .cookies]), order(.cone, [.mango, .vanilla])],
+             0.8965497829485685),
+            (4, 77, [order(.cup, [.vanilla, .mango], [.sprinkles]), order(.cup, [.blueberry, .vanilla, .chocolate], [.wafer, .crunch]),
+                     order(.cone, [.vanilla, .vanilla])], 0.5065870243124664),
+            (10, 8, [order(.cup, [.mango, .strawberry], [.wafer, .crunch]), order(.cone, [.mint, .vanilla], [.sprinkles, .crunch]),
+                     order(.cone, [.cookies, .mango], [.sprinkles])], 0.5559864083770663),
         ]
         for c in cases {
             var rand = Scoops.Random(seed: c.seed)
@@ -46,9 +52,12 @@ final class ScoopShopTests: XCTestCase {
     }
 
     func testOrdersFollowTheLevel() {
-        // Every order is a cone or a cup, with scoops and toppings from the
-        // menu, as many as its level allows; level 10 asks for the most.
+        // Every order is a cone or a cup, with scoops and toppings from what
+        // its level offers, as many as it allows. Levels 1 and 2 keep to the
+        // first four flavours and level 3 the first three toppings; by
+        // level 10 every flavour and topping turns up, and the biggest orders.
         var biggest = 0
+        var seenFlavours = Set<ScoopFlavour>(), seenToppings = Set<ScoopTopping>()
         for lv in 1...10 {
             let r = Scoops.rules(lv)
             for s in 1...300 {
@@ -57,11 +66,23 @@ final class ScoopShopTests: XCTestCase {
                 XCTAssertNotNil(o.base)
                 XCTAssertTrue((r.minScoops...r.maxScoops).contains(o.scoops.count), "level \(lv): \(o)")
                 XCTAssertTrue((r.minToppings...r.maxToppings).contains(o.toppings.count), "level \(lv): \(o)")
+                XCTAssertTrue(o.scoops.allSatisfy(r.flavours.contains), "level \(lv): \(o)")
+                XCTAssertTrue(o.toppings.allSatisfy(r.toppings.contains), "level \(lv): \(o)")
                 XCTAssertEqual(Set(o.toppings).count, o.toppings.count)
-                if lv == 10 { biggest = max(biggest, o.scoops.count + o.toppings.count) }
+                if lv == 10 {
+                    biggest = max(biggest, o.scoops.count + o.toppings.count)
+                    seenFlavours.formUnion(o.scoops)
+                    seenToppings.formUnion(o.toppings)
+                }
             }
         }
         XCTAssertEqual(biggest, 5)
+        XCTAssertEqual([Scoops.rules(2).flavours.count, Scoops.rules(3).flavours.count], [4, 7])
+        XCTAssertEqual([Scoops.rules(3).toppings.count, Scoops.rules(4).toppings.count], [3, 7])
+        XCTAssertEqual(Scoops.rules(1).flavours, [.vanilla, .chocolate, .strawberry, .mint])
+        XCTAssertEqual(Scoops.rules(1).toppings, [.sprinkles, .cherry, .wafer])
+        XCTAssertEqual(seenFlavours.count, 7)
+        XCTAssertEqual(seenToppings.count, 7)
 
         // It gets busier: more seats, bigger orders, less time, sooner.
         for lv in 1..<10 {
@@ -77,7 +98,7 @@ final class ScoopShopTests: XCTestCase {
         // At the busiest, a full counter of the biggest orders can still be
         // served: four customers, seven taps each, two taps a second.
         XCTAssertGreaterThanOrEqual(Scoops.patience(big, level: 10), 4 * 7 * 500)
-        // The pace (display f8fc4d6): a cone of one scoop waits 27 s at level 1,
+        // The pace: a cone of one scoop waits 27 s at level 1,
         // a tenth under the first tuning's 30 s, and customers come every 6.3 s.
         XCTAssertEqual(Scoops.patience(order(.cone, [.mint]), level: 1), 27000)
         XCTAssertEqual(Scoops.rules(1).arrival, 6300)
@@ -193,6 +214,43 @@ final class ScoopShopTests: XCTestCase {
         XCTAssertEqual(s.seats[0]?.gone, .late)
         XCTAssertEqual(s.hearts, 2)
         XCTAssertEqual(s.served, 0)
+    }
+
+    func testCustomersFlipOut() {
+        var s = shift()
+        s.start(.pip)
+        let wait = s.seat(0, order(.cone, [.mango]))
+        func face() -> Scoops.Face { s.seats[0]!.face(at: s.now) }
+        XCTAssertEqual(face(), .smile)
+        XCTAssertFalse(s.alarm)
+        s.advance(Double(wait * 6 / 10))
+        XCTAssertEqual(face(), .flat)
+        s.advance(Double(wait * 15 / 100))
+        XCTAssertEqual(face(), .frown)
+        XCTAssertFalse(s.alarm)
+        // The last fifth: they flip out, and the shopkeeper panics.
+        s.advance(Double(wait * 1 / 10))
+        XCTAssertEqual(face(), .furious)
+        XCTAssertTrue(s.alarm)
+        // Served in time, they're happy; the panic stays only while someone
+        // else is that close.
+        s.pickBase(.cone)
+        XCTAssertNotNil(try? s.addScoop(.mango)?.get())
+        XCTAssertEqual(try? s.deliver(0)?.get(), .right)
+        XCTAssertEqual(face(), .happy)
+        let others = s.seats.indices.contains { i in
+            i != 0 && s.seats[i].map { $0.gone == .waiting && $0.patienceLeft(at: s.now) <= Scoops.furious } == true
+        }
+        XCTAssertEqual(s.alarm, others)
+        // The faces' edges: flat to frown at 0.3, frown to furious at 0.2.
+        XCTAssertEqual(Scoops.face(left: 0.2, gone: .waiting), .furious)
+        XCTAssertEqual(Scoops.face(left: 0.21, gone: .waiting), .frown)
+        XCTAssertEqual(Scoops.face(left: 0.3, gone: .waiting), .frown)
+        XCTAssertEqual(Scoops.face(left: 0.31, gone: .waiting), .flat)
+        XCTAssertEqual(Scoops.face(left: 0, gone: .late), .cross)
+        // Once the shop has closed, nobody is flipping out.
+        s.endShift()
+        XCTAssertFalse(s.alarm)
     }
 
     func testTheShopClosesAfterThreeHeartsAndKeepsTheBest() {

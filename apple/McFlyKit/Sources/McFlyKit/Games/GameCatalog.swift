@@ -41,7 +41,7 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .game2048:
             return "Swipe up, down, left or right to slide every tile. Two tiles with the same number join into one. Make a 2048 tile to win, then keep going."
         case .scoopShop:
-            return "Pick who works the counter: Pip the penguin or Lotl the axolotl. Each customer's ticket shows their order: a cone or a cup, the scoops from the bottom up, and any toppings. Tap the pieces to build it, then tap the customer to hand it over. Right and quick scores more. A wrong order, or a customer who runs out of patience, costs a heart; lose three and the shop closes. Every five served it gets busier."
+            return "Pick who works the counter: Pip the penguin or Lotl the axolotl. Each customer's ticket shows their order: a cone or a cup, the scoops from the bottom up, and any toppings. Tap the pieces to build it, then tap the customer to hand it over. Right and quick scores more. A wrong order, or a customer who runs out of patience, costs a heart; lose three and the shop closes. Every five served it gets busier, and new flavours and toppings join the menu."
         case .penguinMarch:
             return "Penguins drop in and keep walking, turning at walls, and a long fall is the end of one. Pick a skill, then tap a penguin: Block turns the others back, Dig goes down, Bash goes through a wall, Build lays steps and Float opens an umbrella. Get enough of them into the igloo to win."
         }

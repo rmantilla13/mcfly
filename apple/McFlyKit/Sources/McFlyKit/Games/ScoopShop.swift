@@ -7,14 +7,21 @@ import Foundation
 // from the bottom up, and toppings. Build it, then hand it over before
 // their patience runs out. A right order scores, more the quicker it is; a
 // wrong one, or a customer who gives up, costs one of three hearts. Every
-// five served it gets busier: more seats, bigger orders, less time.
-//
-// These are the display's rules as of f8fc4d6: four flavours and three
-// toppings. bad3e31 grew the display's menu to seven of each; not here yet.
+// five served it gets busier: more seats, bigger orders, less time, and
+// new flavours and toppings join the menu.
 
 public enum ScoopBase: String, Sendable, CaseIterable, Codable { case cone, cup }
-public enum ScoopFlavour: String, Sendable, CaseIterable, Codable { case vanilla, chocolate, strawberry, mint }
-public enum ScoopTopping: String, Sendable, CaseIterable, Codable { case sprinkles, cherry, wafer }
+/// In the order they join the menu (scoops.js FLAVOURS): the first four from
+/// the start, the rest from level `Scoops.newFlavours`. Orders are drawn
+/// from this order, so it is the generator's too.
+public enum ScoopFlavour: String, Sendable, CaseIterable, Codable {
+    case vanilla, chocolate, strawberry, mint, mango, blueberry, cookies
+}
+/// In the order they join the menu (scoops.js TOPPINGS): the first three from
+/// the start, the rest from level `Scoops.newToppings`.
+public enum ScoopTopping: String, Sendable, CaseIterable, Codable {
+    case sprinkles, cherry, wafer, syrup, crunch, rings, cream
+}
 
 /// A treat: a ticket's order, or the one being built.
 public struct ScoopOrder: Sendable, Equatable, Codable {
@@ -43,6 +50,11 @@ public enum Scoops {
     public static let hearts = 3
     /// Seats at the counter, at most.
     public static let maxSeats = 4
+    /// The levels the last three flavours and the last four toppings join at.
+    public static let newFlavours = 3
+    public static let newToppings = 4
+    /// The share of their patience left when a customer flips out.
+    public static let furious = 0.2
     /// The shop's pace: every wait and every gap between customers is this
     /// share of the times in `rules`. 0.9 gives a tenth less time.
     public static let pace = 0.9
@@ -75,6 +87,8 @@ public enum Scoops {
         public var seats: Int
         public var minScoops: Int, maxScoops: Int
         public var minToppings: Int, maxToppings: Int
+        /// What orders are made of at this level.
+        public var flavours: [ScoopFlavour], toppings: [ScoopTopping]
         /// How long a customer waits: a little for being there, more for
         /// each thing on the order, both shorter as the shop gets busy.
         public var wait: Int, perItem: Int
@@ -89,6 +103,8 @@ public enum Scoops {
                      maxScoops: lv < 2 ? 1 : lv < 4 ? 2 : 3,
                      minToppings: lv < 7 ? 0 : 1,
                      maxToppings: lv < 2 ? 0 : lv < 4 ? 1 : 2,
+                     flavours: Array(ScoopFlavour.allCases.prefix(lv < newFlavours ? 4 : ScoopFlavour.allCases.count)),
+                     toppings: Array(ScoopTopping.allCases.prefix(lv < newToppings ? 3 : ScoopTopping.allCases.count)),
                      wait: paced(max(10000, 24000 - 1600 * (lv - 1))),
                      perItem: paced(max(1600, 3000 - 200 * (lv - 1))),
                      arrival: paced(max(2500, 7000 - 500 * (lv - 1))))
@@ -105,8 +121,8 @@ public enum Scoops {
         let r = rules(level)
         var scoops: [ScoopFlavour] = []
         let n = between(&rand, r.minScoops, r.maxScoops)
-        for _ in 0..<n { scoops.append(pick(&rand, ScoopFlavour.allCases)) }
-        var left = ScoopTopping.allCases
+        for _ in 0..<n { scoops.append(pick(&rand, r.flavours)) }
+        var left = r.toppings
         var toppings: [ScoopTopping] = []
         let t = between(&rand, r.minToppings, r.maxToppings)
         for _ in 0..<t { toppings.append(left.remove(at: Int(rand() * Double(left.count)))) }
@@ -133,6 +149,18 @@ public enum Scoops {
         let n = order.items
         return 10 * n + Int((10 * Double(n) * max(0, min(1, left))).rounded(.toNearestOrAwayFromZero))
     }
+
+    /// How a customer looks: by how it went, or by the patience they have
+    /// `left`. In the last fifth they flip out.
+    public enum Face: Sendable, Equatable { case smile, flat, frown, furious, happy, cross }
+
+    public static func face(left: Double, gone: ScoopCustomer.Gone) -> Face {
+        switch gone {
+        case .right: return .happy
+        case .wrong, .late: return .cross
+        case .waiting: return left > 0.5 ? .smile : left > 0.3 ? .flat : left > furious ? .frown : .furious
+        }
+    }
 }
 
 /// A customer at the counter.
@@ -156,6 +184,8 @@ public struct ScoopCustomer: Sendable, Equatable, Identifiable {
     public func patienceLeft(at now: Double) -> Double {
         gone == .waiting ? max(0, 1 - (now - arrived) / Double(patience)) : 0
     }
+
+    public func face(at now: Double) -> Scoops.Face { Scoops.face(left: patienceLeft(at: now), gone: gone) }
 }
 
 public enum ScoopKeeper: String, Sendable, CaseIterable { case pip, lotl }
@@ -201,6 +231,13 @@ public struct ScoopShift: Sendable {
     public var level: Int { Scoops.level(served: served) }
     public var rules: Scoops.Rules { Scoops.rules(level) }
     public var playing: Bool { phase == .playing && !paused }
+    /// Someone at the counter is about to give up: the shopkeeper panics.
+    public var alarm: Bool {
+        phase == .playing && seats.contains { c in
+            guard let c, c.gone == .waiting else { return false }
+            return 1 - (now - c.arrived) / Double(c.patience) <= Scoops.furious
+        }
+    }
 
     private mutating func random() -> Double {
         dice = Scoops.next(dice)

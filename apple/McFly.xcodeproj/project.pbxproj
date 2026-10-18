@@ -36,6 +36,7 @@
 		803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333BC1BF2A56D73A429ED6E /* AgentsView.swift */; };
 		82046F6416646A3C1AAC0DEC /* GameControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9BDC6503610E4CFF61CE6D /* GameControls.swift */; };
 		855A1069A25AE4905144CA99 /* NewsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9542FCF91E0153CF407BB112 /* NewsView.swift */; };
+		8DB34605DF24A04544E2C9AE /* ScoopParlour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EF115F9A5410245DF09CD7E /* ScoopParlour.swift */; };
 		92FB8C31807C612B3C0CA2EE /* DashboardBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952ED6B6F9C72D0D5CEDE254 /* DashboardBuilderView.swift */; };
 		97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */; };
 		97F23CB091DDC90EBB70BA3C /* GlanceTiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9BAA4A7AC4466BEACD51860 /* GlanceTiles.swift */; };
@@ -88,6 +89,7 @@
 		50A1E14F7EC45D782EC88EB1 /* GamesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamesView.swift; sourceTree = "<group>"; };
 		57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraGlow.swift; sourceTree = "<group>"; };
 		5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenguinArt.swift; sourceTree = "<group>"; };
+		5EF115F9A5410245DF09CD7E /* ScoopParlour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopParlour.swift; sourceTree = "<group>"; };
 		622F972CFB8950E0AADFBB67 /* QRScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScanner.swift; sourceTree = "<group>"; };
 		638567AD540315D470FEDD13 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
 		65C28066EAE7E32623A3DD48 /* Game2048View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Game2048View.swift; sourceTree = "<group>"; };
@@ -228,6 +230,7 @@
 				5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */,
 				A2726939AF4521FF5E31A61A /* PenguinMarchView.swift */,
 				C2EC8E88993935E9D6827E1D /* ScoopArt.swift */,
+				5EF115F9A5410245DF09CD7E /* ScoopParlour.swift */,
 				0991509DB189B4C7CB3CBF44 /* ScoopShopView.swift */,
 				0AB804C35F74D18D665B6668 /* TicTacToeView.swift */,
 				1B369E9F8FCEDA9CF8DCA72C /* TrafficJamView.swift */,
@@ -389,6 +392,7 @@
 				0AE2AF15475FFB89621BAB26 /* ProjectsView.swift in Sources */,
 				0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */,
 				B664A6A1DBCE2C1204F03407 /* ScoopArt.swift in Sources */,
+				8DB34605DF24A04544E2C9AE /* ScoopParlour.swift in Sources */,
 				09DA3344789C93B43C05A29D /* ScoopShopView.swift in Sources */,
 				D73FF3DDA9C43A362ABEF107 /* ScreenAwake.swift in Sources */,
 				97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */,

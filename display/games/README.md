@@ -70,9 +70,9 @@ the file, and the app shows them under how to play. `apple/McFlyKit/Tests`
 hold the Swift to the display: Four in a Row's search against
 `FourInARowEngine`'s node counts, Scoop Shop's orders against `scoops.js`,
 and Penguin March's terrain and solution replays, cell for cell and tick for
-tick, against `PenguinSim`. The app's Scoop Shop is the display's as of
-f8fc4d6 (four flavours, three toppings, the 0.9 pace); the seven-and-seven
-menu, the furious customers and the parlour look are still to come there.
+tick, against `PenguinSim`. Scoop Shop's parlour (the awning, the ticket
+rail, the freezer case and shelves, the prep bench) is drawn again in
+SwiftUI from the same shapes and colours.
 
 ## Saved scores
 
