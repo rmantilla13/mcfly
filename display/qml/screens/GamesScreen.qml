@@ -4,9 +4,9 @@ import QtQuick.Layouts
 import McFly
 import McFly.Core
 
-// Games: a card per game; tapping one runs it in place, beside how to play
-// it and where it comes from (on the small tiers, under the header, with
-// how to play behind the info button). 2048, Same Game and Maroon in
+// Games: a card per game; tapping one runs it full screen, over the nav
+// too, with an X to close it and how to play and where it comes from behind
+// the info button. 2048, Same Game and Maroon in
 // Trouble are open-source games; Traffic Jam plays on open-source Rush Hour
 // logic with levels made for McFly; tic-tac-toe and four in a row are our
 // own. All of these but four in a row are the homeOS wall display's Games
@@ -30,8 +30,7 @@ Item {
     readonly property var openGame: openIndex >= 0 ? catalog[openIndex] : null
     // The running game's root item, or null.
     readonly property Item game: loader.item
-    // How to play: beside the game on the paned tiers, over it on the small ones.
-    readonly property bool besides: Theme.paned
+    // How to play, over the open game.
     property bool howToOpen: false
     // A card's height: two rows and a part of the next on every panel.
     readonly property int cardHeight: Theme.wide ? 380 : Theme.tall ? 300 : Theme.mini ? 128 : 280
@@ -503,67 +502,71 @@ Item {
         }
     }
 
-    // ---- An open game: how to play beside it (or behind the info button),
-    // and the game, centred and as large as fits.
-    GridLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.pageMargin
-        columns: games.besides ? 2 : 1
-        rowSpacing: Theme.spacing
-        columnSpacing: Theme.spacing
-        visible: games.openGame !== null
+    // ---- An open game, full screen: over the nav too, with an X to close it
+    // and (i) for how to play. Main draws the pages over the nav, and the
+    // assistant panel, the sheets, the wake-word card and the screen saver
+    // over the pages, so those still come over a game. The page leaves
+    // Theme.navWidth on the left and Theme.navHeight at the bottom for the
+    // nav: the window is that much bigger than this screen.
+    Item {
+        id: full
+        // The buttons down the right on a landscape panel, where height is
+        // short; along the top on a portrait one, where width is, and on the
+        // 7" panel, whose games are laid out for its full width.
+        readonly property bool alongTop: height > width || Theme.mini
+        readonly property real margin: Theme.pageMargin
+        x: -Theme.navWidth
+        y: 0
+        width: games.width + Theme.navWidth
+        height: games.height + Theme.navHeight
+        // Under the assistant panel the nav shows beside it as on every other
+        // page; the game waits underneath (paused, if it runs on a clock).
+        visible: games.openGame !== null && games.shown
 
-        ColumnLayout {
-            Layout.fillHeight: games.besides
-            Layout.fillWidth: !games.besides
-            Layout.preferredWidth: games.besides ? (Theme.wide ? 380 : 300) : -1
-            Layout.maximumWidth: games.besides ? (Theme.wide ? 380 : 300) : Number.POSITIVE_INFINITY
-            spacing: 16
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.background
+            // Taps the game doesn't take stop here, not on the nav underneath.
+            MouseArea { anchors.fill: parent }
+        }
 
-            // One row: back, the name, and (on the small tiers) how to play.
-            // Beside the header rather than in its controls slot, which would
-            // wrap to a row of its own there.
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
-                ScreenHeader {
-                    Layout.fillWidth: true
-                    backVisible: true
-                    title: games.openGame ? games.openGame.title : ""
-                    subtitle: games.openGame ? games.openGame.players : ""
-                    onBack: games.close()
-                }
-                IconButton {
-                    visible: !games.besides
-                    icon: games.howToOpen ? "close" : "info"
-                    fill: games.howToOpen ? Theme.accentSoft : Theme.surface
-                    onClicked: games.howToOpen = !games.howToOpen
-                }
-            }
-            Label {
-                visible: games.besides
-                Layout.fillWidth: true
-                text: games.openGame ? games.openGame.howTo : ""
-                color: Theme.text
-                font.pixelSize: Theme.fontSm
-                lineHeight: 1.2
-                wrapMode: Text.WordWrap
-            }
-            Item { visible: games.besides; Layout.fillHeight: true }
-            Label {
-                visible: games.besides
-                Layout.fillWidth: true
-                text: games.openGame ? games.openGame.credit : ""
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontXs
-                wrapMode: Text.WordWrap
-            }
+        Label {
+            visible: full.alongTop
+            x: full.margin
+            y: full.margin
+            width: info.x - x - Theme.spacing
+            height: Theme.touchTarget
+            verticalAlignment: Text.AlignVCenter
+            text: games.openGame ? games.openGame.title : ""
+            color: Theme.text
+            font.pixelSize: Theme.fontLg
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
+        }
+        IconButton {
+            id: quit
+            objectName: "game:close"
+            x: full.width - full.margin - width
+            y: full.margin
+            icon: "close"
+            onClicked: games.close()
+        }
+        IconButton {
+            id: info
+            objectName: "game:info"
+            x: full.alongTop ? quit.x - Theme.spacing - width : quit.x
+            y: full.alongTop ? quit.y : quit.y + quit.height + Theme.spacing
+            icon: "info"
+            fill: games.howToOpen ? Theme.accentSoft : Theme.surface
+            onClicked: games.howToOpen = !games.howToOpen
         }
 
         Item {
             id: stage
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            x: full.margin
+            y: full.alongTop ? quit.y + quit.height + Theme.spacing : full.margin
+            width: (full.alongTop ? full.width : quit.x - Theme.spacing) - x - (full.alongTop ? full.margin : 0)
+            height: full.height - y - full.margin
 
             Item {
                 id: frame
@@ -610,11 +613,11 @@ Item {
                 border.color: Theme.background
             }
 
-            // How to play, over the game on the small tiers.
+            // How to play and where the game comes from, over the game.
             Rectangle {
                 anchors.fill: parent
                 visible: opacity > 0
-                opacity: games.howToOpen && !games.besides ? 1 : 0
+                opacity: games.howToOpen ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: Theme.smooth } }
                 radius: Theme.radius
                 color: Theme.surface
@@ -624,6 +627,14 @@ Item {
                     anchors.fill: parent
                     anchors.margins: Theme.spacing + 8
                     spacing: 16
+                    Label {
+                        Layout.fillWidth: true
+                        text: games.openGame ? games.openGame.title : ""
+                        color: Theme.text
+                        font.pixelSize: Theme.fontLg
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
                     Label {
                         Layout.fillWidth: true
                         text: games.openGame ? games.openGame.howTo : ""

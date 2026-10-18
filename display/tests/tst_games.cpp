@@ -535,6 +535,90 @@ private slots:
     // Each column stays a full touch target, and the board and controls stay
     // on the stage, on every panel: the 7" (its stage is short), the
     // portrait panel, the 10.1" and a TV, beside McFly's switches too.
+    // An open game fills the whole window, over the nav, on every panel; the
+    // X closes it and (i) shows how to play over it.
+    void gamesOpenFullScreen()
+    {
+        struct Panel { const char *tier; QSize window; int shortSide; };
+        const Panel panels[] = {
+            {"mini", {800, 480}, 480},
+            {"tall", {720, 1280}, 720},
+            {"compact", {1280, 800}, 800},
+            {"wide", {1920, 1080}, 1080},
+        };
+        QObject *theme = nullptr;
+        for (const Panel &panel : panels) {
+            // On the 7", a stand-in for Main's nav bar under the screen, as
+            // Main has it: a game's full screen must keep taps off it.
+            QScopedPointer<QQuickItem> nav;
+            const bool bar = QLatin1String(panel.tier) == QLatin1String("mini");
+            if (bar) {
+                QQmlComponent component(m_engine);
+                component.setData("import QtQuick\nMouseArea { property int taps: 0; onPressed: taps++ }", QUrl());
+                nav.reset(qobject_cast<QQuickItem *>(component.create()));
+                QVERIFY(nav);
+                nav->setParentItem(m_window->contentItem());
+                nav->setPosition(QPointF(0, 480 - 76));
+                nav->setSize(QSizeF(800, 76));
+            }
+            QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), panel.window));
+            QVERIFY(screen);
+            eval(screen.get(), QStringLiteral("Theme.tier = '%1'; Theme.shortSide = %2")
+                                   .arg(QLatin1String(panel.tier)).arg(panel.shortSide));
+            theme = eval(screen.get(), QStringLiteral("Theme")).value<QObject *>();
+            // The screen is what Main leaves it: the window less the nav.
+            screen->setSize(QSizeF(panel.window.width() - eval(screen.get(), QStringLiteral("Theme.navWidth")).toInt(),
+                                   panel.window.height() - eval(screen.get(), QStringLiteral("Theme.navHeight")).toInt()));
+            const QString where = QLatin1String(panel.tier);
+            QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, 0)));
+            QTRY_VERIFY(eval(screen.get(), QStringLiteral("game !== null")).toBool());
+            QCOMPARE(eval(screen.get(), QStringLiteral("full.width")).toInt(), panel.window.width());
+            QCOMPARE(eval(screen.get(), QStringLiteral("full.height")).toInt(), panel.window.height());
+            auto *game = eval(screen.get(), QStringLiteral("game")).value<QQuickItem *>();
+            auto *full = eval(screen.get(), QStringLiteral("full")).value<QQuickItem *>();
+            QVERIFY(game && full);
+            // The game takes all but the margins and the buttons' strip.
+            const QRectF area = game->mapRectToItem(full, QRectF(0, 0, game->width(), game->height()));
+            QVERIFY2(QRectF(0, 0, full->width(), full->height()).contains(area), qPrintable(where));
+            // Along the top in portrait and on the 7"; down the right otherwise.
+            const bool upright = panel.window.height() > panel.window.width() || where == QLatin1String("mini");
+            const qreal strip = 64 + 2 * eval(screen.get(), QStringLiteral("Theme.pageMargin")).toReal()
+                                + eval(screen.get(), QStringLiteral("Theme.spacing")).toReal();
+            QVERIFY2(upright ? area.height() >= full->height() - strip - 1 : area.width() >= full->width() - strip - 1,
+                     qPrintable(where));
+            // Neither button sits on the game.
+            for (const char *name : {"game:close", "game:info"}) {
+                QQuickItem *button = find(full, QLatin1String(name));
+                QVERIFY2(button && button->isVisible(), name);
+                const QRectF r = button->mapRectToItem(full, QRectF(0, 0, button->width(), button->height()));
+                QVERIFY2(r.width() >= 64 && r.height() >= 64 && !r.intersects(area), qPrintable(where + QLatin1Char(' ') + QLatin1String(name)));
+            }
+            if (bar) {
+                QTest::mouseClick(m_window, Qt::LeftButton, {}, QPoint(400, 440));
+                QCOMPARE(nav->property("taps").toInt(), 0);
+            }
+            // The assistant panel over the page: the nav shows beside it.
+            screen->setProperty("shown", false);
+            QVERIFY(!full->isVisible());
+            screen->setProperty("shown", true);
+            QVERIFY(full->isVisible());
+            // (i) shows how to play over the game; the X closes it.
+            QMetaObject::invokeMethod(find(full, QStringLiteral("game:info")), "clicked");
+            QVERIFY(screen->property("howToOpen").toBool());
+            QMetaObject::invokeMethod(find(full, QStringLiteral("game:close")), "clicked");
+            QTRY_VERIFY(eval(screen.get(), QStringLiteral("game === null")).toBool());
+            QVERIFY(!screen->property("howToOpen").toBool());
+            QVERIFY(!full->isVisible());
+            if (bar) { // with the game closed, the same tap reaches the nav
+                QTest::mouseClick(m_window, Qt::LeftButton, {}, QPoint(400, 440));
+                QCOMPARE(nav->property("taps").toInt(), 1);
+            }
+        }
+        QVERIFY(theme);
+        theme->setProperty("tier", QStringLiteral("compact"));
+        theme->setProperty("shortSide", 800);
+    }
+
     void fourInARowFitsEveryPanel()
     {
         struct Panel { const char *tier; QSize page; int shortSide; };
