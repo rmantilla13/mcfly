@@ -50,6 +50,7 @@ qt_add_executable(mcfly-display
     src/hardware/PanelPower.h      src/hardware/PanelPower.cpp
     src/hardware/PerfMonitor.h     src/hardware/PerfMonitor.cpp
     src/hardware/StopSignals.h     src/hardware/StopSignals.cpp
+    src/games/FourInARowEngine.h   src/games/FourInARowEngine.cpp
 )
 
 target_include_directories(mcfly-display PRIVATE src)
@@ -160,6 +161,7 @@ qt_add_qml_module(mcfly-display
         qml/games/Game2048.qml
         qml/games/TrafficJam.qml
         qml/games/TicTacToe.qml
+        qml/games/FourInARow.qml
         games/2048/game.js
         games/traffic/rush.js
         games/traffic/puzzles.js

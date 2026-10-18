@@ -16,6 +16,7 @@
 #include <csignal>
 
 #include "backend/SupabaseClient.h"
+#include "games/FourInARowEngine.h"
 #include "hardware/DisplayController.h"
 #include "hardware/PanelPower.h"
 #include "hardware/PerfMonitor.h"
@@ -180,6 +181,8 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", &voice);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", &glance);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Perf", &perf);
+    FourInARowEngine fourInARow; // McFly's look-ahead in the Games tab's Four in a Row
+    qmlRegisterSingletonInstance("McFly.Core", 1, 0, "FourInARowEngine", &fourInARow);
     qmlRegisterUncreatableType<ChatModel>("McFly.Core", 1, 0, "ChatModel", "Owned by AI");
 
     QQmlApplicationEngine engine;

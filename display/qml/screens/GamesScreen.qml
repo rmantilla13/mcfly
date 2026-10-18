@@ -8,8 +8,9 @@ import McFly.Core
 // it and where it comes from (on the small tiers, under the header, with
 // how to play behind the info button). 2048, Same Game and Maroon in
 // Trouble are open-source games; Traffic Jam plays on open-source Rush Hour
-// logic with levels made for McFly; tic-tac-toe is our own. They are the
-// homeOS wall display's Games tab, brought over as they were.
+// logic with levels made for McFly; tic-tac-toe and four in a row are our
+// own. All of these but four in a row are the homeOS wall display's Games
+// tab, brought over as they were.
 //
 // A game is loaded only while it's open, and closed when the tab is left,
 // tapped again, or the screen saver comes up (it takes the display back to
@@ -54,6 +55,15 @@ Item {
             credit: qsTr("Made for McFly."),
             source: "../games/TicTacToe.qml",
             art: artTicTacToe
+        },
+        {
+            title: qsTr("Four in a Row"),
+            tagline: qsTr("Drop the discs, line up four."),
+            howTo: qsTr("Take turns tapping a column to drop a disc into it. The first to line up four, across, down or corner to corner, wins. Play someone at the screen, or play McFly: Easy is beatable, Hard looks several moves ahead."),
+            players: qsTr("1–2 players"),
+            credit: qsTr("Made for McFly."),
+            source: "../games/FourInARow.qml",
+            art: artFourInARow
         },
         {
             title: "2048",
@@ -279,6 +289,42 @@ Item {
                             border.width: ttt.cell * 0.1
                             border.color: "#4F7CF7"
                         }
+                    }
+                }
+            }
+        }
+    }
+    Component {
+        id: artFourInARow
+        Rectangle {
+            radius: Theme.radiusSm
+            color: Theme.sunken
+            Rectangle {
+                id: rack
+                readonly property real cell: Math.min(parent.width / 7.6, parent.height / 6.6)
+                width: cell * 7
+                height: cell * 6
+                anchors.centerIn: parent
+                radius: cell * 0.4
+                color: Theme.surface
+                // Bottom row first; a diagonal four for orange.
+                readonly property var marks: ["X", "O", "O", "X", "O", "", "",
+                                              "", "X", "X", "O", "", "", "",
+                                              "", "O", "X", "X", "", "", "",
+                                              "", "", "O", "X", "", "", "",
+                                              "", "", "", "", "", "", "",
+                                              "", "", "", "", "", "", ""]
+                Repeater {
+                    model: 42
+                    delegate: Rectangle {
+                        required property int index
+                        readonly property string mark: rack.marks[index]
+                        x: (index % 7) * rack.cell + rack.cell * 0.1
+                        y: (5 - Math.floor(index / 7)) * rack.cell + rack.cell * 0.1
+                        width: rack.cell * 0.8
+                        height: width
+                        radius: width / 2
+                        color: mark === "X" ? "#F07F5A" : mark === "O" ? "#4F7CF7" : Theme.sunken
                     }
                 }
             }

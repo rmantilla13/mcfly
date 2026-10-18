@@ -299,7 +299,9 @@ foreach(file ${games_files} qml/screens/GamesScreen.qml)
     configure_file(${PROJECT_SOURCE_DIR}/${file} ${games_root}/${file} COPYONLY)
 endforeach()
 
-qt_add_executable(tst_games tst_games.cpp)
+qt_add_executable(tst_games tst_games.cpp
+    ${PROJECT_SOURCE_DIR}/src/games/FourInARowEngine.h ${PROJECT_SOURCE_DIR}/src/games/FourInARowEngine.cpp)
+target_include_directories(tst_games PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_compile_options(tst_games PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_games PRIVATE MCFLY_GAMES_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/games-qml")
 target_link_libraries(tst_games PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)

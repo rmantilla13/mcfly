@@ -34,7 +34,8 @@ homeOS wall display's Games tab, as they were but for the changes below.
   checked against `rush.js` by `tests/tst_games.cpp`. The board is
   `qml/games/TrafficJam.qml`.
 
-Tic-tac-toe (`qml/games/TicTacToe.qml`) is written for this app.
+Tic-tac-toe (`qml/games/TicTacToe.qml`) and Four in a Row
+(`qml/games/FourInARow.qml`) are written for this app.
 
 For McFly: the names (vs McFly, the LocalStorage databases), the primary
 button in glass, and a second shape for Traffic Jam, tic-tac-toe and 2048:
@@ -65,3 +66,9 @@ as-is goes in a directory here and into the resources glob in
 `display/CMakeLists.txt`. Add it to `tests/tst_games.cpp` too. A game is
 loaded only while it is open, so it doesn't need to pause or clean up when
 it is hidden.
+
+Work too heavy for QML's JavaScript, which runs on the thread that draws
+the screen, goes in a C++ helper under `src/games/`, registered in
+`McFly.Core` by `main.cpp` and by `tst_games` (Four in a Row's
+`FourInARowEngine`: its search took seconds a move in JavaScript, and takes
+milliseconds in C++, capped so even a tangled board stays quick on the Pi).

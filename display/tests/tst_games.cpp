@@ -1,11 +1,14 @@
 #include <QtTest>
 
+#include <QElapsedTimer>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+
+#include "games/FourInARowEngine.h"
 
 // Stands in for DisplayController: the theme reads the mood and dark mode,
 // the screen's entrance whether tiles animate.
@@ -31,6 +34,7 @@ class TestGames : public QObject
     Q_OBJECT
 
     FakeDevice m_device;
+    FourInARowEngine m_fourInARow;
     QTemporaryDir m_storage;
     QQmlEngine *m_engine = nullptr;
     QQuickWindow *m_window = nullptr;
@@ -181,11 +185,35 @@ class TestGames : public QObject
         QVERIFY2(rects.size() >= least, qPrintable(QString::number(rects.size())));
     }
 
+    // Lays out a four-in-a-row board from a picture, top row first: X, O or
+    // "." for an empty hole. `turn` moves next.
+    void setRack(QObject *game, const QStringList &picture, const QString &turn)
+    {
+        QStringList cells(42);
+        for (int r = 0; r < 6; ++r) {
+            for (int c = 0; c < 7; ++c) {
+                const QChar mark = picture[5 - r][c];
+                cells[r * 7 + c] = mark == QLatin1Char('.') ? QStringLiteral("\"\"")
+                                                            : QStringLiteral("\"%1\"").arg(mark);
+            }
+        }
+        eval(game, QStringLiteral("cells = [%1]; winLine = null; lastMove = -1; turn = \"%2\"")
+                       .arg(cells.join(QLatin1Char(',')), turn));
+    }
+
+    int dropAt(QObject *game, int column)
+    {
+        QVariant ok;
+        QMetaObject::invokeMethod(game, "play", Q_RETURN_ARG(QVariant, ok), Q_ARG(QVariant, column));
+        return ok.toBool();
+    }
+
 private slots:
     void initTestCase()
     {
         QVERIFY(m_storage.isValid());
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &m_device);
+        qmlRegisterSingletonInstance("McFly.Core", 1, 0, "FourInARowEngine", &m_fourInARow);
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_GAMES_QML_DIR));
         m_engine->setOfflineStoragePath(m_storage.path());
@@ -213,7 +241,7 @@ private slots:
         QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), {1180, 800}));
         QVERIFY(screen);
         const int count = eval(screen.get(), QStringLiteral("catalog.length")).toInt();
-        QCOMPARE(count, 6);
+        QCOMPARE(count, 7);
         for (int i = 0; i < count; ++i) {
             QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, i)));
             QTRY_VERIFY2(eval(screen.get(), QStringLiteral("game !== null")).toBool(),
@@ -320,6 +348,230 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(game.get(), "play", Q_ARG(QVariant, 4)));
         QTRY_COMPARE(game->property("turn").toString(), QStringLiteral("X"));
         QCOMPARE(eval(game.get(), QStringLiteral("cells.filter(c => c === 'O').length")).toInt(), 1);
+    }
+
+    void fourInARowTwoPlayers()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/FourInARow.qml"), {900, 760}));
+        QVERIFY(game);
+        const QString line = QStringLiteral("winLine.slice().sort((a, b) => a - b).join(',')");
+
+        // Discs stack; X takes column 0 straight up.
+        for (int column : {0, 1, 0, 1, 0, 1})
+            QVERIFY(dropAt(game.get(), column));
+        QCOMPARE(eval(game.get(), QStringLiteral("cells[7]")).toString(), QStringLiteral("X"));
+        QCOMPARE(eval(game.get(), QStringLiteral("cells[8]")).toString(), QStringLiteral("O"));
+        QCOMPARE(game->property("winner").toString(), QString());
+        QVERIFY(dropAt(game.get(), 0));
+        QCOMPARE(game->property("winner").toString(), QStringLiteral("X"));
+        QCOMPARE(eval(game.get(), line).toString(), QStringLiteral("0,7,14,21"));
+        QCOMPARE(eval(game.get(), QStringLiteral("score.X")).toInt(), 1);
+        QVERIFY(!dropAt(game.get(), 2)); // the round is over
+
+        // O starts the next round, and takes the bottom row.
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "newRound"));
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("O"));
+        for (int column : {0, 0, 1, 1, 2, 2, 3})
+            QVERIFY(dropAt(game.get(), column));
+        QCOMPARE(game->property("winner").toString(), QStringLiteral("O"));
+        QCOMPARE(eval(game.get(), line).toString(), QStringLiteral("0,1,2,3"));
+        QCOMPARE(eval(game.get(), QStringLiteral("score.O")).toInt(), 1);
+
+        // A full column takes no more.
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "newRound"));
+        for (int i = 0; i < 6; ++i)
+            QVERIFY(dropAt(game.get(), 6));
+        const QString turn = game->property("turn").toString();
+        QVERIFY(!dropAt(game.get(), 6));
+        QCOMPARE(game->property("turn").toString(), turn);
+
+        // Corner to corner, both ways.
+        setRack(game.get(), {QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("..XO..."),
+                             QStringLiteral(".XOO..."),
+                             QStringLiteral("XOOX...")}, QStringLiteral("X"));
+        QVERIFY(dropAt(game.get(), 3));
+        QCOMPARE(eval(game.get(), line).toString(), QStringLiteral("0,8,16,24"));
+        setRack(game.get(), {QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("OX....."),
+                             QStringLiteral("OOX...."),
+                             QStringLiteral("XOOX...")}, QStringLiteral("X"));
+        QVERIFY(dropAt(game.get(), 0));
+        QCOMPARE(eval(game.get(), line).toString(), QStringLiteral("3,9,15,21"));
+
+        // A full board with no line is a draw.
+        setRack(game.get(), {QStringLiteral("OXOXOX."),
+                             QStringLiteral("OXOXOXO"),
+                             QStringLiteral("OXOXOXO"),
+                             QStringLiteral("XOXOXOX"),
+                             QStringLiteral("XOXOXOX"),
+                             QStringLiteral("XOXOXOX")}, QStringLiteral("O"));
+        const int draws = eval(game.get(), QStringLiteral("score.draw")).toInt();
+        QVERIFY(dropAt(game.get(), 6));
+        QVERIFY(game->property("draw").toBool());
+        QVERIFY(game->property("over").toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("score.draw")).toInt(), draws + 1);
+    }
+
+    void fourInARowHardMcFly()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/FourInARow.qml"), {900, 760}));
+        QVERIFY(game);
+        const QString hardMove = QStringLiteral("bestMove(cells, 'O', hardDepth)");
+
+        // Takes a win when it has one.
+        setRack(game.get(), {QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("XX....."),
+                             QStringLiteral("OOO.XX.")}, QStringLiteral("O"));
+        QCOMPARE(eval(game.get(), hardMove).toInt(), 3);
+        // Blocks yours.
+        setRack(game.get(), {QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("O.....O"),
+                             QStringLiteral("XXX...O")}, QStringLiteral("O"));
+        QCOMPARE(eval(game.get(), hardMove).toInt(), 3);
+        // Won't drop a disc that lets you win on top of it.
+        setRack(game.get(), {QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("XXX...O"),
+                             QStringLiteral("OOX...O")}, QStringLiteral("O"));
+        for (int i = 0; i < 5; ++i)
+            QVERIFY(eval(game.get(), hardMove).toInt() != 3);
+
+        // How long a move takes here (the Pi takes a few times longer).
+        QElapsedTimer clock;
+        setRack(game.get(), QStringList(6, QStringLiteral(".......")), QStringLiteral("O"));
+        clock.start();
+        eval(game.get(), hardMove);
+        qInfo("Four in a Row: Hard's opening move took %lld ms, %lld positions", clock.elapsed(),
+              eval(game.get(), QStringLiteral("FourInARowEngine.lastNodes()")).toLongLong());
+        setRack(game.get(), {QStringLiteral("......."),
+                             QStringLiteral("......."),
+                             QStringLiteral("...O..."),
+                             QStringLiteral("..XX..."),
+                             QStringLiteral("..OXO.."),
+                             QStringLiteral(".XOXO..")}, QStringLiteral("O"));
+        clock.restart();
+        eval(game.get(), hardMove);
+        qInfo("Four in a Row: Hard's mid-game move took %lld ms, %lld positions", clock.elapsed(),
+              eval(game.get(), QStringLiteral("FourInARowEngine.lastNodes()")).toLongLong());
+        // A look too deep to finish stops at the engine's cap, with the
+        // deepest look it did finish.
+        setRack(game.get(), QStringList(6, QStringLiteral(".......")), QStringLiteral("O"));
+        clock.restart();
+        const int capped = eval(game.get(), QStringLiteral("bestMove(cells, 'O', 42)")).toInt();
+        const qint64 cappedNodes = eval(game.get(), QStringLiteral("FourInARowEngine.lastNodes()")).toLongLong();
+        qInfo("Four in a Row: a look 42 discs deep stopped after %lld ms, %lld positions", clock.elapsed(), cappedNodes);
+        QVERIFY(capped >= 0 && capped < 7);
+        QCOMPARE(cappedNodes, qint64(600001));
+
+        // Hard never loses to someone dropping discs at random.
+        const QString match = QStringLiteral(R"(
+            (function () {
+                let board = Array(42).fill(""), turn = first
+                for (;;) {
+                    const open = [0, 1, 2, 3, 4, 5, 6].filter(c => landing(board, c) >= 0)
+                    if (!open.length)
+                        return "draw"
+                    const c = turn === "O" ? bestMove(board, "O", hardDepth)
+                                           : open[Math.floor(Math.random() * open.length)]
+                    const at = landing(board, c)
+                    board[at] = turn
+                    if (lineThrough(board, at))
+                        return turn
+                    turn = turn === "X" ? "O" : "X"
+                }
+            }))");
+        int wins = 0;
+        for (int i = 0; i < 30; ++i) {
+            const QString first = i % 2 ? QStringLiteral("O") : QStringLiteral("X");
+            const QString result = eval(game.get(), QStringLiteral("(function (first) { return (%1)() })(\"%2\")")
+                                                        .arg(match, first)).toString();
+            QVERIFY2(result != QLatin1String("X"), "random play beat Hard");
+            wins += result == QLatin1String("O");
+        }
+        QVERIFY(wins >= 28);
+
+        // Easy McFly answers a move.
+        game->setProperty("vsComputer", true);
+        game->setProperty("thinkMs", 10);
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("X"));
+        QVERIFY(dropAt(game.get(), 3));
+        QTRY_COMPARE(game->property("turn").toString(), QStringLiteral("X"));
+        QCOMPARE(eval(game.get(), QStringLiteral("cells.filter(c => c === 'O').length")).toInt(), 1);
+    }
+
+    // Each column stays a full touch target, and the board and controls stay
+    // on the stage, on every panel: the 7" (its stage is short), the
+    // portrait panel, the 10.1" and a TV, beside McFly's switches too.
+    void fourInARowFitsEveryPanel()
+    {
+        struct Panel { const char *tier; QSize page; int shortSide; };
+        const Panel panels[] = {
+            {"mini", {800, 480 - 76}, 480},     // the bottom nav bar
+            {"tall", {720, 1280 - 84}, 720},
+            {"compact", {1280 - 100, 800}, 800}, // the rail
+            {"wide", {1920 - 124, 1080}, 1080},
+        };
+        QObject *theme = nullptr;
+        for (const Panel &panel : panels) {
+            QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), panel.page));
+            QVERIFY(screen);
+            eval(screen.get(), QStringLiteral("Theme.tier = '%1'; Theme.shortSide = %2")
+                                   .arg(QLatin1String(panel.tier)).arg(panel.shortSide));
+            theme = eval(screen.get(), QStringLiteral("Theme")).value<QObject *>();
+            const int index = eval(screen.get(), QStringLiteral("catalog.findIndex(g => g.source.endsWith('FourInARow.qml'))")).toInt();
+            QVERIFY(index >= 0);
+            QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, index)));
+            QTRY_VERIFY(eval(screen.get(), QStringLiteral("game !== null")).toBool());
+            auto *game = eval(screen.get(), QStringLiteral("game")).value<QQuickItem *>();
+            QVERIFY(game);
+            for (bool vsComputer : {false, true}) {
+                game->setProperty("vsComputer", vsComputer);
+                QTest::qWait(20);
+                const QString where = QStringLiteral("%1 %2x%3%4").arg(QLatin1String(panel.tier))
+                                          .arg(game->width()).arg(game->height())
+                                          .arg(vsComputer ? QStringLiteral(" vs McFly") : QString());
+                qInfo().noquote() << "Four in a Row on" << where << "side" << game->property("side").toBool()
+                                  << "column" << game->property("colWidth").toReal()
+                                  << "disc" << game->property("disc").toReal();
+                QVERIFY2(game->property("colWidth").toReal() >= 64, qPrintable(where));
+                const QRectF stage = QRectF(0, 0, game->width(), game->height()).adjusted(-0.5, -0.5, 0.5, 0.5);
+                const auto rect = [&](const char *id) {
+                    const QString name = QLatin1String(id);
+                    return QRectF(eval(game, name + QStringLiteral(".x")).toReal(), eval(game, name + QStringLiteral(".y")).toReal(),
+                                  eval(game, name + QStringLiteral(".width")).toReal(), eval(game, name + QStringLiteral(".height")).toReal());
+                };
+                const QRectF board = rect("board");
+                QVERIFY2(stage.contains(board), qPrintable(where));
+                if (game->property("side").toBool()) {
+                    const QRectF stack = rect("stack");
+                    QVERIFY2(stage.contains(stack), qPrintable(where));
+                    QVERIFY2(stack.left() >= board.right(), qPrintable(where));
+                    QVERIFY2(eval(game, QStringLiteral("stack.childrenRect.width <= stack.width + 0.5")).toBool(), qPrintable(where));
+                } else {
+                    const QRectF header = rect("header");
+                    const QRectF button = rect("newRoundButton");
+                    QVERIFY2(stage.contains(header) && stage.contains(button), qPrintable(where));
+                    QVERIFY2(eval(game, QStringLiteral("header.childrenRect.width <= header.width + 0.5")).toBool(), qPrintable(where));
+                    QVERIFY2(header.bottom() <= board.top() && board.bottom() <= button.top(), qPrintable(where));
+                }
+            }
+        }
+        QVERIFY(theme);
+        theme->setProperty("tier", QStringLiteral("compact"));
+        theme->setProperty("shortSide", 800);
     }
 
     void trafficJamLevelsAreRightAndSolvable()
@@ -738,7 +990,10 @@ private slots:
     {
         QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), {1180, 800}));
         QVERIFY(screen);
-        // A tap on its card, in the scrolling list, opens it.
+        // A tap on its card, in the scrolling list, opens it. It is in the
+        // last row, under the fold here: scroll down to it first.
+        QTest::qWait(50);
+        eval(screen.get(), QStringLiteral("list.contentY = Math.max(0, list.contentHeight - list.height)"));
         QTest::qWait(50);
         tap(screen.get(), QStringLiteral("card:Scoop Shop"));
         QTRY_VERIFY(eval(screen.get(), QStringLiteral("game !== null")).toBool());
