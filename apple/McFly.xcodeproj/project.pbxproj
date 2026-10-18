@@ -9,8 +9,10 @@
 /* Begin PBXBuildFile section */
 		0341255EB8583F947B86713C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6CC890403E385B4789CB51D1 /* Supabase */; };
 		07583609CE7B9BA6A8D782CB /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60CD29D7101DC7226714153 /* CalendarView.swift */; };
+		09DA3344789C93B43C05A29D /* ScoopShopView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0991509DB189B4C7CB3CBF44 /* ScoopShopView.swift */; };
 		0AE2AF15475FFB89621BAB26 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */; };
 		0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622F972CFB8950E0AADFBB67 /* QRScanner.swift */; };
+		0F027E95625CBE499622CCC1 /* PenguinMarchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2726939AF4521FF5E31A61A /* PenguinMarchView.swift */; };
 		193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */; };
 		1D76897E71772E824308AC19 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4DA5C7573FB6B6376939E2 /* SignInView.swift */; };
 		20D440D69AB32265061E1CE7 /* WeatherLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2467E9D18042438FB3095DB8 /* WeatherLayer.swift */; };
@@ -18,17 +20,21 @@
 		28975B40DE863BBF61536D63 /* AuroraGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */; };
 		2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F63275D054EB81A93B798DB /* VoiceModeView.swift */; };
 		2F9CC99BDC049CCE870750F1 /* Backdrop.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4A026F1F0B42DA7FF3B1DBC9 /* Backdrop.metal */; };
+		36370216C9065F69B76AA3ED /* TicTacToeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB804C35F74D18D665B6668 /* TicTacToeView.swift */; };
 		3D61DB160852C5DF5374EC79 /* VoiceGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */; };
 		403B2E4ACBFB949C7AF4FF38 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EE7599A570B363E70AC7B5 /* VoiceListener.swift */; };
 		50458AAB7B4AFDF53506428A /* WeatherModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BEA683B475142D05DCA8A58 /* WeatherModel.swift */; };
+		52BAAAFED0D8B0B88C6CB115 /* TrafficJamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B369E9F8FCEDA9CF8DCA72C /* TrafficJamView.swift */; };
 		532E61DA43CF3A567D0E68B9 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0541DC6B569E5BE913765B74 /* Components.swift */; };
 		58F6BDC147D23391C32EAA09 /* KokoroSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA50FE7B4095029581666475 /* KokoroSpeaker.swift */; };
 		5E42F488FE1CD32F40926EBE /* MarketsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */; };
 		658E91D14231709945A117B6 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08BAFC5D9C7398731AB90318 /* Config.swift */; };
 		708B1455CD8F86BAF364E88A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */; };
+		742949E106ED4D8BFB645F95 /* GameArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82E056470CE0D53151B873A /* GameArt.swift */; };
 		7BA38494D5F34C9B13B931FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F43F67BC8172506F846877D4 /* Assets.xcassets */; };
 		7CE1E42A606557E789079024 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28DF0EF62E7B6986374243A /* Theme.swift */; };
 		803EE79AB60A649DD68B7D85 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333BC1BF2A56D73A429ED6E /* AgentsView.swift */; };
+		82046F6416646A3C1AAC0DEC /* GameControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B9BDC6503610E4CFF61CE6D /* GameControls.swift */; };
 		855A1069A25AE4905144CA99 /* NewsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9542FCF91E0153CF407BB112 /* NewsView.swift */; };
 		92FB8C31807C612B3C0CA2EE /* DashboardBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952ED6B6F9C72D0D5CEDE254 /* DashboardBuilderView.swift */; };
 		97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */; };
@@ -38,6 +44,7 @@
 		A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */; };
 		A5DC78C3C4B30C2729DE9E2B /* McFlyVoice in Frameworks */ = {isa = PBXBuildFile; productRef = B37C6D5C0B3DDD4E7924D5D6 /* McFlyVoice */; };
 		A985F080DBDA85AE23C3019C /* VoiceHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39B4EC30B75341278FB8D613 /* VoiceHubView.swift */; };
+		B664A6A1DBCE2C1204F03407 /* ScoopArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EC8E88993935E9D6827E1D /* ScoopArt.swift */; };
 		B882CD2C41CDB2417D425826 /* AuroraGlow.metal in Sources */ = {isa = PBXBuildFile; fileRef = BE738AF4E2C80B5FC057D2B5 /* AuroraGlow.metal */; };
 		B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A13A583CBDB5AED68797C8 /* BriefsView.swift */; };
 		BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 638567AD540315D470FEDD13 /* VoiceSession.swift */; };
@@ -45,11 +52,15 @@
 		C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */; };
 		CAAA01B47BE2782961A8E827 /* McFlyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */; };
 		D5830A84293021B001D6DAC3 /* AmbientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2527F7DF175D3D8B53C1A539 /* AmbientView.swift */; };
+		D5C0E864E105BB5EA4BF321B /* FourInARowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366B89003BD6E69BF364205E /* FourInARowView.swift */; };
 		D73FF3DDA9C43A362ABEF107 /* ScreenAwake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82227595F1494D94F711C11A /* ScreenAwake.swift */; };
 		DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */; };
 		E79219A675B9992B901CDD27 /* BuiltInVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C368950BE03E7FDA21BEBCCC /* BuiltInVoice.swift */; };
 		E8E8628F7F744EFA0A22E2EA /* BackButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = F464976B7FC8D128061F1274 /* BackButtons.swift */; };
 		EE568B69399E265371EA67C7 /* McFlyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */; };
+		F16F5D8A995172337B9118C5 /* GamesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A1E14F7EC45D782EC88EB1 /* GamesView.swift */; };
+		F525524164AEB7667290FB0F /* PenguinArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */; };
+		F6E1122D9AEE36B2F2616485 /* Game2048View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65C28066EAE7E32623A3DD48 /* Game2048View.swift */; };
 		F9F2D7C5D388A3C7E7A28FAA /* GradientTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F02A671863D160CFB9F6500 /* GradientTile.swift */; };
 /* End PBXBuildFile section */
 
@@ -59,19 +70,27 @@
 		05B5FD45B1920066405A6BBC /* McFly.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = McFly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		069E669C94BA321619ADCBDC /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		08BAFC5D9C7398731AB90318 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		0991509DB189B4C7CB3CBF44 /* ScoopShopView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopShopView.swift; sourceTree = "<group>"; };
+		0AB804C35F74D18D665B6668 /* TicTacToeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicTacToeView.swift; sourceTree = "<group>"; };
 		1AE7164F0DB044B5F0D0812B /* DisplaysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaysView.swift; sourceTree = "<group>"; };
+		1B369E9F8FCEDA9CF8DCA72C /* TrafficJamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficJamView.swift; sourceTree = "<group>"; };
 		2333BC1BF2A56D73A429ED6E /* AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentsView.swift; sourceTree = "<group>"; };
 		2467E9D18042438FB3095DB8 /* WeatherLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherLayer.swift; sourceTree = "<group>"; };
 		2527F7DF175D3D8B53C1A539 /* AmbientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientView.swift; sourceTree = "<group>"; };
 		27EE7599A570B363E70AC7B5 /* VoiceListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceListener.swift; sourceTree = "<group>"; };
+		2B9BDC6503610E4CFF61CE6D /* GameControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameControls.swift; sourceTree = "<group>"; };
 		2DA89C609E9FAA5C294B0BA5 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		366B89003BD6E69BF364205E /* FourInARowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FourInARowView.swift; sourceTree = "<group>"; };
 		39B4EC30B75341278FB8D613 /* VoiceHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceHubView.swift; sourceTree = "<group>"; };
 		4A026F1F0B42DA7FF3B1DBC9 /* Backdrop.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Backdrop.metal; sourceTree = "<group>"; };
 		4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardsView.swift; sourceTree = "<group>"; };
 		4EF7FF78E7284330ACF76157 /* GradientTile.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GradientTile.metal; sourceTree = "<group>"; };
+		50A1E14F7EC45D782EC88EB1 /* GamesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamesView.swift; sourceTree = "<group>"; };
 		57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraGlow.swift; sourceTree = "<group>"; };
+		5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenguinArt.swift; sourceTree = "<group>"; };
 		622F972CFB8950E0AADFBB67 /* QRScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScanner.swift; sourceTree = "<group>"; };
 		638567AD540315D470FEDD13 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
+		65C28066EAE7E32623A3DD48 /* Game2048View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Game2048View.swift; sourceTree = "<group>"; };
 		78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGlow.swift; sourceTree = "<group>"; };
 		7B4DA5C7573FB6B6376939E2 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		7BEA683B475142D05DCA8A58 /* WeatherModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModel.swift; sourceTree = "<group>"; };
@@ -83,12 +102,15 @@
 		9542FCF91E0153CF407BB112 /* NewsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsView.swift; sourceTree = "<group>"; };
 		9B3CBF241787C44CC8F35BEC /* McFlyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyKit; path = McFlyKit; sourceTree = SOURCE_ROOT; };
 		A11303012ABFF57EB16B68DE /* Backdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backdrop.swift; sourceTree = "<group>"; };
+		A2726939AF4521FF5E31A61A /* PenguinMarchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PenguinMarchView.swift; sourceTree = "<group>"; };
 		A9BAA4A7AC4466BEACD51860 /* GlanceTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlanceTiles.swift; sourceTree = "<group>"; };
 		AECB615DE9B1AD979C55C308 /* LocationTimeZone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationTimeZone.swift; sourceTree = "<group>"; };
 		BB040B63D6EE9244E75A7FE6 /* VoiceSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSpeaker.swift; sourceTree = "<group>"; };
 		BCC1FAB6DBA04545DAD05CF2 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		BE738AF4E2C80B5FC057D2B5 /* AuroraGlow.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = AuroraGlow.metal; sourceTree = "<group>"; };
+		C2EC8E88993935E9D6827E1D /* ScoopArt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoopArt.swift; sourceTree = "<group>"; };
 		C368950BE03E7FDA21BEBCCC /* BuiltInVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInVoice.swift; sourceTree = "<group>"; };
+		C82E056470CE0D53151B873A /* GameArt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameArt.swift; sourceTree = "<group>"; };
 		CD54E0C04D537395BD4BAE32 /* McFlyVoice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = McFlyVoice; path = McFlyVoice; sourceTree = SOURCE_ROOT; };
 		D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D60CD29D7101DC7226714153 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
@@ -131,6 +153,7 @@
 				E7D8CDC30E03C6AB224D384F /* Info.plist */,
 				D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */,
 				F2458D6B94D770EC8E90A2E6 /* App */,
+				599BD45D749FFB28648117DA /* Games */,
 				3D05ED827F94CC52AB1D22EB /* Theme */,
 				49E5C3BDFCFE7932F8688F3D /* Views */,
 				D54F5295E2C0E0F2085703BF /* Voice */,
@@ -192,6 +215,24 @@
 				05B5FD45B1920066405A6BBC /* McFly.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		599BD45D749FFB28648117DA /* Games */ = {
+			isa = PBXGroup;
+			children = (
+				366B89003BD6E69BF364205E /* FourInARowView.swift */,
+				65C28066EAE7E32623A3DD48 /* Game2048View.swift */,
+				C82E056470CE0D53151B873A /* GameArt.swift */,
+				2B9BDC6503610E4CFF61CE6D /* GameControls.swift */,
+				50A1E14F7EC45D782EC88EB1 /* GamesView.swift */,
+				5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */,
+				A2726939AF4521FF5E31A61A /* PenguinMarchView.swift */,
+				C2EC8E88993935E9D6827E1D /* ScoopArt.swift */,
+				0991509DB189B4C7CB3CBF44 /* ScoopShopView.swift */,
+				0AB804C35F74D18D665B6668 /* TicTacToeView.swift */,
+				1B369E9F8FCEDA9CF8DCA72C /* TrafficJamView.swift */,
+			);
+			path = Games;
 			sourceTree = "<group>";
 		};
 		698CE8D6A81EE1E38FBDD0D9 = {
@@ -329,6 +370,11 @@
 				92FB8C31807C612B3C0CA2EE /* DashboardBuilderView.swift in Sources */,
 				DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */,
 				A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */,
+				D5C0E864E105BB5EA4BF321B /* FourInARowView.swift in Sources */,
+				F6E1122D9AEE36B2F2616485 /* Game2048View.swift in Sources */,
+				742949E106ED4D8BFB645F95 /* GameArt.swift in Sources */,
+				82046F6416646A3C1AAC0DEC /* GameControls.swift in Sources */,
+				F16F5D8A995172337B9118C5 /* GamesView.swift in Sources */,
 				97F23CB091DDC90EBB70BA3C /* GlanceTiles.swift in Sources */,
 				9B155D7B3D0DAD5AAFDC992A /* GradientTile.metal in Sources */,
 				F9F2D7C5D388A3C7E7A28FAA /* GradientTile.swift in Sources */,
@@ -338,12 +384,18 @@
 				5E42F488FE1CD32F40926EBE /* MarketsView.swift in Sources */,
 				CAAA01B47BE2782961A8E827 /* McFlyApp.swift in Sources */,
 				855A1069A25AE4905144CA99 /* NewsView.swift in Sources */,
+				F525524164AEB7667290FB0F /* PenguinArt.swift in Sources */,
+				0F027E95625CBE499622CCC1 /* PenguinMarchView.swift in Sources */,
 				0AE2AF15475FFB89621BAB26 /* ProjectsView.swift in Sources */,
 				0D9A4D0DDB00C567539ECF10 /* QRScanner.swift in Sources */,
+				B664A6A1DBCE2C1204F03407 /* ScoopArt.swift in Sources */,
+				09DA3344789C93B43C05A29D /* ScoopShopView.swift in Sources */,
 				D73FF3DDA9C43A362ABEF107 /* ScreenAwake.swift in Sources */,
 				97E9186C97F5928C5BB90B81 /* SettingsView.swift in Sources */,
 				1D76897E71772E824308AC19 /* SignInView.swift in Sources */,
 				7CE1E42A606557E789079024 /* Theme.swift in Sources */,
+				36370216C9065F69B76AA3ED /* TicTacToeView.swift in Sources */,
+				52BAAAFED0D8B0B88C6CB115 /* TrafficJamView.swift in Sources */,
 				3D61DB160852C5DF5374EC79 /* VoiceGlow.swift in Sources */,
 				A985F080DBDA85AE23C3019C /* VoiceHubView.swift in Sources */,
 				403B2E4ACBFB949C7AF4FF38 /* VoiceListener.swift in Sources */,

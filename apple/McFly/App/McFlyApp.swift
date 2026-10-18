@@ -114,7 +114,7 @@ private struct UnreachableView: View {
 
 /// The screens, in sidebar order on the Mac and tab order on the iPhone.
 enum Screen: String, CaseIterable, Identifiable, Hashable {
-    case home, briefs, markets, news, voice, projects, dashboards, calendar, displays, agents, settings
+    case home, briefs, markets, news, voice, projects, dashboards, calendar, games, displays, agents, settings
 
     var id: Self { self }
 
@@ -128,6 +128,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
         case .projects: return "Projects"
         case .dashboards: return "Dashboards"
         case .calendar: return "Calendar"
+        case .games: return "Games"
         case .displays: return "Displays"
         case .agents: return "Agents"
         case .settings: return "Settings"
@@ -144,6 +145,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
         case .projects: return "folder.fill"
         case .dashboards: return "rectangle.3.group.fill"
         case .calendar: return "calendar"
+        case .games: return "gamecontroller.fill"
         case .displays: return "tv"
         case .agents: return "cpu"
         case .settings: return "gearshape.fill"
@@ -154,9 +156,11 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
     /// which makes five, as many as an iPhone's tab bar shows. Voice is also
     /// Home's Ask bar.
     static let tabs: [Screen] = [.home, .briefs, .markets, .news]
-    static let more: [Screen] = [.projects, .dashboards, .calendar, .voice, .displays, .agents, .settings]
-    /// The Mac sidebar's groups.
+    static let more: [Screen] = [.projects, .dashboards, .calendar, .voice, .games, .displays, .agents, .settings]
+    /// The Mac sidebar's groups, and More's on the iPhone: the feeds, the
+    /// display's Games tab, and managing the account.
     static let feedScreens: [Screen] = [.home, .briefs, .markets, .news, .projects, .dashboards, .calendar, .voice]
+    static let playScreens: [Screen] = [.games]
     static let manageScreens: [Screen] = [.displays, .agents, .settings]
 
     @ViewBuilder
@@ -170,6 +174,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
         case .projects: ProjectsView()
         case .dashboards: DashboardsView()
         case .calendar: CalendarView()
+        case .games: GamesView()
         case .displays: DisplaysView()
         case .agents: AgentsView()
         case .settings: SettingsView()
@@ -182,7 +187,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
 struct MainView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selection: Screen = .home
+    @State private var selection: Screen = GameLaunch.requested != nil ? .games : .home
 
     var body: some View {
         Group {
@@ -233,6 +238,11 @@ struct MainView: View {
                         Label(screen.title, systemImage: screen.icon).tag(screen)
                     }
                 }
+                Section("Play") {
+                    ForEach(Screen.playScreens) { screen in
+                        Label(screen.title, systemImage: screen.icon).tag(screen)
+                    }
+                }
                 Section("Manage") {
                     ForEach(Screen.manageScreens) { screen in
                         Label(screen.title, systemImage: screen.icon).tag(screen)
@@ -257,7 +267,12 @@ struct MoreView: View {
     var body: some View {
         List {
             Section("Feeds") {
-                ForEach(Screen.more.filter { !Screen.manageScreens.contains($0) }) { screen in
+                ForEach(Screen.more.filter { Screen.feedScreens.contains($0) }) { screen in
+                    NavigationLink(value: screen) { Label(screen.title, systemImage: screen.icon) }
+                }
+            }
+            Section("Play") {
+                ForEach(Screen.playScreens) { screen in
                     NavigationLink(value: screen) { Label(screen.title, systemImage: screen.icon) }
                 }
             }
@@ -275,6 +290,10 @@ struct MoreView: View {
             get: { app.pendingPairCode != nil && selection == .displays },
             set: { if !$0 { selection = .projects } }
         )) { DisplaysView() }
+        // `-McFlyGame <name>` (screenshots) opens the Games list first.
+        .navigationDestination(isPresented: $showGames) { GamesView() }
     }
+
+    @State private var showGames = GameLaunch.requested != nil
 }
 #endif

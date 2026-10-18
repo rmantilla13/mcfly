@@ -54,6 +54,18 @@ the genre of Lemmings and Pingus, sharing no code, pictures, sounds, levels
 or names with either. `tests/tst_penguins.cpp` replays a recorded solution
 for every level to prove it can be won.
 
+The iPhone and Mac app has all of these but Same Game and Maroon, written
+again in Swift (`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
+`apple/McFly/Games` for the screens), with the same rules, levels and
+credits. 2048's and Rush Hour's Swift carry their MIT notices at the top of
+the file, and the app shows them under how to play. `apple/McFlyKit/Tests`
+hold the Swift to the display: Four in a Row's search against
+`FourInARowEngine`'s node counts, Scoop Shop's orders against `scoops.js`,
+and Penguin March's terrain and solution replays, cell for cell and tick for
+tick, against `PenguinSim`. The app's Scoop Shop is the display's as of
+f8fc4d6 (four flavours, three toppings, the 0.9 pace); the seven-and-seven
+menu, the furious customers and the parlour look are still to come there.
+
 ## Saved scores
 
 Same Game, 2048, Traffic Jam, Scoop Shop and Penguin March keep high scores,

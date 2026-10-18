@@ -340,6 +340,9 @@ person's account (email + password or magic link, supabase-swift) and then:
   pickers from `admin_dashboard_sources`, a preview from
   `admin_preview_dashboard`, saved with `admin_save_dashboard`. The demo
   draws made boards itself (`DashboardDrawing`).
+- plays the display's games (Games), but for Same Game and Maroon in
+  Trouble: on the device only, scores and progress in `UserDefaults`, nothing
+  sent to the server.
 
 ## 5. Voice service (Pi)
 

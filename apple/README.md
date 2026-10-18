@@ -146,12 +146,19 @@ says which.
 | **Projects** | `projects` with their `project_updates` embedded: a card per project with status, progress, summary, next step and the last update; detail with the update timeline (`admin_project_updates` for more of it). |
 | **Dashboards** | `dashboards`, one at a time with a chip row to switch: the `widgets` array rendered by type: metric, status, progress, list, text, chart. An unknown type shows as a placeholder rather than hiding the dashboard. |
 | **Calendar** | `events` from yesterday to two months out: a day list (agenda), and a week view. All-day and multi-day events sit on every day they span. |
+| **Games** | The display's Games tab: a card each for Traffic Jam, Tic-tac-toe, Four in a Row, 2048, Scoop Shop and Penguin March (Same Game and Maroon in Trouble, the Qt demos, are the display's only). A game opens full screen (a sheet on the Mac) with an X to close it and (i) for how to play and its credit, as on the display; a game against the clock (Scoop Shop, Penguin March) waits while how to play is open or the app is away. The rules are the kit's (`McFlyKit/Sources/McFlyKit/Games`), the same as the display's and tested to be: Four in a Row's look-ahead weighs the same positions as the display's C++ engine, and Penguin March's terrain and every level's recorded solution replay exactly as on the display. Scoop Shop is the display's as of f8fc4d6 (four flavours and three toppings at the 0.9 pace), before its menu grew and it became a parlour. 2048's best and game in progress, Traffic Jam's and Penguin March's level and each level's best, and Scoop Shop's best and shopkeeper are kept in `UserDefaults` (`mcfly.games.*`). |
 | **Settings** | Account email and Sign out, display name and timezone (**Use my location** fills it from where the device is: one approximate position, the same the weather tile uses, turned into a zone by the system geocoder; Save still writes it), **Answers from** (Claude or Grok, `assistant_provider`), all through `admin_get_settings` / `admin_update_settings`; app version, which speech engine this system uses. |
 
 On the iPhone, Home, Briefs, Markets and News are tabs, the display's first
-four, and the rest (Projects, Dashboards, Calendar, Voice, Displays, Agents,
-Settings) sit behind **More**: five in all, as many as an iPhone's tab bar
-shows. Voice is also Home's Ask bar. On the Mac they're a sidebar.
+four, and the rest (Projects, Dashboards, Calendar, Voice, Games, Displays,
+Agents, Settings) sit behind **More**, Games in a **Play** section of its
+own: five tabs in all, as many as an iPhone's tab bar shows. Voice is also
+Home's Ask bar. On the Mac they're a sidebar, with the same Play section.
+
+`-McFlyGame traffic|tictactoe|fourinarow|2048|scoops|penguins` (or `list`)
+opens on the Games list with that game open, for screenshots, and
+`-McFlyGameClock 0.1` runs Scoop Shop's and Penguin March's clocks at a
+tenth of the speed, for checking them by hand.
 
 ## Look
 
