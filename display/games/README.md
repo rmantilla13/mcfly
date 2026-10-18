@@ -42,10 +42,11 @@ button in glass, and a second shape for Traffic Jam, tic-tac-toe and 2048:
 on a stage much wider than tall (the 7" panel) the board sits on the left
 with its controls beside it. Same Game and Maroon are unchanged.
 
-Scoop Shop (`qml/games/ScoopShop.qml`, drawn by `ScoopTreat.qml` and
-`ScoopCrew.qml`, its rules in `scoops.js`) is written for this app too, and
-so is everything in it: Pip the penguin, Lotl the axolotl, the customers and
-the ice cream are QML shapes, not artwork from anywhere else.
+Scoop Shop (`qml/games/ScoopShop.qml`, drawn by `ScoopTreat.qml`,
+`ScoopCrew.qml`, `ScoopStock.qml` and `ScoopAwning.qml`, its rules in
+`scoops.js`) is written for this app too, and so is everything in it: Pip the
+penguin, Lotl the axolotl, the customers, the parlour and the ice cream are
+QML shapes, not artwork from anywhere else.
 
 Penguin March (`qml/games/PenguinMarch.qml`, with its rules, levels and
 drawing in `src/games/`) is written for this app too: an original game in

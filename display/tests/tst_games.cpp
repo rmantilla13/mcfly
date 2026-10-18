@@ -1122,9 +1122,13 @@ private slots:
             eval(game.get(), QStringLiteral("seat(%1, { base: 'cone', scoops: ['mint', 'chocolate', 'strawberry'], toppings: ['cherry', 'wafer'] })").arg(i));
         eval(game.get(), QStringLiteral("advance(15000); pickBase('cup'); addScoop('vanilla'); addTopping('sprinkles')"));
         const QList<std::pair<QSize, QString>> stages = {
+            // Full screen: the 7", the 10.1", portrait and a TV.
+            {{768, 372}, QStringLiteral("side")}, {{1152, 752}, QStringLiteral("side")},
+            {{680, 1160}, QStringLiteral("tall")}, {{1752, 1000}, QStringLiteral("side")},
+            // In a page, as games were laid out before, and a squarer stage.
             {{768, 296}, QStringLiteral("side")}, {{816, 752}, QStringLiteral("square")},
             {{680, 1076}, QStringLiteral("tall")}, {{1312, 1000}, QStringLiteral("square")},
-            {{1000, 560}, QStringLiteral("side")}, {{768, 296}, QStringLiteral("side")}};
+            {{768, 372}, QStringLiteral("side")}};
         for (const auto &[size, shape] : stages) {
             game->setSize(size);
             QTest::qWait(30);
@@ -1136,13 +1140,13 @@ private slots:
         // Paused, and closed: their buttons are big enough too.
         eval(game.get(), QStringLiteral("pause()"));
         QVERIFY(!game->property("playing").toBool());
-        for (const QSize size : {QSize(768, 296), QSize(1312, 1000)}) {
+        for (const QSize size : {QSize(768, 372), QSize(1752, 1000)}) {
             game->setSize(size);
             QTest::qWait(30);
             checkTargets(game.get(), 2);
         }
         QVERIFY(eval(game.get(), QStringLiteral("endShift(); phase === 'over'")).toBool());
-        for (const QSize size : {QSize(768, 296), QSize(680, 1076)}) {
+        for (const QSize size : {QSize(768, 372), QSize(1152, 752), QSize(680, 1160), QSize(1752, 1000)}) {
             game->setSize(size);
             QTest::qWait(30);
             checkTargets(game.get(), 2);

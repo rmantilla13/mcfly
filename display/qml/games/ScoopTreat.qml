@@ -20,7 +20,9 @@ Item {
     property real lift: 0
 
     readonly property real u: Math.max(0, Math.min(width / 5, height / units))
-    readonly property bool dark: Theme.dark
+    // Drawn on the dark canvas: the rims lighten. A ticket is paper, light
+    // in both themes, and sets it false.
+    property bool dark: Theme.dark
 
     // Drawn in software (the offscreen pictures, a panel with no GPU), a
     // Shape that moves leaves its old place painted and paints past a

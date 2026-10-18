@@ -58,7 +58,7 @@ Item {
     readonly property int leaveMs: 700
 
     readonly property var kinds: ["bear", "bunny", "cat", "frog", "chick"]
-    readonly property var tints: ({ bear: "#C49A6C", bunny: "#EEE6F4", cat: "#F3B36B", frog: "#86CF7E", chick: "#F7D65A" })
+    readonly property var tints: ({ bear: "#C49A6C", bunny: "#E6DCF0", cat: "#F3B36B", frog: "#86CF7E", chick: "#F7D65A" })
     readonly property var names: ({
         cone: qsTr("Cone"), cup: qsTr("Cup"), vanilla: qsTr("Vanilla"), chocolate: qsTr("Chocolate"),
         strawberry: qsTr("Strawberry"), mint: qsTr("Mint"), sprinkles: qsTr("Sprinkles"),
@@ -368,9 +368,9 @@ Item {
     function layout(w, h) {
         const g = gap, pg = padGap, t = Theme.touchTarget
         if (w > h * 1.4) {
-            const sw = Math.round(Math.min(300, Math.max(200, w * 0.28)))
+            const sw = Math.round(Math.min(520, Math.max(200, w * 0.3)))
             const lw = w - sw - g
-            const bh = Math.max(t, Math.min(96, Math.floor((h - g) * 0.22)))
+            const bh = Math.max(t, Math.min(112, Math.floor((h - g) * 0.22)))
             const ph = 2 * bh + pg
             return {
                 shape: "side",
@@ -501,7 +501,24 @@ Item {
         }
     }
 
-    // ---- The counter: a seat for each customer, a ticket over their head.
+    // ---- The shop's colours: a parlour by day, the same one lit at night.
+    readonly property var look: Theme.dark ? ({
+        wall: "#2E2538", wallStripe: "#382C45", awning: "#C9557F", awningBetween: "#EADDE4", awningFrame: "#83375A",
+        rail: "#8E98A4", marble: "#4C4852", vein: "#5D5865", lip: "#3D7A69", lipEdge: "#2C5E50",
+        tile: "#2D2C33", grout: "#1E1D22", board: "#22302A", boardFrame: "#8C6A48",
+        caseBody: "#1F343D", pane: "#1A2B33", shelf: "#7A5A3E", item: "#2B2622", plaque: "#F4ECDF", plaqueInk: "#A8335F"
+    }) : ({
+        wall: "#FFF3EE", wallStripe: "#FCE2EB", awning: "#F28DB2", awningBetween: "#FFFFFF", awningFrame: "#D65C8A",
+        rail: "#A8B1BA", marble: "#F7F3EE", vein: "#E6DFD5", lip: "#7CCBB3", lipEdge: "#5DB59B",
+        tile: "#FFFFFF", grout: "#EEE8E1", board: "#2E3D36", boardFrame: "#B08257",
+        caseBody: "#D3EBF2", pane: "#F1FAFC", shelf: "#C9965F", item: "#FFF8EE", plaque: "#FFFBF2", plaqueInk: "#C2457A"
+    })
+    // Tickets are paper, light in both themes, so their inks are fixed.
+    readonly property var paper: ({ sheet: "#FFFBF2", shade: "#EFE5D1", ink: "#3B3530", faint: "#9A9087",
+                                    good: "#2E9D68", wait: "#E39A2D", bad: "#C9381F" })
+    readonly property var shirts: ["#5B8DEF", "#F2B84B", "#3DB37A", "#E5484D", "#8E7CE6", "#EF8A6F"]
+
+    // ---- The counter: the shop's front, a ticket on the rail over each seat.
     Item {
         id: counter
         visible: game.showing
@@ -509,10 +526,38 @@ Item {
         y: game.geo.counter.y
         width: game.geo.counter.w
         height: game.geo.counter.h
-        readonly property real slotWidth: game.shape === "side" ? width / Scoops.MAX_SEATS : Math.min(width / Scoops.MAX_SEATS, 320)
+        readonly property real slotWidth: Math.min(width / Scoops.MAX_SEATS, game.shape === "side" ? 300 : 320)
         readonly property real slotsX: (width - slotWidth * Scoops.MAX_SEATS) / 2
-        readonly property real critterHeight: Math.min(slotWidth * 0.62, height * (game.shape === "side" ? 0.3 : 0.36))
-        readonly property real band: Math.round(critterHeight * 0.3)
+        readonly property real critterHeight: Math.min(slotWidth * 0.58, height * (game.shape === "side" ? 0.28 : 0.33))
+        readonly property real band: Math.max(12, Math.round(critterHeight * 0.34))
+        readonly property real awningHeight: Math.round(Math.max(14, Math.min(64, height * 0.11)))
+        // Where the tickets hang from, under the awning.
+        readonly property real railY: awningHeight - Math.round(awningHeight * 0.18)
+
+        Wallpaper {
+            width: parent.width
+            height: parent.height - counter.band * 0.5
+        }
+        ScoopAwning {
+            x: Theme.radius
+            width: parent.width - 2 * Theme.radius
+            height: counter.awningHeight
+            stripeWidth: Theme.mini ? 24 : 40
+            stripe: game.look.awning
+            between: game.look.awningBetween
+            frame: game.look.awningFrame
+            plaque: game.look.plaque
+            plaqueInk: game.look.plaqueInk
+            sign: qsTr("Pip & Lotl's")
+        }
+        Rectangle {
+            x: Theme.radius
+            y: counter.railY
+            width: parent.width - 2 * Theme.radius
+            height: Math.max(2, Math.round(counter.awningHeight * 0.08))
+            radius: height / 2
+            color: game.look.rail
+        }
 
         Repeater {
             model: Scoops.MAX_SEATS
@@ -546,22 +591,70 @@ Item {
                 NumberAnimation { id: arriveAnim; target: seat; property: "arrive"; from: 0; to: 1; duration: Theme.enter; easing.type: Easing.OutCubic }
                 NumberAnimation { id: leaveAnim; target: seat; property: "leave"; from: 0; to: 1; duration: game.leaveMs - 100; easing.type: Easing.InQuad }
 
-                // The ticket: what they'd like, and how long they'll wait.
-                Rectangle {
-                    id: ticket
-                    x: Theme.mini ? 4 : 8
+                Critter {
+                    visible: seat.customer !== null
+                    width: counter.critterHeight * 10 / 9
+                    height: counter.critterHeight
+                    x: (parent.width - width) / 2
+                    // Coming up to the counter and going: a little rise and fall behind it.
+                    y: parent.height - height + (1 - seat.arrive + seat.leave) * counter.band * 0.4 - counter.band * 0.7
+                    opacity: seat.arrive * (1 - seat.leave)
+                    kind: seat.customer ? seat.customer.kind : "bear"
+                    tint: game.tints[kind] || "#C49A6C"
+                    shirt: game.shirts[seat.customerId % game.shirts.length]
+                    face: seat.gone === "right" ? "happy" : seat.gone ? "cross"
+                        : seat.patienceLeft > 0.5 ? "smile" : seat.patienceLeft > 0.25 ? "flat" : "frown"
+                }
+
+                // The ticket, clipped to the rail: what they'd like, and how
+                // long they'll wait.
+                Item {
+                    id: ticketBox
+                    readonly property real teeth: Theme.mini ? 6 : 9
+                    x: Theme.mini ? 5 : 10
+                    y: counter.railY + 3
                     width: parent.width - 2 * x
-                    height: parent.height - counter.critterHeight - 4
-                    radius: Theme.radiusSm
-                    color: Theme.surface
+                    height: parent.height - y - counter.critterHeight - teeth
                     visible: seat.customer !== null
                     opacity: seat.arrive * (1 - seat.leave)
-                    border.width: seat.gone === "wrong" || seat.gone === "late" ? 3 : 0
-                    border.color: Theme.danger
+                    rotation: seat.index % 2 ? 1.2 : -1.2
 
+                    Rectangle {
+                        id: ticket
+                        width: parent.width
+                        height: parent.height
+                        radius: 3
+                        color: game.paper.sheet
+                        border.width: seat.gone === "wrong" || seat.gone === "late" ? 3 : 0
+                        border.color: game.paper.bad
+                    }
+                    // A torn bottom edge.
+                    Repeater {
+                        model: Math.max(0, Math.floor(ticketBox.width / ticketBox.teeth))
+                        delegate: Rectangle {
+                            required property int index
+                            readonly property real side: ticketBox.teeth * 0.72
+                            x: index * ticketBox.teeth + (ticketBox.teeth - side) / 2 + (ticketBox.width - Math.floor(ticketBox.width / ticketBox.teeth) * ticketBox.teeth) / 2
+                            y: ticketBox.height - side / 2
+                            width: side
+                            height: side
+                            rotation: 45
+                            color: game.paper.sheet
+                        }
+                    }
+                    Label {
+                        visible: !Theme.mini && seat.gone === ""
+                        x: seat.pad
+                        y: seat.pad - 2
+                        text: "#" + seat.customerId
+                        color: game.paper.faint
+                        font.pixelSize: Theme.fontXs
+                        font.weight: Font.DemiBold
+                    }
                     ScoopTreat {
                         // Handed over (or not): the ticket says how it went instead.
                         visible: seat.gone === ""
+                        dark: false
                         x: seat.pad
                         y: seat.pad
                         width: parent.width - 2 * seat.pad
@@ -573,72 +666,88 @@ Item {
                     Rectangle {
                         id: patience
                         x: seat.pad + 2
-                        y: parent.height - height - seat.pad
+                        y: parent.height - height - seat.pad * 0.6
                         width: parent.width - 2 * x
-                        height: Theme.mini ? 8 : 10
+                        height: Theme.mini ? 7 : 10
                         radius: height / 2
-                        color: Theme.sunken
+                        color: game.paper.shade
                         Rectangle {
                             width: parent.width * seat.patienceLeft
                             height: parent.height
                             radius: height / 2
-                            color: seat.patienceLeft > 0.5 ? Theme.success : seat.patienceLeft > 0.25 ? Theme.warning : Theme.danger
+                            color: seat.patienceLeft > 0.5 ? game.paper.good : seat.patienceLeft > 0.25 ? game.paper.wait : game.paper.bad
+                        }
+                    }
+                    // How it went, on the ticket: the points, or what went wrong, rising.
+                    Label {
+                        visible: seat.gone !== ""
+                        x: seat.pad
+                        width: parent.width - 2 * seat.pad
+                        y: (parent.height - height) / 2 - seat.leave * parent.height * 0.2
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: seat.gone === "right" ? "+" + (seat.customer ? seat.customer.points : 0)
+                            : seat.gone === "wrong" ? qsTr("Wrong order") : qsTr("Too slow")
+                        color: seat.gone === "right" ? game.paper.good : game.paper.bad
+                        font.pixelSize: seat.gone === "right" ? Theme.fontXl : Theme.fontMd
+                        font.weight: Font.Bold
+                        opacity: 1 - seat.leave * seat.leave
+                    }
+                    // The clip on the rail.
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: -height * 0.55
+                        width: Theme.mini ? 14 : 22
+                        height: Theme.mini ? 8 : 12
+                        radius: 2
+                        color: "#5B6470"
+                        Rectangle {
+                            x: parent.width * 0.2
+                            y: parent.height * 0.25
+                            width: parent.width * 0.6
+                            height: Math.max(1, parent.height * 0.18)
+                            color: "white"
+                            opacity: 0.35
                         }
                     }
                 }
-                // The ticket's tail, down to the customer.
-                Rectangle {
-                    visible: ticket.visible
-                    opacity: ticket.opacity
-                    x: (parent.width - width) / 2
-                    y: ticket.height - height / 2 - 1
-                    width: Theme.mini ? 10 : 16
-                    height: width
-                    rotation: 45
-                    color: Theme.surface
-                }
 
-                Critter {
-                    visible: seat.customer !== null
-                    width: counter.critterHeight * 10 / 9
-                    height: counter.critterHeight
-                    x: (parent.width - width) / 2
-                    // Coming up to the counter and going: a little rise and fall behind it.
-                    y: parent.height - height + (1 - seat.arrive + seat.leave) * counter.band * 0.6 - counter.band * 0.4
-                    opacity: seat.arrive * (1 - seat.leave)
-                    kind: seat.customer ? seat.customer.kind : "bear"
-                    tint: game.tints[kind] || "#C49A6C"
-                    face: seat.gone === "right" ? "happy" : seat.gone ? "cross"
-                        : seat.patienceLeft > 0.5 ? "smile" : seat.patienceLeft > 0.25 ? "flat" : "frown"
-                }
-
-                // How it went, on the ticket: the points, or what went wrong, rising.
-                Label {
-                    visible: seat.gone !== ""
-                    x: ticket.x + seat.pad
-                    width: ticket.width - 2 * seat.pad
-                    y: (ticket.height - height) / 2 - seat.leave * ticket.height * 0.2
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    text: seat.gone === "right" ? "+" + (seat.customer ? seat.customer.points : 0)
-                        : seat.gone === "wrong" ? qsTr("Wrong order") : qsTr("Too slow")
-                    color: seat.gone === "right" ? Theme.success : Theme.danger
-                    font.pixelSize: seat.gone === "right" ? Theme.fontXl : Theme.fontMd
-                    font.weight: Font.Bold
-                    opacity: 1 - seat.leave * seat.leave
-                }
-
-                // A seat that opens later.
-                Label {
+                // A seat that opens later: a little sign on the rail.
+                Item {
                     visible: !seat.open && game.phase === "playing"
                     anchors.horizontalCenter: parent.horizontalCenter
-                    y: ticket.height * 0.5
-                    width: parent.width - 16
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    text: qsTr("Opens at level %1").arg(seat.index < 3 ? 3 : 5)
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.fontXs
+                    y: counter.railY
+                    width: Math.min(parent.width - 12, closedLabel.implicitWidth + 20)
+                    height: closedLabel.height + 12 + 14
+                    Repeater {
+                        model: [0.2, 0.8]
+                        delegate: Rectangle {
+                            required property real modelData
+                            x: parent.width * modelData
+                            width: 1.5
+                            height: 16
+                            color: game.look.rail
+                        }
+                    }
+                    Rectangle {
+                        y: 14
+                        width: parent.width
+                        height: closedLabel.height + 12
+                        radius: 4
+                        color: game.paper.sheet
+                        border.width: 1
+                        border.color: game.paper.shade
+                        Label {
+                            id: closedLabel
+                            anchors.centerIn: parent
+                            width: Math.min(implicitWidth, seat.width - 32)
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: qsTr("Opens at level %1").arg(seat.index < 3 ? 3 : 5)
+                            color: game.paper.ink
+                            font.pixelSize: Theme.fontXs
+                        }
+                    }
                 }
 
                 TapHandler {
@@ -649,23 +758,47 @@ Item {
             }
         }
 
-        // The counter top, in front of the customers.
-        Rectangle {
+        // The counter, in front of the customers: a marble top, a mint
+        // front rounded with the wall's bottom corners.
+        Item {
             y: parent.height - counter.band
             width: parent.width
             height: counter.band
-            radius: Math.min(Theme.radiusSm, height / 2)
-            color: Theme.surface
             Rectangle {
-                x: parent.radius
-                width: parent.width - 2 * parent.radius
-                height: 4
-                color: "#56C3A0"
+                width: parent.width
+                height: parent.height
+                topLeftRadius: 4
+                topRightRadius: 4
+                bottomLeftRadius: Theme.radius
+                bottomRightRadius: Theme.radius
+                color: game.look.lip
+            }
+            Rectangle {
+                width: parent.width
+                height: Math.round(parent.height * 0.55)
+                topLeftRadius: 4
+                topRightRadius: 4
+                color: game.look.marble
+                border.width: 1
+                border.color: game.look.vein
+                Repeater {
+                    model: [[0.12, 0.4, 0.14, 8], [0.38, 0.6, 0.1, -6], [0.66, 0.3, 0.16, 5], [0.86, 0.55, 0.08, -9]]
+                    delegate: Rectangle {
+                        required property var modelData
+                        x: parent.width * modelData[0]
+                        y: parent.height * modelData[1]
+                        width: parent.width * modelData[2]
+                        height: 1.5
+                        rotation: modelData[3]
+                        color: game.look.vein
+                    }
+                }
             }
         }
     }
 
-    // ---- The treat being made, and who's making it
+    // ---- The prep counter: tiles behind, the shopkeeper behind the
+    // counter, the treat being made on it, and a chalkboard for what's next.
     Rectangle {
         id: station
         visible: game.showing
@@ -674,41 +807,165 @@ Item {
         width: game.geo.station.w
         height: game.geo.station.h
         radius: Theme.radius
-        color: Theme.surface
+        color: game.look.grout
         readonly property real pad: Theme.mini ? 10 : 16
+        readonly property real benchHeight: Math.round(Math.max(26, Math.min(90, height * 0.16)))
+        readonly property real benchY: height - benchHeight
+        // The top of what stands on the bench, for the menu board above it.
+        readonly property real standTop: Math.min(crew.y, treat.y)
 
-        Label {
-            id: hintLabel
-            x: station.pad
-            y: station.pad - 2
-            width: parent.width - 2 * station.pad
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideRight
-            text: game.hint ? game.hint
-                : game.news ? game.news
-                : !game.build.base ? qsTr("Cone or cup?")
-                : !game.build.scoops.length ? qsTr("Now the scoops")
-                : qsTr("Tap a customer to serve")
-            color: game.hint ? Theme.warningInk : game.news ? Theme.accent : Theme.textMuted
-            font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
-            font.weight: game.hint || game.news ? Font.DemiBold : Font.Normal
+        // Subway tiles, staggered row by row, in from the rounded corners
+        // (0.3 of the radius clears the curve).
+        Item {
+            id: tiles
+            x: Math.ceil(station.radius * 0.3)
+            y: Math.ceil(station.radius * 0.3)
+            width: parent.width - 2 * x
+            height: station.benchY - y
+            clip: true
+            readonly property real th: Math.max(14, Math.round(station.height / 13))
+            readonly property real tw: th * 2
+            Repeater {
+                model: Math.max(0, Math.ceil(tiles.height / tiles.th))
+                delegate: Item {
+                    id: tileRow
+                    required property int index
+                    y: index * tiles.th
+                    Repeater {
+                        model: Math.max(0, Math.ceil(tiles.width / tiles.tw) + 1)
+                        delegate: Rectangle {
+                            required property int index
+                            x: index * tiles.tw - (tileRow.index % 2 ? tiles.tw / 2 : 0) + 1
+                            y: 1
+                            width: tiles.tw - 2
+                            height: tiles.th - 2
+                            radius: 2
+                            color: game.look.tile
+                        }
+                    }
+                }
+            }
         }
+        // What's next, on a chalkboard.
+        Rectangle {
+            id: board
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: station.pad - 2
+            width: Math.min(parent.width - 2 * station.pad, hintLabel.implicitWidth + 32)
+            height: hintLabel.implicitHeight + (Theme.mini ? 8 : 14)
+            radius: 6
+            color: game.look.board
+            border.width: Theme.mini ? 3 : 4
+            border.color: game.look.boardFrame
+            Label {
+                id: hintLabel
+                anchors.centerIn: parent
+                width: Math.min(implicitWidth, parent.width - 16)
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: game.hint ? game.hint
+                    : game.news ? game.news
+                    : !game.build.base ? qsTr("Cone or cup?")
+                    : !game.build.scoops.length ? qsTr("Now the scoops")
+                    : qsTr("Tap a customer to serve")
+                color: game.hint ? "#FFB3C1" : game.news ? "#F6D57A" : "#F4F1E8"
+                font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm
+                font.weight: Font.DemiBold
+            }
+        }
+
+        // On a tall wall, the day's scoops on a menu board.
+        Rectangle {
+            id: menu
+            readonly property real space: station.standTop - board.y - board.height - 2 * station.pad
+            readonly property real row: Theme.fontSm + 14
+            visible: space >= height
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: board.y + board.height + station.pad + Math.max(0, (space - height) / 2)
+            width: Math.min(parent.width - 2 * station.pad, 300)
+            height: menuColumn.implicitHeight + 28
+            radius: 8
+            color: game.look.board
+            border.width: 5
+            border.color: game.look.boardFrame
+            Column {
+                id: menuColumn
+                anchors.centerIn: parent
+                width: parent.width - 40
+                spacing: 4
+                Label {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Today's scoops")
+                    color: "#F6D57A"
+                    font.pixelSize: Theme.fontSm
+                    font.weight: Font.Bold
+                    bottomPadding: 4
+                }
+                Repeater {
+                    model: Scoops.FLAVOURS
+                    delegate: Row {
+                        required property string modelData
+                        height: menu.row
+                        spacing: 12
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Theme.fontSm
+                            height: width
+                            radius: width / 2
+                            color: treat.flavours[modelData].fill
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: game.names[modelData]
+                            color: "#F4F1E8"
+                            font.pixelSize: Theme.fontSm
+                        }
+                    }
+                }
+            }
+        }
+
         ScoopCrew {
             id: crew
-            readonly property real room: parent.height - hintLabel.y - hintLabel.height - station.pad
+            // Standing behind the bench: its top hides their feet.
+            readonly property real room: station.benchY + station.benchHeight * 0.55 - board.y - board.height - 8
             x: station.pad
-            width: Math.min(parent.width * 0.42, room * 0.8)
-            height: width * 1.2
-            y: parent.height - height - station.pad
+            height: Math.max(0, Math.min(room, parent.width * 0.48 * 1.2))
+            width: height / 1.2
+            y: station.benchY + station.benchHeight * 0.55 - height
             who: game.worker
             mood: game.mood
         }
+
+        // The bench: a marble top over a mint front, rounded with the card.
+        Rectangle {
+            y: station.benchY
+            width: parent.width
+            height: station.benchHeight
+            bottomLeftRadius: station.radius
+            bottomRightRadius: station.radius
+            color: game.look.lip
+            Rectangle {
+                width: parent.width
+                height: Math.round(parent.height * 0.36)
+                color: game.look.marble
+                Rectangle {
+                    y: parent.height - 1
+                    width: parent.width
+                    height: 1
+                    color: game.look.lipEdge
+                }
+            }
+        }
+
         ScoopTreat {
             id: treat
             x: crew.x + crew.width
-            y: hintLabel.y + hintLabel.height + 4
             width: parent.width - x - station.pad
-            height: parent.height - y - station.pad
+            // On the bench top, in proportion to whoever is making it.
+            height: Math.max(0, Math.min(station.benchY + station.benchHeight * 0.3 - board.y - board.height - 4, crew.height * 1.5))
+            y: station.benchY + station.benchHeight * 0.3 - height
             base: game.build.base
             scoops: game.build.scoops
             toppings: game.build.toppings
@@ -726,9 +983,23 @@ Item {
                 NumberAnimation { target: treat; property: "shake"; to: 0; duration: 50 }
             }
         }
+        // A cone stands in a holder.
+        Rectangle {
+            visible: game.build.base === "cone"
+            x: treat.x + treat.width / 2 - width / 2
+            y: treat.y + treat.height - height * 0.9
+            width: treat.u * 2.2
+            height: treat.u * 1.5
+            radius: width * 0.18
+            gradient: Gradient {
+                GradientStop { position: 0; color: Theme.dark ? "#A9B4BE" : "#D2D9DF" }
+                GradientStop { position: 1; color: Theme.dark ? "#7E8A95" : "#A3AEB8" }
+            }
+        }
     }
 
-    // ---- The buttons: cone, cup, the flavours, the toppings, undo
+    // ---- Behind the counter: the freezer case of tubs, the shelf of cones,
+    // cups and jars, and undo.
     Item {
         id: pad
         visible: game.showing
@@ -736,16 +1007,75 @@ Item {
         y: game.geo.pad.y
         width: game.geo.pad.w
         height: game.geo.pad.h
+        readonly property real bw: game.geo.pad.bw
+        readonly property real bh: game.geo.pad.bh
+        readonly property real g: game.padGap
+        function cell(key) {
+            const k = game.keys.find(k => k[0] === key)
+            return k ? Qt.rect(k[1] * (bw + g), k[2] * (bh + g), k[3] * bw + (k[3] - 1) * g, bh) : Qt.rect(0, 0, 0, 0)
+        }
+        function span(keys) {
+            const cells = keys.map(k => cell(k))
+            const x0 = Math.min(...cells.map(c => c.x)), y0 = Math.min(...cells.map(c => c.y))
+            const x1 = Math.max(...cells.map(c => c.x + c.width)), y1 = Math.max(...cells.map(c => c.y + c.height))
+            return Qt.rect(x0, y0, x1 - x0, y1 - y0)
+        }
+
+        // The freezer case round the tubs.
+        Rectangle {
+            readonly property rect r: pad.span(["vanilla", "chocolate", "strawberry", "mint"])
+            x: r.x - pad.g / 2
+            y: r.y - pad.g / 2
+            width: r.width + pad.g
+            height: r.height + pad.g
+            radius: Theme.radiusSm + pad.g / 2
+            color: game.look.caseBody
+            border.width: 1
+            border.color: Qt.darker(game.look.caseBody, 1.15)
+        }
+        // Shelves under the cones and cups, and under the jars.
+        Repeater {
+            model: [["cone", "cup"], ["sprinkles", "cherry", "wafer"]]
+            delegate: Rectangle {
+                required property var modelData
+                readonly property rect r: pad.span(modelData)
+                x: r.x - pad.g / 2
+                y: r.y + r.height - height / 2
+                width: r.width + pad.g
+                height: Math.max(6, pad.g)
+                radius: height / 2
+                color: game.look.shelf
+            }
+        }
 
         Repeater {
             model: game.keys
             delegate: PadButton {
                 required property var modelData
                 key: modelData[0]
-                x: modelData[1] * (game.geo.pad.bw + game.padGap)
-                y: modelData[2] * (game.geo.pad.bh + game.padGap)
-                width: modelData[3] * game.geo.pad.bw + (modelData[3] - 1) * game.padGap
-                height: game.geo.pad.bh
+                x: modelData[1] * (pad.bw + pad.g)
+                y: modelData[2] * (pad.bh + pad.g)
+                width: modelData[3] * pad.bw + (modelData[3] - 1) * pad.g
+                height: pad.bh
+            }
+        }
+    }
+
+    // The shop's wall: candy stripes, plain at the rounded ends.
+    component Wallpaper: Rectangle {
+        id: wallpaper
+        readonly property real inner: width - 2 * radius
+        readonly property int stripes: Math.max(1, Math.floor(inner / (Theme.mini ? 22 : 34)))
+        radius: Theme.radius
+        color: game.look.wall
+        Repeater {
+            model: Math.floor(wallpaper.stripes / 2)
+            delegate: Rectangle {
+                required property int index
+                x: wallpaper.radius + (2 * index + 0.5) * wallpaper.inner / wallpaper.stripes
+                width: wallpaper.inner / wallpaper.stripes
+                height: wallpaper.height
+                color: game.look.wallStripe
             }
         }
     }
@@ -764,27 +1094,24 @@ Item {
         scale: tap.pressed ? 0.95 : 1
         Behavior on scale { NumberAnimation { duration: Theme.quick } }
 
+        // Glass: a pane of the freezer case, or a place on the shelf.
         Lens {
             anchors.fill: parent
             kind: button.chosen ? "active" : "rest"
-            fill: Theme.surface
+            fill: button.isFlavour ? game.look.pane : button.key === "undo" ? Theme.surface : game.look.item
             radius: Theme.radiusSm
         }
         Item {
             id: picture
             opacity: button.ready ? 1 : 0.4
             x: 6
-            y: 6
+            y: 4
             width: parent.width - 12
-            height: parent.height - 12 - (button.labelled ? label.height : 0)
-            ScoopTreat {
+            height: parent.height - 8 - (button.labelled ? label.height + 4 : 0)
+            ScoopStock {
                 visible: button.key !== "undo"
                 anchors.fill: parent
-                base: button.isBase ? button.key : ""
-                scoops: button.isFlavour ? [button.key] : []
-                toppings: button.isTopping ? [button.key] : []
-                units: button.isBase ? (button.key === "cone" ? 5.0 : 4.0) : button.isFlavour ? 3.0 : 3.2
-                lift: button.isBase ? 0.25 : button.isFlavour ? 0.3 : 0
+                key: button.key
             }
             Icon {
                 visible: button.key === "undo"
@@ -798,7 +1125,7 @@ Item {
             id: label
             visible: button.labelled
             anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height - height - 8
+            y: parent.height - height - 6
             width: parent.width - 8
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
@@ -865,15 +1192,18 @@ Item {
         property string kind: "bear"
         property color tint: "#C49A6C"
         property string face: "smile"
+        property color shirt: "#5B8DEF"
         readonly property real c: Math.min(width / 10, height / 9)
         readonly property color edge: Qt.darker(tint, 1.3)
         readonly property color ink: "#2B2230"
         // In software, one picture rather than loose shapes (see ScoopTreat),
         // ears and shoulders included.
         layer.enabled: GraphicsInfo.api === GraphicsInfo.Software
-        layer.sourceRect: Qt.rect(0, -c, width, height + 2 * c)
+        layer.sourceRect: Qt.rect(0, -c, width, height + c)
 
-        Bit { px: 1.6; py: 7.0; pw: 6.8; ph: 3.0; color: Qt.darker(critter.tint, 1.08); border.width: critter.c * 0.12; border.color: critter.edge }
+        // Shoulders in a shirt, and a collar.
+        Bit { px: 1.4; py: 7.2; pw: 7.2; ph: 1.8; color: critter.shirt; border.width: critter.c * 0.12; border.color: Qt.darker(critter.shirt, 1.3) }
+        Bit { px: 3.9; py: 7.6; pw: 2.2; ph: 1.0; color: "white"; opacity: 0.85 }
         // Ears, or a frog's eye bumps, or a chick's tuft.
         Repeater {
             model: critter.kind === "bear" ? [2.0, 5.6] : []
@@ -984,21 +1314,38 @@ Item {
     }
 
     // ---- Who works the shift: at the start, and once the shop closes
-    Rectangle {
+    // The shop front: the awning over the wall, who's on shift beneath.
+    Wallpaper {
         id: chooser
         anchors.fill: parent
         visible: game.phase !== "playing"
-        radius: Theme.radius
-        color: Theme.background
-        readonly property bool side: game.shape === "side"
+        // The words beside the cards only where the stage is short (the 7").
+        readonly property bool side: game.shape === "side" && height < 500
+        readonly property real awningHeight: side ? 24 : Math.round(Math.min(64, Math.max(36, height * 0.07)))
+        readonly property real below: awningHeight + (side ? 10 : Theme.spacing * 2)
+        readonly property real inset: side ? 12 : Theme.spacing
         // Keep taps off the shop underneath.
         MouseArea { anchors.fill: parent }
 
+        ScoopAwning {
+            x: Theme.radius
+            width: parent.width - 2 * Theme.radius
+            height: chooser.awningHeight
+            stripeWidth: Theme.mini ? 24 : 40
+            stripe: game.look.awning
+            between: game.look.awningBetween
+            frame: game.look.awningFrame
+            plaque: game.look.plaque
+            plaqueInk: game.look.plaqueInk
+            sign: qsTr("Pip & Lotl's")
+        }
+
         Column {
             id: words
-            x: chooser.side ? 0 : (parent.width - width) / 2
-            y: chooser.side ? (parent.height - height) / 2 : Math.max(0, (parent.height - height - cards.height - Theme.spacing * 2) / 2)
-            width: chooser.side ? parent.width - cards.width - Theme.spacing * 2 : Math.min(parent.width, 640)
+            x: chooser.side ? chooser.inset : (parent.width - width) / 2
+            y: chooser.side ? chooser.below + (parent.height - chooser.below - height) / 2
+                            : chooser.below + Math.max(0, (parent.height - chooser.below - height - cards.height - Theme.spacing * 2) / 2)
+            width: chooser.side ? parent.width - cards.width - Theme.spacing - 2 * chooser.inset : Math.min(parent.width - 2 * chooser.inset, 640)
             spacing: 6
             Label {
                 width: parent.width
@@ -1034,12 +1381,12 @@ Item {
         }
         Row {
             id: cards
-            readonly property real cardHeight: chooser.side ? parent.height
-                : Math.min(320, parent.height - words.height - Theme.spacing * 2)
+            readonly property real cardHeight: chooser.side ? parent.height - chooser.below - chooser.inset
+                : Math.min(320, parent.height - chooser.below - words.height - Theme.spacing * 3)
             readonly property real cardWidth: Math.min(260, cardHeight * 0.85,
-                                                       ((chooser.side ? parent.width * 0.62 : parent.width) - spacing) / 2)
-            x: chooser.side ? parent.width - width : (parent.width - width) / 2
-            y: chooser.side ? 0 : words.y + words.height + Theme.spacing * 2
+                                                       ((chooser.side ? parent.width * 0.6 : parent.width - 2 * chooser.inset) - spacing) / 2)
+            x: chooser.side ? parent.width - width - chooser.inset : (parent.width - width) / 2
+            y: chooser.side ? chooser.below : words.y + words.height + Theme.spacing * 2
             spacing: Theme.spacing
             Repeater {
                 model: [{ who: "pip", name: qsTr("Pip"), what: qsTr("the penguin") },

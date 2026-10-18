@@ -182,6 +182,8 @@ qt_add_qml_module(mcfly-display
         qml/games/ScoopShop.qml
         qml/games/ScoopTreat.qml
         qml/games/ScoopCrew.qml
+        qml/games/ScoopAwning.qml
+        qml/games/ScoopStock.qml
         qml/games/scoops.js
     RESOURCES
         resources/demo/feed.json

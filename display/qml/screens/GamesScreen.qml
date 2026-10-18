@@ -426,9 +426,20 @@ Item {
             id: shop
             radius: Theme.radiusSm
             color: Theme.sunken
-            readonly property real size: Math.min(height * 0.86, width / 2.6)
+            readonly property real size: Math.min(height * 0.72, width / 2.6)
+            ScoopAwning {
+                x: shop.radius
+                width: parent.width - 2 * shop.radius
+                height: Math.round(Math.max(10, shop.height * 0.18))
+                stripeWidth: Math.max(14, height * 1.1)
+                stripe: Theme.dark ? "#C9557F" : "#F28DB2"
+                between: Theme.dark ? "#EADDE4" : "#FFFFFF"
+                frame: Theme.dark ? "#83375A" : "#D65C8A"
+            }
             Row {
-                anchors.centerIn: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: shop.height * 0.06
                 spacing: -shop.size * 0.08
                 ScoopCrew { width: shop.size * 0.8; height: shop.size * 0.96; anchors.bottom: parent.bottom; who: "pip" }
                 ScoopTreat {
