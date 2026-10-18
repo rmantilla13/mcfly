@@ -187,6 +187,14 @@ Assistant::Assistant(SupabaseClient *client, FeedStore *store, VoiceClient *voic
     connect(m_store, &FeedStore::nowAngleChanged, this, &Assistant::updateSuggestions);
     connect(m_store, &FeedStore::highlightsChanged, this, &Assistant::updateSuggestions);
     updateSuggestions();
+    if (m_voice) {
+        connect(m_voice, &VoiceClient::spoken, this, [this](const QString &id) {
+            if (id != m_speechId)
+                return;
+            m_speechId.clear();
+            m_speechRow = -1;
+        });
+    }
 }
 
 void Assistant::setProvider(const QString &provider)
@@ -351,6 +359,15 @@ void Assistant::stop()
     const ChatModel::Message &m = m_messages.at(m_replyRow);
     const bool partial = !m.text.trimmed().isEmpty();
     finishReply(partial ? m.text : tr("Stopped."), partial, false);
+    m_messages.setInterrupted(m_replyRow, !partial);
+}
+
+void Assistant::markSpeechCutShort()
+{
+    // Still being said: a `spoken` that's only late (the card follows up
+    // anyway) leaves the service idle, and the reply unmarked.
+    if (!m_speechId.isEmpty() && m_voice && m_voice->state() == QLatin1String("speaking"))
+        m_messages.setInterrupted(m_speechRow);
 }
 
 void Assistant::reset()
@@ -358,11 +375,15 @@ void Assistant::reset()
     stop();
     m_messages.reset();
     m_replyRow = -1;
+    m_speechId.clear();
+    m_speechRow = -1;
     m_replyText.clear();
     emit replyChanged();
 }
 
-// The conversation so far, oldest first, without the turn being answered.
+// The conversation so far, oldest first, without the turn being answered. A
+// reply the person cut short says so; one stopped before any of it came is
+// left out, so its question joins the next one.
 QJsonArray Assistant::history() const
 {
     QJsonArray out;
@@ -372,9 +393,12 @@ QJsonArray Assistant::history() const
     const int start = qMax(0, end - kHistoryTurns);
     for (int i = start; i < end; ++i) {
         const ChatModel::Message &m = rows.at(i);
-        if (m.text.trimmed().isEmpty())
+        if (m.text.trimmed().isEmpty() || m.note)
             continue;
-        out.append(QJsonObject{{"role", m.role}, {"text", m.text}});
+        QJsonObject turn{{"role", m.role}, {"text", m.text}};
+        if (m.interrupted)
+            turn.insert("interrupted", true);
+        out.append(turn);
     }
     return out;
 }
@@ -515,6 +539,10 @@ void Assistant::finishReply(const QString &text, bool failed, bool announce, boo
     QString speechId;
     if (m_replyMode == "quick" && m_voice && m_voice->speakReplies() && m_voice->canSpeak())
         speechId = m_voice->speak(text);
+    if (!speechId.isEmpty()) {
+        m_speechId = speechId;
+        m_speechRow = m_replyRow;
+    }
     emit replyFinished(text, m_replyMode, speechId, error);
 }
 

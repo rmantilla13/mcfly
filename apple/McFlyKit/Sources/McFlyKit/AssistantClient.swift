@@ -32,13 +32,31 @@ public struct AssistantTurn: Codable, Equatable, Sendable, Identifiable {
     public var id = UUID()
     public var role: Role
     public var text: String
+    /// An answer the person cut short to say what comes next: the assistant takes
+    /// the next message as a change to the question. Sent only when true.
+    public var interrupted: Bool
 
-    public init(role: Role, text: String) {
+    public init(role: Role, text: String, interrupted: Bool = false) {
         self.role = role
         self.text = text
+        self.interrupted = interrupted
     }
 
-    enum CodingKeys: String, CodingKey { case role, text }
+    enum CodingKeys: String, CodingKey { case role, text, interrupted }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        role = try c.decode(Role.self, forKey: .role)
+        text = try c.decode(String.self, forKey: .text)
+        interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(role, forKey: .role)
+        try c.encode(text, forKey: .text)
+        if interrupted { try c.encode(true, forKey: .interrupted) }
+    }
 }
 
 /// A failure worth showing as-is, in a bubble or spoken.

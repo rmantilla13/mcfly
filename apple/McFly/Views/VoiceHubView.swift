@@ -459,7 +459,8 @@ struct AskView: View {
                 if !Task.isCancelled && streaming.isEmpty { problem = McFlyError.describe(error) }
             }
             guard chat == current else { return }
-            if !reply.isEmpty { turns.append(AssistantTurn(role: .assistant, text: reply)) }
+            // Stopped part-way, it's marked: the next message is taken as a change to the question.
+            if !reply.isEmpty { turns.append(AssistantTurn(role: .assistant, text: reply, interrupted: Task.isCancelled)) }
             failure = problem
             streaming = ""
             isReplying = false

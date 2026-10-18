@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { afterStop, markCutShort, type AskTurn } from "@/lib/ask-turns";
 import { splitEvents } from "@/lib/sse";
 
 // Asking McFly from the web (/api/ask, streamed). Shared by the Today page's
@@ -9,7 +10,8 @@ import { splitEvents } from "@/lib/sse";
 // its thread for the tab (`persist`), and Today's panel hands its thread over
 // when it expands (saveThread), so a conversation survives the move.
 
-export type Turn = { role: "user" | "assistant"; text: string };
+// `interrupted` marks an answer the person cut short (lib/ask-turns.ts).
+export type Turn = AskTurn;
 export type AskMode = "chat" | "quick" | "read";
 
 const THREAD_KEY = "mcfly.ask.thread";
@@ -113,9 +115,14 @@ export function useAsk(onReply?: (reply: string) => void, { persist = false }: {
         }
         if (reply) onReply?.(reply);
       } catch (err) {
-        // Stopped on purpose: keep what arrived, say nothing went wrong.
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "McFly couldn't answer just now.");
-        setOwn((t) => (!t || t.at(-1)?.text ? t : t.slice(0, -2)));
+        if (controller.signal.aborted) {
+          // Stopped on purpose: keep what arrived, marked as cut short, and say
+          // nothing went wrong.
+          setOwn((t) => t && afterStop(t));
+        } else {
+          setError(err instanceof Error ? err.message : "McFly couldn't answer just now.");
+          setOwn((t) => (!t || t.at(-1)?.text ? t : t.slice(0, -2)));
+        }
       } finally {
         if (abort.current === controller) abort.current = null;
         setBusy(false);
@@ -128,6 +135,17 @@ export function useAsk(onReply?: (reply: string) => void, { persist = false }: {
   // Stops the answer that's arriving, keeping what has.
   const stop = useCallback(() => abort.current?.abort(), []);
 
+  // The person cut in on the answer being read out: marked like a stopped one.
+  const cutShort = useCallback(() => {
+    const t = turnsRef.current;
+    const marked = markCutShort(t);
+    if (marked === t) return;
+    // Now, not after the next render: a question asked in the same handler
+    // builds its history from this.
+    turnsRef.current = marked;
+    setOwn(marked);
+  }, []);
+
   // A new conversation: stops any answer and forgets the thread.
   const reset = useCallback(() => {
     abort.current?.abort();
@@ -135,5 +153,5 @@ export function useAsk(onReply?: (reply: string) => void, { persist = false }: {
     setError(null);
   }, []);
 
-  return { turns, busy, waiting, error, ask, stop, reset };
+  return { turns, busy, waiting, error, ask, stop, reset, cutShort };
 }

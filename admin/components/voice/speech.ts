@@ -301,6 +301,11 @@ export async function speakReply(text: string, voice: VoiceId, speed = 1): Promi
   });
 }
 
+// Whether a reply is being read out right now, in either voice.
+export function isSpeaking(): boolean {
+  return !!player?.speaking || (typeof speechSynthesis !== "undefined" && speechSynthesis.speaking);
+}
+
 export function stopSpeaking() {
   replyGeneration++;
   kokoro().stop();

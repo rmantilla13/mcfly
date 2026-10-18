@@ -65,8 +65,13 @@ public:
     // word, the mic on Home, its follow-ups) and push-to-talk in the panel.
     // Speaks the reply when it's done if spoken replies are on.
     Q_INVOKABLE void askQuick(const QString &text);
-    // Stops the reply in flight, keeping whatever has arrived.
+    // Stops the reply in flight, keeping whatever has arrived. It's marked as
+    // cut short, so the next question is taken as a change to it.
     Q_INVOKABLE void stop();
+    // The person cut in on a reply still being read out (push-to-talk, a tap
+    // on the voice card): marked the same way. Call it before the voice is
+    // stopped or the mic opened; once the reply has been said it does nothing.
+    Q_INVOKABLE void markSpeechCutShort();
     // "New chat": clears the conversation.
     Q_INVOKABLE void reset();
 
@@ -134,4 +139,7 @@ private:
     QString m_replyMode = QStringLiteral("chat");
     QString m_replyText;
     QPointer<QNetworkReply> m_reply;
+    // The reply being read out, until `spoken` comes back for it.
+    QString m_speechId;
+    int m_speechRow = -1;
 };

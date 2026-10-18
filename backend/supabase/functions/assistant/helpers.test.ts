@@ -18,6 +18,7 @@ import {
   grokModelName,
   grokRequestBody,
   INSTRUCTIONS,
+  INTERRUPTED_NOTE,
   isValidTimeZone,
   LEFT_OUT,
   localClock,
@@ -112,6 +113,23 @@ Deno.test("parseRequest: every field", () => {
   assertEquals(claude.ok && claude.request.provider, "claude");
 });
 
+Deno.test("parseRequest: an answer cut short keeps its mark", () => {
+  const r = parseRequest({
+    message: "actually, just Sunday",
+    history: [
+      { role: "user", text: "what's on this weekend?", interrupted: true },
+      { role: "assistant", text: "Saturday you have", interrupted: true },
+    ],
+  });
+  // Only an answer can be cut short.
+  assertEquals(r.ok && r.request.history, [
+    { role: "user", text: "what's on this weekend?" },
+    { role: "assistant", text: "Saturday you have", interrupted: true },
+  ]);
+  const finished = parseRequest({ message: "hi", history: [{ role: "user", text: "a" }, { role: "assistant", text: "b", interrupted: false }] });
+  assertEquals(finished.ok && finished.request.history, [{ role: "user", text: "a" }, { role: "assistant", text: "b" }]);
+});
+
 Deno.test("parseRequest: the full-screen reader's mode", () => {
   const r = parseRequest({ message: "catch me up", mode: "read", stream: true });
   assertEquals(r.ok && r.request.mode, "read");
@@ -144,6 +162,7 @@ Deno.test("parseRequest: refuses with a sentence", () => {
     [{ message: "hi", history: [{ role: "system", text: "x" }] }, /history turn/],
     [{ message: "hi", history: [{ role: "user", text: 7 }] }, /history turn/],
     [{ message: "hi", history: [{ role: "user" }] }, /history turn/],
+    [{ message: "hi", history: [{ role: "assistant", text: "b", interrupted: "yes" }] }, /^a history turn's interrupted must be true or false$/],
   ];
   for (const [body, why] of bad) {
     const r = parseRequest(body);
@@ -196,6 +215,38 @@ Deno.test("normalizeHistory: same-role neighbours become one turn, each clipped"
   assertEquals(r[1], { role: "assistant", text: "a\n\nb" });
   assertEquals(r[2].text.length, MAX_MESSAGE_CHARS);
   assert(r[2].text.endsWith("…"));
+});
+
+Deno.test("normalizeHistory: an answer cut short", () => {
+  // Cut short before any of it came: the question joins the next one.
+  assertEquals(normalizeHistory([{ role: "user", text: "weekend?" }, { role: "assistant", text: "  ", interrupted: true }]), [
+    { role: "user", text: "weekend?" },
+  ]);
+  // Merged answers are cut short only if the later one was.
+  const a: Turn = { role: "user", text: "q" };
+  assertEquals(normalizeHistory([a, { role: "assistant", text: "x", interrupted: true }, { role: "assistant", text: "y" }])[1], { role: "assistant", text: "x\n\ny" });
+  assertEquals(normalizeHistory([a, { role: "assistant", text: "x" }, { role: "assistant", text: "y", interrupted: true }])[1], {
+    role: "assistant",
+    text: "x\n\ny",
+    interrupted: true,
+  });
+});
+
+Deno.test("conversation: the turn after an answer cut short says so", () => {
+  const history: Turn[] = [
+    { role: "user", text: "what's on this weekend?" },
+    { role: "assistant", text: "Saturday you have", interrupted: true },
+  ];
+  assertEquals(conversation(history, "actually, just Sunday"), [
+    { role: "user", content: "what's on this weekend?" },
+    { role: "assistant", content: "Saturday you have" },
+    { role: "user", content: `${INTERRUPTED_NOTE}\n\nactually, just Sunday` },
+  ]);
+  // Further back in the history too, and only on the turn right after it.
+  const longer: Turn[] = [...history, { role: "user", text: "actually, just Sunday" }, { role: "assistant", text: "Brunch at 11." }];
+  const out = conversation(longer, "thanks");
+  assertEquals(out[2].content, `${INTERRUPTED_NOTE}\n\nactually, just Sunday`);
+  assertEquals(out[4].content, "thanks");
 });
 
 Deno.test("conversation: history then the message, alternating", () => {

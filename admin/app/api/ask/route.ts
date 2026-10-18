@@ -1,4 +1,5 @@
-import { askAssistant, requireAdmin, type AskMode, type AskTurn } from "@/lib/data";
+import { askHistory } from "@/lib/ask-turns";
+import { askAssistant, requireAdmin, type AskMode } from "@/lib/data";
 import { DataError } from "@/lib/errors";
 
 // Ask McFly from the console (Today's Ask bar, /voice, /ask): the browser
@@ -10,12 +11,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as { message?: unknown; history?: unknown; mode?: unknown } | null;
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2000) : "";
   if (!message) return Response.json({ error: "Ask something first." }, { status: 400 });
-  const history: AskTurn[] = Array.isArray(body?.history)
-    ? body.history
-        .filter((t): t is AskTurn => !!t && (t.role === "user" || t.role === "assistant") && typeof t.text === "string")
-        .slice(-10)
-        .map((t) => ({ role: t.role, text: t.text.slice(0, 4000) }))
-    : [];
+  const history = askHistory(body?.history);
   try {
     const mode: AskMode = body?.mode === "quick" || body?.mode === "read" ? body.mode : "chat";
     let upstream = await askAssistant(message, history, mode);

@@ -54,4 +54,13 @@ final class SSEParserTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: String]])
         XCTAssertEqual(json, [["role": "user", "text": "hi"], ["role": "assistant", "text": "hello"]])
     }
+
+    func testAnAnswerCutShortSaysSo() throws {
+        let data = try JSONEncoder().encode(AssistantTurn(role: .assistant, text: "Saturday you have", interrupted: true))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["interrupted"] as? Bool, true)
+        let back = try JSONDecoder().decode(AssistantTurn.self, from: data)
+        XCTAssertTrue(back.interrupted)
+        XCTAssertFalse(try JSONDecoder().decode(AssistantTurn.self, from: Data(#"{"role":"user","text":"hi"}"#.utf8)).interrupted)
+    }
 }

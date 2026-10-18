@@ -3,7 +3,7 @@
 // Ask (mode "read": longer, Markdown-shaped answers).
 //
 //   POST { message, mode?: "chat" | "quick" | "read", stream?: boolean,
-//          history?: [{ role, text }], provider?: "claude" | "grok" }
+//          history?: [{ role, text, interrupted? }], provider?: "claude" | "grok" }
 //     stream false -> { reply, model, changed? }
 //     stream true  -> text/event-stream: delta…, then done { reply, model, changed? } (or error)
 //

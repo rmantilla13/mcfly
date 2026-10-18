@@ -31,6 +31,8 @@ final class VoiceSession {
     private let answerer: Answerer
     private let vocabulary: [String]
     @ObservationIgnored private var replyTask: Task<Void, Never>?
+    /// The question being answered, until its turns are in `history`.
+    @ObservationIgnored private var pendingQuestion: String?
     /// Streamed text not yet cut into a sentence and spoken.
     @ObservationIgnored private var unspoken = ""
     @ObservationIgnored private var answerComplete = false
@@ -51,6 +53,7 @@ final class VoiceSession {
     var livePending: String { phase == .listening ? listener.pendingText : "" }
 
     func listen() async {
+        keepCutShort()
         replyTask?.cancel()
         replyTask = nil
         speaker.stop()
@@ -76,6 +79,7 @@ final class VoiceSession {
 
     /// Stops the answer being spoken and listens again.
     func interrupt() {
+        keepCutShort()
         replyTask?.cancel()
         replyTask = nil
         speaker.stop()
@@ -103,8 +107,25 @@ final class VoiceSession {
         unspoken = ""
         answerComplete = false
         phase = .thinking
+        pendingQuestion = text
         let priorTurns = history
         replyTask = Task { await ask(text, history: priorTurns) }
+    }
+
+    /// The person cut in before the answer was done (or while it was still being read
+    /// out): keep the question and what had arrived, marked as cut short, so what they
+    /// say next is taken as a change to it rather than a new topic.
+    private func keepCutShort() {
+        if let question = pendingQuestion {
+            pendingQuestion = nil
+            var turns = history + [AssistantTurn(role: .user, text: question)]
+            if !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                turns.append(AssistantTurn(role: .assistant, text: answer, interrupted: true))
+            }
+            history = Array(turns.suffix(AssistantClient.historyLimit))
+        } else if speaker.isSpeaking, let last = history.indices.last, history[last].role == .assistant {
+            history[last].interrupted = true
+        }
     }
 
     private func ask(_ text: String, history prior: [AssistantTurn]) async {
@@ -141,6 +162,7 @@ final class VoiceSession {
             speakReady(final: true)
         }
         guard !Task.isCancelled else { return }
+        pendingQuestion = nil
         history = Array((prior + [AssistantTurn(role: .user, text: text),
                                   AssistantTurn(role: .assistant, text: finalReply.isEmpty ? answer : finalReply)])
             .suffix(AssistantClient.historyLimit))

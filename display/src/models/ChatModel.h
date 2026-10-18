@@ -21,6 +21,8 @@ public:
         bool streaming = false;
         bool failed = false;   // the reply was cut short; text holds what arrived
         QString mode;          // "chat" | "quick"
+        bool interrupted = false; // the person cut it short (stopped it, or talked over it)
+        bool note = false;     // text is a note to the person ("Stopped."), not an answer
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -37,6 +39,8 @@ public:
     void appendText(int row, const QString &delta);
     void addAction(int row, const QVariantMap &action);
     void finish(int row, const QString &text, const QVariantList &actions, bool failed = false);
+    // The person cut this reply short; `note` when none of it had arrived.
+    void setInterrupted(int row, bool note = false);
     void reset(const QList<Message> &rows = {});
 
 signals:

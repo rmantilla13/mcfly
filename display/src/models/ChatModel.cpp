@@ -65,6 +65,15 @@ void ChatModel::finish(int row, const QString &text, const QVariantList &actions
     changed(row, {TextRole, ActionsRole, StreamingRole, FailedRole});
 }
 
+void ChatModel::setInterrupted(int row, bool note)
+{
+    if (row < 0 || row >= m_rows.size())
+        return;
+    // Not shown, only sent back as history: no role changes.
+    m_rows[row].interrupted = true;
+    m_rows[row].note = note;
+}
+
 void ChatModel::reset(const QList<Message> &rows)
 {
     const bool countChanges = rows.size() != m_rows.size();

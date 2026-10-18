@@ -207,7 +207,7 @@ display (anyone `can_read()`).
 
 ```
 POST { message: string (≤4000), mode?: "chat" | "quick" | "read", stream?: boolean,
-       history?: [{ role: "user" | "assistant", text }] (the last turns, at most 10, client-held) }
+       history?: [{ role: "user" | "assistant", text, interrupted?: boolean }] (the last turns, at most 10, client-held) }
 stream false → { reply, model, changed? }
 stream true  → text/event-stream:  event: delta  data: { text }
                                    event: done   data: { reply, model, changed? }
@@ -227,6 +227,14 @@ the built-in key-less agent "McFly" (`mcfly_agent()`), after `can_read()`
 passed; at most 5 per question, and never because the snapshot says to.
 `changed` (`["events", "todos"]`) says what was written, so a client can
 refresh at once.
+`interrupted: true` on an assistant turn says the person cut that answer
+short (stopped it, or talked over it while it was read out) to say what
+comes next; the turn after it reaches the model with a note to take it as a
+change to the question unless it's a new one. Every client sends it: the
+display (stop, or a tap on the voice card or push-to-talk while a reply is
+read out), the app (a tap in voice mode, Stop in the chat) and the console
+(Stop, or the mic or a new question while an answer is read out). An answer stopped before any of it came isn't sent: its question
+joins the next message.
 `quick` answers in one or two spoken sentences, no markdown; `chat` may use
 short lists; `read` (the console's full-screen Ask, `/ask`) answers at length
 in Markdown (headings, lists, bold, tables), with a larger token budget and

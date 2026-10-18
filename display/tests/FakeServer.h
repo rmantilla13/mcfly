@@ -34,6 +34,7 @@ public:
         QByteArray type = "application/json";
         QByteArray body;
         int delayMs = 0; // before the answer
+        bool keepOpen = false; // a stream still arriving: the body, then the socket stays open
     };
     using Route = std::function<Reply(const Request &)>;
 
@@ -126,6 +127,12 @@ private:
             --m_pending;
             if (!socket)
                 return;
+            if (reply.keepOpen) {
+                socket->write("HTTP/1.1 " + QByteArray::number(reply.status) + " X\r\nContent-Type: " + reply.type
+                              + "\r\nConnection: close\r\n\r\n" + reply.body);
+                socket->flush();
+                return;
+            }
             socket->write("HTTP/1.1 " + QByteArray::number(reply.status) + " X\r\nContent-Type: " + reply.type
                           + "\r\nContent-Length: " + QByteArray::number(reply.body.size())
                           + "\r\nConnection: close\r\n\r\n" + reply.body);

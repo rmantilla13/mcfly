@@ -16,6 +16,9 @@ export type Provider = "claude" | "grok";
 export interface Turn {
   role: Role;
   text: string;
+  // An answer the person cut short (stopped it, or talked over it) to say
+  // what comes next. Only an assistant turn carries it.
+  interrupted?: boolean;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -97,7 +100,8 @@ export interface AssistantRequest {
 }
 export type ParsedRequest = { ok: true; request: AssistantRequest } | { ok: false; error: string };
 
-// { message, mode?, stream?, history?, provider? }. Unknown fields are
+// { message, mode?, stream?, history?, provider? }; a history turn is
+// { role, text, interrupted? }. Unknown fields are
 // ignored; a wrong one is refused with a sentence that names it.
 export function parseRequest(body: unknown): ParsedRequest {
   const invalid = (error: string): ParsedRequest => ({ ok: false, error });
@@ -116,7 +120,8 @@ export function parseRequest(body: unknown): ParsedRequest {
       if (!isObject(t) || (t.role !== "user" && t.role !== "assistant") || typeof t.text !== "string") {
         return invalid('each history turn needs a role of "user" or "assistant" and a text string');
       }
-      turns.push({ role: t.role, text: t.text });
+      if (t.interrupted != null && typeof t.interrupted !== "boolean") return invalid("a history turn's interrupted must be true or false");
+      turns.push(t.role === "assistant" && t.interrupted === true ? { role: t.role, text: t.text, interrupted: true } : { role: t.role, text: t.text });
     }
   }
   return {
@@ -134,7 +139,9 @@ export function parseRequest(body: unknown): ParsedRequest {
 // The last turns of a client-held conversation, made safe for the model:
 // blank turns go, the last MAX_HISTORY_TURNS stay, leading assistant turns
 // (a greeting with no question before it) are dropped, neighbours with the
-// same role become one turn, and each is clipped like a new message.
+// same role become one turn (cut short if its later half was), and each is
+// clipped like a new message. An answer cut short before any of it arrived
+// is blank, so it goes too: the question it left joins the next message.
 export function normalizeHistory(turns: Turn[]): Turn[] {
   const kept = turns.filter((t) => t.text.trim()).slice(-MAX_HISTORY_TURNS);
   while (kept.length && kept[0].role !== "user") kept.shift();
@@ -142,21 +149,36 @@ export function normalizeHistory(turns: Turn[]): Turn[] {
   for (const t of kept) {
     const text = t.text.trim();
     const last = out.at(-1);
-    if (last && last.role === t.role) last.text = clip(`${last.text}\n\n${text}`, MAX_MESSAGE_CHARS);
-    else out.push({ role: t.role, text: clip(text, MAX_MESSAGE_CHARS) });
+    if (last && last.role === t.role) {
+      last.text = clip(`${last.text}\n\n${text}`, MAX_MESSAGE_CHARS);
+      if (t.interrupted) last.interrupted = true;
+      else delete last.interrupted;
+    } else {
+      out.push(t.interrupted ? { role: t.role, text: clip(text, MAX_MESSAGE_CHARS), interrupted: true } : { role: t.role, text: clip(text, MAX_MESSAGE_CHARS) });
+    }
   }
   return out;
 }
 
+// Put before what the person said after cutting an answer short, so the
+// model takes it as a change to the question rather than a new topic.
+export const INTERRUPTED_NOTE =
+  "[The person cut your last answer short to say this. If it adds to or changes what they asked, answer the request as it now stands, " +
+  "without mentioning the interruption. If it's a new question, just answer that.]";
+
 // The messages for the model: the history, then the new message. If the
 // history ends with a user turn (its reply never came), the new message joins
-// it, so user and assistant turns alternate.
+// it, so user and assistant turns alternate. A user turn after an answer cut
+// short starts with INTERRUPTED_NOTE.
 export function conversation(history: Turn[], message: string): Anthropic.Beta.BetaMessageParam[] {
   const turns = history.map((t) => ({ ...t }));
   const last = turns.at(-1);
   if (last && last.role === "user") last.text = `${last.text}\n\n${message}`;
   else turns.push({ role: "user", text: message });
-  return turns.map((t) => ({ role: t.role, content: t.text }));
+  return turns.map((t, i) => ({
+    role: t.role,
+    content: t.role === "user" && turns[i - 1]?.interrupted ? `${INTERRUPTED_NOTE}\n\n${t.text}` : t.text,
+  }));
 }
 
 // ───────────────────────────── Server-sent events ─────────────────────────────

@@ -92,6 +92,7 @@ Item {
         stallTimer.restart()
         startCheck.restart()
         note("listening for a follow-up after answer " + turns)
+        AI.markSpeechCutShort() // tapped while it's still talking: what's asked next may change the answer
         Voice.listen()
         return true
     }

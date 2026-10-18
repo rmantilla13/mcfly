@@ -13,7 +13,7 @@ import PromptBar from "@/components/reactbits/PromptBar";
 import ThoughtLine from "@/components/reactbits/ThoughtLine";
 import VoicePill from "@/components/reactbits/VoicePill";
 import { recognitionClass, type Recognition } from "@/components/voice/recognition";
-import { speakReply, stopSpeaking, storedVoice, useVoice } from "@/components/voice/speech";
+import { isSpeaking, speakReply, stopSpeaking, storedVoice, useVoice } from "@/components/voice/speech";
 import { useAsk, type Turn } from "@/components/voice/useAsk";
 import { plainText } from "@/lib/markdown";
 import type { Backdrop } from "@/lib/sky";
@@ -75,7 +75,7 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
   const onReply = useCallback((reply: string) => {
     if (speakRef.current) void speakReply(plainText(reply), storedVoice());
   }, []);
-  const { turns, busy, waiting, error, ask, stop, reset } = useAsk(onReply, { persist: true });
+  const { turns, busy, waiting, error, ask, stop, reset, cutShort } = useAsk(onReply, { persist: true });
   const thread = exchanges(turns);
 
   const [input, setInput] = useState("");
@@ -98,6 +98,7 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
     if (!q || busy) return;
     setLastAsked(q);
     setThinking(true);
+    if (isSpeaking()) cutShort(); // asked over the answer being read out
     stopSpeaking();
     setInput("");
     void ask(q, "read");
@@ -152,6 +153,7 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
     }
     const Ctor = recognitionClass();
     if (!Ctor || busy) return;
+    if (isSpeaking()) cutShort();
     stopSpeaking();
     const r = new Ctor();
     rec.current = r;

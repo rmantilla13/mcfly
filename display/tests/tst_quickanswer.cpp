@@ -334,6 +334,33 @@ private slots:
         QCOMPARE(listens(), 1);
     }
 
+    // A tap while the answer is still being read out marks it as cut short,
+    // so the follow-up is taken as a change to it. An answer read out to the
+    // end isn't marked when the card listens again by itself.
+    void cuttingInMarksTheReply()
+    {
+        m_speakMs = 5000; // still being read
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE(spokenTexts().size(), 1);
+        const ChatModel *rows = m_ai->messages();
+        QCOMPARE(rows->count(), 2);
+        QVERIFY(!rows->at(1).interrupted);
+        call("followUp");
+        QVERIFY(rows->at(1).interrupted);
+        QVERIFY(!rows->at(1).note);
+        QTRY_COMPARE(phase(), QStringLiteral("hidden"));
+
+        m_ai->reset();
+        m_speakMs = 0;
+        m_heard = {QStringLiteral("what's in the news")};
+        call("start");
+        call("hear", QStringLiteral("how are the markets"));
+        QTRY_COMPARE_WITH_TIMEOUT(spokenTexts().size(), 3, 5000); // the follow-up's answer is read out too
+        QVERIFY(!rows->at(1).interrupted);
+        call("dismiss", true);
+    }
+
     void nothingHeard()
     {
         call("start");

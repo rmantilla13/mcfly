@@ -79,7 +79,7 @@ export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
     },
     [speakOn],
   );
-  const { turns, busy, waiting, error, ask } = useAsk(onReply);
+  const { turns, busy, waiting, error, ask, cutShort } = useAsk(onReply);
 
   useEffect(() => {
     const g = glow.current;
@@ -141,6 +141,7 @@ export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
     if (listening || busy) return;
     const Ctor = recognitionClass();
     if (!Ctor) return;
+    if (speaking) cutShort(); // what comes next may change the answer being read out
     stopSpeaking();
     setSpeaking(false);
     setMicError(null);
@@ -172,7 +173,7 @@ export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
     };
     setListening(true);
     r.start();
-  }, [listening, busy, startMeter, stopMeter, ask]);
+  }, [listening, busy, speaking, cutShort, startMeter, stopMeter, ask]);
   useEffect(() => {
     startRef.current = () => void startListening();
   }, [startListening]);

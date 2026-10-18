@@ -63,6 +63,7 @@ ApplicationWindow {
             return false
         }
         dismissKeyboard()
+        AI.markSpeechCutShort() // what comes next may change the answer being read out
         Voice.stopSpeaking()
         voiceTarget = "chat"
         pttWatchdog.restart()

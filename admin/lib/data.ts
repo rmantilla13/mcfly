@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { accountVoice, type KokoroVoice } from "@/lib/account-voice";
+import type { AskTurn } from "@/lib/ask-turns";
 import { EMPTY_OPTIONS, type DashboardPart, type DashboardSourceOptions } from "@/lib/dashboard-sources";
 import * as demo from "@/lib/demo/store";
 import { demoMode, supabaseConfig, supabaseProjectUrl } from "@/lib/env";
@@ -1006,7 +1007,7 @@ export async function runBot(id: string): Promise<{ title?: string; error?: stri
 
 // ───────────────────────────── Assistant (web voice and chat) ─────────────────────────────
 
-export type AskTurn = { role: "user" | "assistant"; text: string };
+export type { AskTurn };
 
 // The assistant's answer as a text/event-stream (delta…, then done or error),
 // asked with the admin's own JWT, so it sees what they see. The token stays on

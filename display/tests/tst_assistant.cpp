@@ -246,6 +246,45 @@ private slots:
         QCOMPARE(lastReply(), QStringLiteral("Partial"));
     }
 
+    // A reply stopped part-way goes back marked as cut short, so the next
+    // question is taken as a change to it. One stopped before any of it came
+    // is left out ("Stopped." is for the screen): its question joins the next.
+    void aStoppedReplyIsMarkedInTheHistory()
+    {
+        startLive();
+        m_server.route("/functions/v1/assistant", [](const Request &) {
+            Reply r = stream({event("delta", {{"text", "Saturday you have"}})});
+            r.keepOpen = true;
+            return r;
+        });
+        rig->ai.ask("What's on this weekend?");
+        QTRY_COMPARE(rig->ai.replyText(), QStringLiteral("Saturday you have"));
+        rig->ai.stop();
+        m_server.route("/functions/v1/assistant", [](const Request &) { return okStream("Sunday: brunch at 11."); });
+        rig->ai.ask("Actually, just Sunday");
+        QTRY_VERIFY(!rig->ai.busy());
+        QJsonArray history = asks().last().body.value("history").toArray();
+        QCOMPARE(history.size(), 2);
+        QVERIFY(!history.at(0).toObject().contains("interrupted"));
+        QCOMPARE(history.at(1).toObject().value("text").toString(), QStringLiteral("Saturday you have"));
+        QCOMPARE(history.at(1).toObject().value("interrupted").toBool(), true);
+
+        m_server.route("/functions/v1/assistant", [](const Request &) { return FakeServer::json("{}", 200, 3000); });
+        rig->ai.ask("And the weather?");
+        QVERIFY(rig->ai.busy());
+        rig->ai.stop();
+        QCOMPARE(lastReply(), QStringLiteral("Stopped."));
+        m_server.route("/functions/v1/assistant", [](const Request &) { return okStream("Sunny."); });
+        rig->ai.ask("For Sunday, I mean");
+        QTRY_VERIFY(!rig->ai.busy());
+        history = asks().last().body.value("history").toArray();
+        QCOMPARE(history.size(), 5);
+        QCOMPARE(history.at(3).toObject().value("text").toString(), QStringLiteral("Sunday: brunch at 11."));
+        QVERIFY(!history.at(3).toObject().contains("interrupted"));
+        QCOMPARE(history.at(4).toObject().value("role").toString(), QStringLiteral("user"));
+        QCOMPARE(history.at(4).toObject().value("text").toString(), QStringLiteral("And the weather?"));
+    }
+
     void demoAnswersFromTheFeed()
     {
         QSettings().clear();
