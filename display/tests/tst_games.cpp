@@ -897,6 +897,11 @@ private slots:
             return ""
         })())");
         QCOMPARE(eval(game.get(), curve).toString(), QString());
+        // The pace: a cone of one scoop waits 27 s at level 1 (a tenth under
+        // the first tuning's 30 s), and customers come every 6.3 s.
+        QCOMPARE(eval(game.get(), QStringLiteral("patienceFor({ base: 'cone', scoops: ['mint'], toppings: [] }, 1)")).toInt(), 27000);
+        QCOMPARE(eval(game.get(), QStringLiteral("rulesFor(1).arrival")).toInt(), 6300);
+        QCOMPARE(eval(game.get(), QStringLiteral("rulesFor(10).arrival")).toInt(), 2250);
         // Quick scores more than slow, and right scores at least ten a thing.
         QCOMPARE(eval(game.get(), QStringLiteral("pointsFor({ base: 'cone', scoops: ['mint'], toppings: [] }, 1)")).toInt(), 40);
         QCOMPARE(eval(game.get(), QStringLiteral("pointsFor({ base: 'cone', scoops: ['mint'], toppings: [] }, 0)")).toInt(), 20);

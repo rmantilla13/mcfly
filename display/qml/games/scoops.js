@@ -13,6 +13,9 @@ var PER_LEVEL = 5
 var HEARTS = 3
 // Seats at the counter, at most (the layout has room for this many).
 var MAX_SEATS = 4
+// The shop's pace: every wait and every gap between customers is this share
+// of the times below. 0.9 gives a tenth less time, a tenth harder.
+var PACE = 0.9
 
 // A small seeded generator (mulberry32), so a test can replay a shift:
 // next() steps its state, unit() turns a state into a number in [0, 1).
@@ -48,10 +51,10 @@ function rules(lv) {
         maxToppings: lv < 2 ? 0 : lv < 4 ? 1 : 2,
         // How long a customer waits: a little for being there, more for
         // each thing on the order, both shorter as the shop gets busy.
-        wait: Math.max(10000, 24000 - 1600 * (lv - 1)),
-        perItem: Math.max(1600, 3000 - 200 * (lv - 1)),
+        wait: Math.round(PACE * Math.max(10000, 24000 - 1600 * (lv - 1))),
+        perItem: Math.round(PACE * Math.max(1600, 3000 - 200 * (lv - 1))),
         // Time between customers arriving.
-        arrival: Math.max(2500, 7000 - 500 * (lv - 1))
+        arrival: Math.round(PACE * Math.max(2500, 7000 - 500 * (lv - 1)))
     }
 }
 
