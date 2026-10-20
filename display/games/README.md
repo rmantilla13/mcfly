@@ -54,14 +54,18 @@ the genre of Lemmings and Pingus, sharing no code, pictures, sounds, levels
 or names with either. `tests/tst_penguins.cpp` replays a recorded solution
 for every level to prove it can be won.
 
-Color by Number (`qml/games/ColorByNumber.qml`, with its pictures, progress
-and board in `src/games/ColorByNumber.cpp`) is written for this app too,
-after Araib Karim's [Color by Number for iOS](https://github.com/AraibKarim/ColorByNumber-iOS).
-That project has no licence, so none of its code, pictures or fonts is used:
-the twelve pixel pictures are our own. `tests/tst_colors.cpp` checks every
-picture.
+Color by Number (`qml/games/ColorByNumber.qml`, with its progress and board
+in `src/games/ColorByNumber.cpp`) is written for this app too, after Araib
+Karim's [Color by Number for iOS](https://github.com/AraibKarim/ColorByNumber-iOS).
+That project has no licence, so none of its code, pictures or fonts is used.
+Its 121 pixel pictures, in eight categories, are our own, drawn for McFly in
+`src/games/colorbynumber.txt` (the format is at the top of the file), which
+the build turns into a string in the app. `tests/tst_colors.cpp` checks
+every one: the shape, the legend, at most nine colours, any two far enough
+apart to tell their swatches apart, and the edges filled.
 
-The iPhone and Mac app has all of these but Same Game and Maroon, written
+The iPhone and Mac app has all of these but Same Game and Maroon (and, of
+Color by Number's pictures, the first twelve for now), written
 again in Swift (`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
 `apple/McFly/Games` for the screens), with the same rules, levels and
 credits. 2048's and Rush Hour's Swift carry their MIT notices at the top of

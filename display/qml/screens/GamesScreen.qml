@@ -358,7 +358,7 @@ Item {
             ColorByNumberBoard {
                 anchors.fill: parent
                 anchors.margins: 10
-                picture: 10 // Pip, the top half coloured in
+                picture: indexOf("pip") // the top half coloured in
                 preview: true
                 dark: Theme.dark
                 Component.onCompleted: {

@@ -17,27 +17,47 @@ namespace Colors {
 // and the narrowest stage (portrait) fits nine.
 constexpr int kMaxColors = 9;
 
+// A picture is between these many cells wide and tall.
+constexpr int kMinSize = 8;
+constexpr int kMaxSize = 24;
+// How far apart (CIE76) any two of a picture's colours are, at least, so
+// their swatches can be told apart.
+constexpr double kMinColorDistance = 10;
+
+// The pictures live in colorbynumber.txt (its format is at its top), built
+// into the app; the iPhone app's copy is held to it by its tests.
+struct Category {
+    QString id;
+    QString title;
+};
+const QList<Category> &categories();
+
 // A picture as written: rows of symbols, "." for an empty cell, and a
 // legend giving each symbol its colour. Numbers follow the legend's order.
 struct Source {
     QString id;
     QString title;
+    QString category;
     QStringList rows;
     QList<QPair<QChar, QString>> legend;
 };
 const QList<Source> &sources();
 // What's wrong with a source, or "" when nothing is.
 QString check(const Source &source);
+double colorDistance(const QColor &a, const QColor &b);
 
 struct Picture {
     QString id;
     QString title;
+    QString category;
     int width = 0;
     int height = 0;
     QList<QColor> colors; // number n is colors[n - 1]
     QVector<int> cells;   // row by row from the top; 0 for an empty cell
 };
 const QList<Picture> &pictures();
+// A picture's place in pictures(), or -1.
+int indexOf(const QString &id);
 
 // One picture being painted: which numbered cells are done.
 class Sheet
@@ -85,6 +105,9 @@ class ColorByNumberBoard : public QQuickPaintedItem
     Q_PROPERTY(int pictureCount READ pictureCount CONSTANT)
     Q_PROPERTY(QString pictureId READ pictureId NOTIFY pictureChanged)
     Q_PROPERTY(QString title READ title NOTIFY pictureChanged)
+    Q_PROPERTY(QString category READ category NOTIFY pictureChanged)
+    // [{id, title, count}], in the file's order, for the gallery's chips.
+    Q_PROPERTY(QVariantList categories READ categories CONSTANT)
     // [{number, color, ink, total, remaining}], for the swatches.
     Q_PROPERTY(QVariantList colors READ colors NOTIFY progressChanged)
     Q_PROPERTY(int selected READ selected WRITE setSelected NOTIFY selectedChanged)
@@ -112,6 +135,8 @@ public:
     int pictureCount() const;
     QString pictureId() const { return m_sheet.picture().id; }
     QString title() const { return m_sheet.picture().title; }
+    QString category() const { return m_sheet.picture().category; }
+    QVariantList categories() const;
     QVariantList colors() const;
     int selected() const { return m_selected; }
     void setSelected(int number);
@@ -137,6 +162,9 @@ public:
     Q_INVOKABLE int paintLine(const QPointF &from, const QPointF &to);
     // The middle of a cell, where it is drawn now.
     Q_INVOKABLE QPointF cellCenter(int column, int row) const;
+    // The pictures in a category ("" for all), as indexes, in the file's order.
+    Q_INVOKABLE QVariantList picturesIn(const QString &category) const;
+    Q_INVOKABLE int indexOf(const QString &id) const { return Colors::indexOf(id); }
     Q_INVOKABLE void zoomBy(qreal factor, const QPointF &center);
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();

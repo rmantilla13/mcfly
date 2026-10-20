@@ -53,8 +53,14 @@ target_compile_options(mcfly-penguins PRIVATE ${MCFLY_WARNINGS})
 target_link_libraries(mcfly-penguins PUBLIC Qt6::Gui Qt6::Quick)
 
 # Color by Number's pictures, progress and board (qml/games/ColorByNumber.qml).
+# The pictures are src/games/colorbynumber.txt, built in as a string: an edit
+# to the file reconfigures and rebuilds.
+file(READ src/games/colorbynumber.txt MCFLY_COLOR_PICTURES)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS src/games/colorbynumber.txt)
+configure_file(src/games/ColorByNumberPictures.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/ColorByNumberPictures.cpp @ONLY)
 add_library(mcfly-colors STATIC
     src/games/ColorByNumber.h      src/games/ColorByNumber.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/ColorByNumberPictures.cpp
 )
 target_include_directories(mcfly-colors PUBLIC src)
 target_compile_options(mcfly-colors PRIVATE ${MCFLY_WARNINGS})

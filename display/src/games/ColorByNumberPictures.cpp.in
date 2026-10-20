@@ -1,0 +1,5 @@
+// Made by display/CMakeLists.txt from src/games/colorbynumber.txt: edit that.
+namespace Colors {
+extern const char *const kPictureText;
+const char *const kPictureText = R"mcflypictures(@MCFLY_COLOR_PICTURES@)mcflypictures";
+}

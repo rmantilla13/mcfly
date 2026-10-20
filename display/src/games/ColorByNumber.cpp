@@ -10,231 +10,135 @@
 
 namespace Colors {
 
-// The pictures, easiest first. Drawn for McFly.
+// colorbynumber.txt, built in (CMakeLists.txt makes ColorByNumberPictures.cpp).
+extern const char *const kPictureText;
+
+namespace {
+
+struct Library {
+    QList<Category> categories;
+    QList<Source> sources;
+};
+
+// The file's format is at its top. Anything it can't read becomes a source
+// that check() turns down, so a mistake shows in the tests, not as a gap.
+const Library &library()
+{
+    static const Library lib = [] {
+        Library out;
+        Source *open = nullptr;
+        bool wantLegend = false;
+        const QStringList lines = QString::fromUtf8(kPictureText).split(QLatin1Char('\n'));
+        for (const QString &raw : lines) {
+            const QString line = raw.trimmed();
+            if (line.startsWith(QLatin1Char('#')))
+                continue;
+            if (line.isEmpty()) {
+                open = nullptr;
+                continue;
+            }
+            if (line.startsWith(QLatin1Char('@'))) {
+                const QStringList parts = line.mid(1).split(QLatin1Char('|'));
+                out.categories << Category{parts.value(0).trimmed(), parts.value(1).trimmed()};
+                continue;
+            }
+            if (line.startsWith(QLatin1Char('='))) {
+                const QStringList parts = line.mid(1).split(QLatin1Char('|'));
+                out.sources << Source{parts.value(0).trimmed(), parts.value(1).trimmed(), parts.value(2).trimmed(), {}, {}};
+                open = &out.sources.last();
+                wantLegend = true;
+                continue;
+            }
+            if (!open)
+                continue;
+            if (wantLegend) {
+                wantLegend = false;
+                const QStringList words = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                for (int i = 0; i + 1 < words.size(); i += 2) {
+                    if (words[i].size() == 1)
+                        open->legend << qMakePair(words[i].at(0), words[i + 1]);
+                    else
+                        open->legend << qMakePair(QChar(), words[i + 1]); // check() refuses it
+                }
+                if (words.size() % 2)
+                    open->legend << qMakePair(QChar(), QString());
+                continue;
+            }
+            open->rows << line;
+        }
+        return out;
+    }();
+    return lib;
+}
+
+// CIE76 colour difference: how far apart two colours look.
+QVector<double> lab(const QColor &c)
+{
+    auto linear = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+    const double r = linear(c.redF()), g = linear(c.greenF()), b = linear(c.blueF());
+    const double x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+    const double y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const double z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+    auto f = [](double t) { return t > 0.008856 ? std::cbrt(t) : 7.787 * t + 16.0 / 116; };
+    return {116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))};
+}
+
+} // namespace
+
+const QList<Category> &categories()
+{
+    return library().categories;
+}
+
 const QList<Source> &sources()
 {
-    static const QList<Source> list = {
-        {QStringLiteral("heart"), QStringLiteral("Heart"),
-         {".rrr....rrr.",
-          "rwwrr..rrrrr",
-          "rwrrrrrrrrrd",
-          "rrrrrrrrrrrd",
-          "rrrrrrrrrrrd",
-          ".rrrrrrrrrd.",
-          "..rrrrrrrd..",
-          "...rrrrrd...",
-          "....rrrd....",
-          ".....rd....."},
-         {{'r', "#E5484D"}, {'d', "#B8303A"}, {'w', "#FFC9CB"}}},
-        {QStringLiteral("strawberry"), QStringLiteral("Strawberry"),
-         {"....g..g....",
-          "...ghgghg...",
-          "..ghhgghhg..",
-          ".rrgrrrrgrr.",
-          "rrwryrrrryrd",
-          "rwrrrrryrrrd",
-          "rrryrrrrrrrd",
-          ".rrrrryrrrd.",
-          ".rryrrrrryd.",
-          "..rrrrryrd..",
-          "...rryrrd...",
-          "....rrdd....",
-          ".....dd....."},
-         {{'r', "#E5484D"}, {'d', "#B8303A"}, {'y', "#FCE38A"}, {'w', "#FFC9CB"},
-          {'g', "#3DB37A"}, {'h', "#23824F"}}},
-        {QStringLiteral("rainbow"), QStringLiteral("Rainbow"),
-         {"....rrrrrrrr....",
-          "..rroooooooorr..",
-          ".rooyyyyyyyyoor.",
-          "rooyyggggggyyoor",
-          "royyggbbbbggyyor",
-          "roygbbvvvvbbgyor",
-          "roygbv....vbgyor",
-          "wwwwbv....vbwwww",
-          "cwwwwc....cwwwwc"},
-         {{'r', "#E5484D"}, {'o', "#F59E0B"}, {'y', "#FDE047"}, {'g', "#4CBF6B"},
-          {'b', "#5B8DEF"}, {'v', "#8E7CE6"}, {'w', "#FFFFFF"}, {'c', "#C9D3E3"}}},
-        {QStringLiteral("mushroom"), QStringLiteral("Mushroom"),
-         {"....rrrrrr....",
-          "..rrwwrrrrrr..",
-          ".rrwwwwrrrwwr.",
-          ".rrrwwrrrwwwr.",
-          "rrrrrrrrrrwwrd",
-          "rwwrrrrrrrrrrd",
-          "rwwrrrwwrrrrdd",
-          ".ddrrrwwrrrdd.",
-          "...sssssssst..",
-          "...sskssksst..",
-          "...sssssssst..",
-          "...sssssssst..",
-          "....sssssst..."},
-         {{'r', "#E5484D"}, {'d', "#B8303A"}, {'w', "#FFFFFF"}, {'s', "#F5E6C8"},
-          {'t', "#D9C29A"}, {'k', "#3A2E2A"}}},
-        {QStringLiteral("icecream"), QStringLiteral("Ice Cream"),
-         {".....s......",
-          "....cc......",
-          "....cc......",
-          "..pppppppp..",
-          ".pwwppppppp.",
-          "pwwppppppppq",
-          "pwpppppppppq",
-          "ppppppppppqq",
-          "qpqpqpqpqpqq",
-          ".klklklklkl.",
-          ".lklklklklk.",
-          "..klklklkl..",
-          "..lklklklk..",
-          "...klklkl...",
-          "....lklk....",
-          ".....kl....."},
-         {{'p', "#F7A1C4"}, {'q', "#E27BA6"}, {'w', "#FFE4EF"}, {'k', "#E8A65D"},
-          {'l', "#B9773A"}, {'c', "#D7263D"}, {'s', "#3E7C3A"}}},
-        {QStringLiteral("flower"), QStringLiteral("Flower"),
-         {".....ppp.....",
-          "..pp.ppp.pp..",
-          ".pppqpppqppp.",
-          ".ppppqyqpppp.",
-          "..ppqyyoyqpp.",
-          "pppqyyooyyqpp",
-          "pppqyyyyyyqpp",
-          "..ppqyyyyqpp.",
-          ".ppppqqqqpppp",
-          ".ppp..g..ppp.",
-          "......g......",
-          "..hh..g......",
-          "...hh.g..hh..",
-          "....hhghh....",
-          "......g......"},
-         {{'p', "#F78FB3"}, {'q', "#D9568F"}, {'y', "#FDD34D"}, {'o', "#F2A93B"},
-          {'g', "#3DB37A"}, {'h', "#23824F"}}},
-        {QStringLiteral("cat"), QStringLiteral("Cat"),
-         {"oo..........oo",
-          "opo........opo",
-          "oppo......oppo",
-          "oooooddddooooo",
-          "ooooooddoooooo",
-          "oogkoooooogkoo",
-          "oogkoooooogkoo",
-          "dooooowwoooood",
-          "dooowwppwwoood",
-          ".ooowwwwwwooo.",
-          ".oowwkwwkwwoo.",
-          "..oowwkkwwoo..",
-          "....oooooo...."},
-         {{'o', "#F2A04A"}, {'d', "#C46A1E"}, {'w', "#FFF6EA"}, {'p', "#F7A6B5"},
-          {'g', "#7FD17A"}, {'k', "#2B2B2B"}}},
-        {QStringLiteral("rocket"), QStringLiteral("Rocket"),
-         {".....rr.....",
-          "....rrrr....",
-          "...rrrrrr...",
-          "...wwwwwg...",
-          "..wwwwwwgg..",
-          "..wwnnnngg..",
-          "..wwnbbngg..",
-          "..wwnbbngg..",
-          "..wwnnnngg..",
-          "..wwwwwwgg..",
-          ".rwwwwwwggr.",
-          "rrwwwwwwggrr",
-          "rr.wwwwgg.rr",
-          "r...oyyo...r",
-          "....oyyo....",
-          ".....oo....."},
-         {{'r', "#E5484D"}, {'w', "#F4F4F6"}, {'g', "#C3C7D1"}, {'n', "#2F4A8A"},
-          {'b', "#7FB3F5"}, {'o', "#F59E0B"}, {'y', "#FDE047"}}},
-        {QStringLiteral("tree"), QStringLiteral("Apple Tree"),
-         {".....gggg.....",
-          "...gglggggg...",
-          "..glllgggrgg..",
-          ".gllgggggggh..",
-          ".ggggrgggggggh",
-          "gggggggggrgghh",
-          "gglgggggggghh.",
-          ".gggrgggggghhh",
-          ".gggggggggghh.",
-          "..hggggghhhh..",
-          "....hhthhh....",
-          "......tu......",
-          "......tu......",
-          "......tu......",
-          ".....ttuu.....",
-          "....tt..uu...."},
-         {{'g', "#4CBF6B"}, {'h', "#2E9150"}, {'l', "#8BE09B"}, {'r', "#E5484D"},
-          {'t', "#8A5A3B"}, {'u', "#5E3C26"}}},
-        {QStringLiteral("house"), QStringLiteral("House"),
-         {"...........mm...",
-          ".......rr..mm...",
-          "......rrrr.mm...",
-          ".....rrrrrrmm...",
-          "....rrrrrrrr....",
-          "...rrrrrrrrrr...",
-          ".ssssssssssssss.",
-          "..ccccccccccce..",
-          "..cbbcnnnncbbe..",
-          "..cbbcnnnncbbe..",
-          "..ccccnnknccce..",
-          "..ccccnnnnccce..",
-          "gggggggggggggggg",
-          ".g.g.g.g.g.g.g.g"},
-         {{'r', "#D64545"}, {'s', "#A83232"}, {'c', "#FFF1D6"}, {'e', "#E9D3A8"},
-          {'b', "#7FB3F5"}, {'n', "#8A5A3B"}, {'k', "#F2C14E"}, {'m', "#8C8C94"},
-          {'g', "#4CBF6B"}}},
-        {QStringLiteral("pip"), QStringLiteral("Pip"),
-         {"....hhhhhh....",
-          "...gggggggg...",
-          "...nnnnnnnn...",
-          "..nnnnnnnnnn..",
-          ".nnnbbbbbbnnn.",
-          ".nnbekbbekbnn.",
-          ".nnbbbbbbbbnn.",
-          ".nnpbboobbpnn.",
-          "nnnbbbbbbbbnnn",
-          "nnbbbbbbbbbbnn",
-          "nnbbbbbbbbbbnn",
-          "nnbbbbbbbbbbnn",
-          ".nnbbbbbbbbnn.",
-          "..nnbbbbbbnn..",
-          "...nnnnnnnn...",
-          "..oooo..oooo.."},
-         {{'n', "#26345A"}, {'b', "#FFF4DF"}, {'o', "#F29A38"}, {'e', "#FFFFFF"},
-          {'k', "#111111"}, {'p', "#F7A6B5"}, {'h', "#FAFAFA"}, {'g', "#3DB37A"}}},
-        {QStringLiteral("lotl"), QStringLiteral("Lotl"),
-         {"dd............dd",
-          "..d..pppppp..d..",
-          "ddd.pppppppp.ddd",
-          "...pppppppppp...",
-          "dddppppppppppddd",
-          "..ppwkppppwkpp..",
-          "..ppkkppppkkpp..",
-          "..pppppmmppppp..",
-          "...pppllllppp...",
-          "....pllllllp....",
-          "...ppllllllpp...",
-          "..p.pllllllp.p..",
-          "..p..pppppp..p..",
-          "......pppp......"},
-         {{'p', "#F7A8C8"}, {'d', "#E05A93"}, {'l', "#FDD7E6"}, {'k', "#2B1B2A"},
-          {'w', "#FFFFFF"}, {'m', "#B03A6A"}}},
-    };
-    return list;
+    return library().sources;
+}
+
+double colorDistance(const QColor &a, const QColor &b)
+{
+    const QVector<double> p = lab(a), q = lab(b);
+    return std::sqrt(std::pow(p[0] - q[0], 2) + std::pow(p[1] - q[1], 2) + std::pow(p[2] - q[2], 2));
+}
+
+int indexOf(const QString &id)
+{
+    const auto &all = pictures();
+    for (int i = 0; i < all.size(); ++i) {
+        if (all[i].id == id)
+            return i;
+    }
+    return -1;
 }
 
 QString check(const Source &source)
 {
     if (source.id.isEmpty() || source.title.isEmpty())
         return QStringLiteral("no id or title");
-    if (source.rows.isEmpty())
-        return QStringLiteral("no rows");
+    if (std::none_of(categories().cbegin(), categories().cend(), [&](const Category &c) { return c.id == source.category; }))
+        return QStringLiteral("category \"%1\" isn't one").arg(source.category);
+    if (source.rows.size() < kMinSize || source.rows.size() > kMaxSize)
+        return QStringLiteral("%1 rows (%2 to %3)").arg(source.rows.size()).arg(kMinSize).arg(kMaxSize);
     if (source.legend.isEmpty() || source.legend.size() > kMaxColors)
         return QStringLiteral("%1 colours (1 to %2)").arg(source.legend.size()).arg(kMaxColors);
     const qsizetype width = source.rows.first().size();
+    if (width < kMinSize || width > kMaxSize)
+        return QStringLiteral("%1 wide (%2 to %3)").arg(width).arg(kMinSize).arg(kMaxSize);
     QSet<QChar> symbols, used;
     for (const auto &entry : source.legend) {
-        if (entry.first == QLatin1Char('.') || symbols.contains(entry.first))
-            return QStringLiteral("symbol %1 twice, or the empty one").arg(entry.first);
+        if (entry.first.isNull() || entry.first == QLatin1Char('.') || symbols.contains(entry.first))
+            return QStringLiteral("a legend symbol twice, missing, or the empty one");
         if (!QColor::isValidColorName(entry.second))
             return QStringLiteral("%1 isn't a colour").arg(entry.second);
         symbols.insert(entry.first);
+    }
+    // Every two colours far enough apart to tell their swatches apart.
+    for (int i = 0; i < source.legend.size(); ++i) {
+        for (int j = i + 1; j < source.legend.size(); ++j) {
+            const double d = colorDistance(QColor(source.legend[i].second), QColor(source.legend[j].second));
+            if (d < kMinColorDistance)
+                return QStringLiteral("%1 and %2 look alike (%3)").arg(source.legend[i].first).arg(source.legend[j].first).arg(d, 0, 'f', 1);
+        }
     }
     for (int r = 0; r < source.rows.size(); ++r) {
         const QString &row = source.rows[r];
@@ -252,6 +156,13 @@ QString check(const Source &source)
         if (!used.contains(c))
             return QStringLiteral("%1 is never used").arg(c);
     }
+    // Drawn to its edges: no empty row or column round the outside.
+    auto emptyColumn = [&](qsizetype column) {
+        return std::all_of(source.rows.cbegin(), source.rows.cend(), [&](const QString &row) { return row.at(column) == QLatin1Char('.'); });
+    };
+    auto emptyRow = [](const QString &row) { return std::all_of(row.cbegin(), row.cend(), [](QChar c) { return c == QLatin1Char('.'); }); };
+    if (emptyRow(source.rows.first()) || emptyRow(source.rows.last()) || emptyColumn(0) || emptyColumn(width - 1))
+        return QStringLiteral("an empty row or column round the outside");
     return {};
 }
 
@@ -265,6 +176,7 @@ const QList<Picture> &pictures()
             Picture p;
             p.id = source.id;
             p.title = source.title;
+            p.category = source.category;
             p.width = int(source.rows.first().size());
             p.height = int(source.rows.size());
             QHash<QChar, int> number;
@@ -444,6 +356,28 @@ QVariantList ColorByNumberBoard::colors() const
                            {QStringLiteral("ink"), inkOn(colors.at(i))},
                            {QStringLiteral("total"), m_sheet.total(i + 1)},
                            {QStringLiteral("remaining"), m_sheet.remaining(i + 1)}};
+    }
+    return out;
+}
+
+QVariantList ColorByNumberBoard::categories() const
+{
+    QVariantList out;
+    for (const Colors::Category &c : Colors::categories()) {
+        const auto &all = Colors::pictures();
+        const int count = int(std::count_if(all.cbegin(), all.cend(), [&](const Colors::Picture &p) { return p.category == c.id; }));
+        out << QVariantMap{{QStringLiteral("id"), c.id}, {QStringLiteral("title"), c.title}, {QStringLiteral("count"), count}};
+    }
+    return out;
+}
+
+QVariantList ColorByNumberBoard::picturesIn(const QString &category) const
+{
+    QVariantList out;
+    const auto &all = Colors::pictures();
+    for (int i = 0; i < all.size(); ++i) {
+        if (category.isEmpty() || all[i].category == category)
+            out << i;
     }
     return out;
 }

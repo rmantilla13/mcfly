@@ -299,8 +299,8 @@ set(games_qmldir "module McFly\n")
 foreach(file qml/Theme.qml qml/Glass.qml qml/components/Lens.qml qml/components/Icon.qml
              qml/components/IconButton.qml qml/components/PillButton.qml qml/components/Tag.qml
              qml/components/SegmentedControl.qml qml/components/ScreenHeader.qml qml/components/Reveal.qml
-             qml/components/FocusFlickable.qml qml/games/ScoopTreat.qml qml/games/ScoopCrew.qml
-             qml/games/ScoopAwning.qml)
+             qml/components/FocusFlickable.qml qml/components/ChipRow.qml qml/games/ScoopTreat.qml
+             qml/games/ScoopCrew.qml qml/games/ScoopAwning.qml)
     configure_file(${PROJECT_SOURCE_DIR}/${file} ${games_root}/${file} COPYONLY)
     get_filename_component(type ${file} NAME_WE)
     if(type STREQUAL "Theme" OR type STREQUAL "Glass")

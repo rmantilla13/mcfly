@@ -25,6 +25,8 @@ Item {
     property string view: "gallery"
     // Each picture's progress (ColorByNumberBoard.saved), by its id.
     property var progress: ({})
+    // The gallery's category ("" for all of them).
+    property string category: ""
     readonly property real gap: Theme.spacing
     // Wide and short (the 7" panel, a TV): the picture on the left, the
     // controls beside it. Otherwise the controls under the picture.
@@ -86,8 +88,11 @@ Item {
         save()
         view = "gallery"
     }
+    // The next picture in the gallery's category, round to the first.
     function openNext() {
-        open((board.picture + 1) % board.pictureCount)
+        const list = board.picturesIn(category)
+        const at = list.indexOf(board.picture)
+        open(at < 0 ? (board.picture + 1) % board.pictureCount : list[(at + 1) % list.length])
     }
     // How much of a saved picture is done, 0 to 1.
     function share(saved) {
@@ -101,7 +106,9 @@ Item {
     Component.onCompleted: restore()
     Component.onDestruction: save()
 
-    // ---- The pictures to choose from
+    // ---- The pictures to choose from: a row of categories, and the
+    // pictures in the chosen one (all of them at first), built only as
+    // they scroll into view.
     Item {
         id: gallery
         anchors.fill: parent
@@ -109,80 +116,92 @@ Item {
 
         Label {
             id: galleryTitle
-            width: parent.width
+            visible: game.width >= 900
+            height: Theme.touchTarget
+            verticalAlignment: Text.AlignVCenter
             text: qsTr("Pick a picture")
             color: Theme.text
             font.pixelSize: Theme.fontLg
             font.weight: Font.DemiBold
         }
-        Flickable {
+        ChipRow {
+            id: shelves
+            objectName: "categories"
+            x: galleryTitle.visible ? galleryTitle.implicitWidth + game.gap : 0
+            width: parent.width - x
+            model: [{ id: "", label: qsTr("All") }].concat(board.categories.map(c => ({ id: c.id, label: c.title })))
+            current: game.category
+            onPicked: id => {
+                game.category = id
+                shelf.positionViewAtBeginning()
+            }
+        }
+        GridView {
             id: shelf
-            y: galleryTitle.height + game.gap
-            width: parent.width
+            readonly property int columns: Math.max(2, Math.floor((width + game.gap) / ((Theme.mini ? 170 : 220) + game.gap)))
+            y: shelves.height + game.gap
+            width: parent.width + game.gap // the last column's gap hangs off the edge
             height: parent.height - y
             clip: true
-            contentHeight: shelfGrid.height
+            cellWidth: width / columns
+            cellHeight: Math.round((cellWidth - game.gap) * 0.72) + 52 + game.gap
             boundsBehavior: Flickable.StopAtBounds
+            model: board.picturesIn(game.category)
+            delegate: Item {
+                id: slot
+                required property int modelData
+                width: shelf.cellWidth
+                height: shelf.cellHeight
 
-            Grid {
-                id: shelfGrid
-                readonly property int cardWidth: (shelf.width - (columns - 1) * spacing) / columns
-                columns: Math.max(2, Math.floor((shelf.width + spacing) / ((Theme.mini ? 170 : 220) + spacing)))
-                spacing: game.gap
+                Rectangle {
+                    id: card
+                    readonly property real done: game.share(game.progress[thumb.pictureId])
+                    objectName: "picture:" + slot.modelData
+                    width: slot.width - game.gap
+                    height: slot.height - game.gap
+                    radius: Theme.radius
+                    color: Theme.surface
+                    scale: cardTap.pressed ? 0.97 : 1
+                    Behavior on scale { NumberAnimation { duration: Theme.quick } }
 
-                Repeater {
-                    model: board.pictureCount
-                    delegate: Rectangle {
-                        id: card
-                        required property int index
-                        readonly property real done: game.share(game.progress[thumb.pictureId])
-                        objectName: "picture:" + index
-                        width: shelfGrid.cardWidth
-                        height: Math.round(width * 0.72) + 52
-                        radius: Theme.radius
-                        color: Theme.surface
-                        scale: cardTap.pressed ? 0.97 : 1
-                        Behavior on scale { NumberAnimation { duration: Theme.quick } }
-
-                        Rectangle {
-                            id: frame
-                            x: 8
-                            y: 8
-                            width: parent.width - 16
-                            height: Math.round(card.width * 0.72) - 8
-                            radius: Theme.radiusSm
-                            color: Theme.dark ? Theme.background : Theme.sunken
-                            ColorByNumberBoard {
-                                id: thumb
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                picture: card.index
-                                preview: true
-                                dark: Theme.dark
-                                saved: game.progress[pictureId] || ""
-                            }
+                    Rectangle {
+                        id: frame
+                        x: 8
+                        y: 8
+                        width: parent.width - 16
+                        height: Math.round(card.width * 0.72) - 8
+                        radius: Theme.radiusSm
+                        color: Theme.dark ? Theme.background : Theme.sunken
+                        ColorByNumberBoard {
+                            id: thumb
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            picture: slot.modelData
+                            preview: true
+                            dark: Theme.dark
+                            saved: game.progress[pictureId] || ""
                         }
-                        Label {
-                            x: 14
-                            y: frame.y + frame.height + 8
-                            width: parent.width - 28 - status.width
-                            text: thumb.title
-                            color: Theme.text
-                            font.pixelSize: Theme.fontSm
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            id: status
-                            x: parent.width - 14 - width
-                            y: frame.y + frame.height + 8
-                            text: card.done >= 1 ? qsTr("Done") : card.done > 0 ? qsTr("%1%").arg(Math.floor(card.done * 100)) : ""
-                            color: card.done >= 1 ? Theme.success : Theme.textMuted
-                            font.pixelSize: Theme.fontSm
-                            font.weight: Font.DemiBold
-                        }
-                        TapHandler { id: cardTap; onTapped: game.open(card.index) }
                     }
+                    Label {
+                        x: 14
+                        y: frame.y + frame.height + 8
+                        width: parent.width - 28 - status.width
+                        text: thumb.title
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        id: status
+                        x: parent.width - 14 - width
+                        y: frame.y + frame.height + 8
+                        text: card.done >= 1 ? qsTr("Done") : card.done > 0 ? qsTr("%1%").arg(Math.floor(card.done * 100)) : ""
+                        color: card.done >= 1 ? Theme.success : Theme.textMuted
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.DemiBold
+                    }
+                    TapHandler { id: cardTap; onTapped: game.open(slot.modelData) }
                 }
             }
         }

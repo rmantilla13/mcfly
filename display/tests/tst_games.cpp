@@ -1357,6 +1357,45 @@ private slots:
         QCOMPARE(board->property("painted").toInt(), reds);
     }
 
+    // The gallery by category: a chip shows its pictures and no others, All
+    // shows every one, and Next picture keeps to the category.
+    void colorByNumberCategories()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/ColorByNumber.qml"), {1152, 752}));
+        QVERIFY(game);
+        QTest::qWait(30);
+        const int all = eval(game.get(), QStringLiteral("board.pictureCount")).toInt();
+        QCOMPARE(eval(game.get(), QStringLiteral("shelf.count")).toInt(), all);
+        QQuickItem *chips = find(game.get(), QStringLiteral("categories"));
+        QVERIFY(chips && chips->height() >= 64);
+        const QVariantList categories = eval(game.get(), QStringLiteral("board.categories")).toList();
+        QVERIFY(categories.size() >= 6);
+        int counted = 0;
+        for (const QVariant &c : categories) {
+            const QVariantMap category = c.toMap();
+            const QString id = category.value(QStringLiteral("id")).toString();
+            QMetaObject::invokeMethod(chips, "picked", Q_ARG(QString, id));
+            QTest::qWait(10);
+            const int n = eval(game.get(), QStringLiteral("shelf.count")).toInt();
+            QCOMPARE(n, category.value(QStringLiteral("count")).toInt());
+            counted += n;
+            // Every picture on the shelf is from the category.
+            for (const QVariant &i : eval(game.get(), QStringLiteral("shelf.model")).toList())
+                QCOMPARE(Colors::pictures().at(i.toInt()).category, id);
+        }
+        QCOMPARE(counted, all);
+
+        // Next picture, from the last food, goes round to the first food.
+        const QVariantList food = eval(game.get(), QStringLiteral("board.picturesIn('food')")).toList();
+        QVERIFY(food.size() >= 2);
+        eval(game.get(), QStringLiteral("category = 'food'"));
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "open", Q_ARG(QVariant, food.last())));
+        QVERIFY(QMetaObject::invokeMethod(game.get(), "openNext"));
+        QCOMPARE(eval(game.get(), QStringLiteral("board.picture")).toInt(), food.first().toInt());
+        QCOMPARE(eval(game.get(), QStringLiteral("board.category")).toString(), QStringLiteral("food"));
+        QMetaObject::invokeMethod(chips, "picked", Q_ARG(QString, QString()));
+    }
+
     // Every control a full touch target, on the stage of every panel:
     // the gallery's cards, the tools and the palette (nine colours at most
     // fit the portrait row), and the buttons of a finished picture.

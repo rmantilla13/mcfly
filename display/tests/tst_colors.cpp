@@ -33,22 +33,37 @@ private slots:
             QVERIFY2(!ids.contains(source.id), qPrintable(source.id));
             ids.insert(source.id);
         }
-        // None was dropped for a fault, and there are enough to choose from.
+        // None was dropped for a fault, and there are plenty to choose from.
         QCOMPARE(pictures().size(), sources().size());
-        QVERIFY(pictures().size() >= 10);
+        QVERIFY(pictures().size() >= 100);
+        // The first twelve keep their places (the card's art, the tests and
+        // the iPhone app's copy count on them).
+        const QStringList first = {QStringLiteral("heart"), QStringLiteral("strawberry"), QStringLiteral("rainbow"),
+                                   QStringLiteral("mushroom"), QStringLiteral("icecream"), QStringLiteral("flower"),
+                                   QStringLiteral("cat"), QStringLiteral("rocket"), QStringLiteral("tree"),
+                                   QStringLiteral("house"), QStringLiteral("pip"), QStringLiteral("lotl")};
+        for (int i = 0; i < first.size(); ++i)
+            QCOMPARE(pictures().at(i).id, first.at(i));
+        QCOMPARE(indexOf(QStringLiteral("pip")), 10);
+        QCOMPARE(indexOf(QStringLiteral("nothing")), -1);
+        // Every category has a shelf's worth.
+        QVERIFY(categories().size() >= 6);
+        for (const Category &c : categories()) {
+            const auto n = std::count_if(pictures().cbegin(), pictures().cend(), [&](const Picture &p) { return p.category == c.id; });
+            QVERIFY2(n >= 8, qPrintable(QStringLiteral("%1 has %2").arg(c.id).arg(n)));
+            QVERIFY(!c.title.isEmpty());
+        }
+        // Colours that look alike are told apart from ones that don't.
+        QVERIFY(colorDistance(QColor(QStringLiteral("#FFFFFF")), QColor(QStringLiteral("#FAFAFA"))) < kMinColorDistance);
+        QVERIFY(colorDistance(QColor(QStringLiteral("#E5484D")), QColor(QStringLiteral("#5B8DEF"))) > kMinColorDistance);
         for (const Picture &p : pictures()) {
             QVERIFY2(p.colors.size() <= kMaxColors, qPrintable(p.id));
             QVERIFY2(p.width >= 8 && p.width <= 24 && p.height >= 8 && p.height <= 24, qPrintable(p.id));
             QCOMPARE(p.cells.size(), p.width * p.height);
-            // Every number is used, and no row or column is empty all the way.
+            // Every number is used (a gap inside, like the rain under its
+            // cloud, is fine; check() keeps the edges filled).
             for (int n = 1; n <= p.colors.size(); ++n)
                 QVERIFY2(p.cells.contains(n), qPrintable(p.id));
-            for (int row = 0; row < p.height; ++row) {
-                bool any = false;
-                for (int column = 0; column < p.width; ++column)
-                    any = any || p.cells.at(row * p.width + column) != 0;
-                QVERIFY2(any, qPrintable(QStringLiteral("%1 row %2 is empty").arg(p.id).arg(row)));
-            }
         }
         // check() catches a broken one.
         Source broken = sources().first();
@@ -56,6 +71,15 @@ private slots:
         QVERIFY(!check(broken).isEmpty());
         broken = sources().first();
         broken.rows[0][0] = QLatin1Char('z');
+        QVERIFY(!check(broken).isEmpty());
+        broken = sources().first();
+        broken.category = QStringLiteral("nowhere");
+        QVERIFY(!check(broken).isEmpty());
+        broken = sources().first();
+        broken.legend[1].second = broken.legend[0].second; // two swatches alike
+        QVERIFY(!check(broken).isEmpty());
+        broken = sources().first();
+        broken.rows.prepend(QString(broken.rows.first().size(), QLatin1Char('.'))); // an empty edge
         QVERIFY(!check(broken).isEmpty());
     }
 
