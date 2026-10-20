@@ -64,8 +64,7 @@ the build turns into a string in the app. `tests/tst_colors.cpp` checks
 every one: the shape, the legend, at most nine colours, any two far enough
 apart to tell their swatches apart, and the edges filled.
 
-The iPhone and Mac app has all of these but Same Game and Maroon (and, of
-Color by Number's pictures, the first twelve for now), written
+The iPhone and Mac app has all of these but Same Game and Maroon, written
 again in Swift (`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
 `apple/McFly/Games` for the screens), with the same rules, levels and
 credits. 2048's and Rush Hour's Swift carry their MIT notices at the top of
@@ -74,9 +73,10 @@ hold the Swift to the display: Four in a Row's search against
 `FourInARowEngine`'s node counts, Scoop Shop's orders against `scoops.js`,
 Penguin March's terrain and solution replays, cell for cell and tick for
 tick, against `PenguinSim`, and Color by Number's pictures, zoom, pan and
-sweeps against `ColorByNumber.cpp`. Scoop Shop's parlour (the awning, the
-ticket rail, the freezer case and shelves, the prep bench) is drawn again in
-SwiftUI from the same shapes and colours.
+sweeps against `ColorByNumber.cpp`; the app reads a copy of
+`colorbynumber.txt` that its tests hold to this one byte for byte. Scoop
+Shop's parlour (the awning, the ticket rail, the freezer case and shelves,
+the prep bench) is drawn again in SwiftUI from the same shapes and colours.
 
 ## Saved scores
 

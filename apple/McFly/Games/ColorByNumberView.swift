@@ -40,6 +40,10 @@ final class ColorGame {
 
     var showing = Showing.gallery
     var board = ColorBoard()
+    /// The gallery's category ("" for all of them).
+    var category = ""
+    /// The picture last opened, which the gallery scrolls back to.
+    var galleryAnchor: Int?
     /// Each picture's progress (`ColorBoard.saved`), by its id.
     private(set) var progress = GameProgress.shared.colorProgress
 
@@ -73,6 +77,7 @@ final class ColorGame {
 
     func open(_ index: Int) {
         save()
+        galleryAnchor = index
         board.setPicture(index)
         board.setSaved(progress[board.pictureID] ?? "")
         showing = .paint
@@ -83,7 +88,15 @@ final class ColorGame {
         showing = .gallery
     }
 
-    func openNext() { open((board.picture + 1) % board.pictureCount) }
+    /// The next picture in the gallery's category, round to the first.
+    func openNext() {
+        let shelf = ColorByNumber.pictures(in: category)
+        if let at = shelf.firstIndex(of: board.picture) {
+            open(shelf[(at + 1) % shelf.count])
+        } else {
+            open((board.picture + 1) % board.pictureCount)
+        }
+    }
 
     /// How much of a saved picture is done, 0 to 1.
     func share(_ id: String) -> Double {
@@ -158,20 +171,32 @@ final class ColorGame {
 
 // MARK: The gallery
 
-/// The pictures to choose from: each shows its colours faintly until it's
-/// done, and says how far along it is.
+/// The pictures to choose from: a row of categories, and the pictures in
+/// the chosen one (all of them at first), built as they scroll into view.
+/// Each shows its colours faintly until it's done, and says how far along
+/// it is.
 private struct ColorGallery: View {
-    let game: ColorGame
+    @Bindable var game: ColorGame
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 12)]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Pick a picture")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.text)
+        VStack(alignment: .leading, spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                // Wide: the title, then the categories beside it.
+                HStack(spacing: 16) {
+                    Text("Pick a picture")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                        .fixedSize()
+                    CategoryChips(chosen: $game.category).fixedSize()
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    CategoryChips(chosen: $game.category)
+                }
+            }
+            ScrollView {
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(ColorByNumber.pictures.indices, id: \.self) { i in
+                    ForEach(ColorByNumber.pictures(in: game.category), id: \.self) { i in
                         let picture = ColorByNumber.pictures[i]
                         let share = game.share(picture.id)
                         Button { game.open(i) } label: {
@@ -181,10 +206,16 @@ private struct ColorGallery: View {
                         .accessibilityLabel("\(picture.title), \(status(share).isEmpty ? "not started" : status(share))")
                     }
                 }
+                .scrollTargetLayout()
+                .padding(.bottom, 12)
             }
-            .padding(.bottom, 12)
+            .scrollIndicators(.hidden)
+            // Back from a picture, the gallery is where it was; a new shelf
+            // starts at its top.
+            .scrollPosition(id: $game.galleryAnchor, anchor: .center)
+            .id(game.category)
+            .onChange(of: game.category) { game.galleryAnchor = nil }
         }
-        .scrollIndicators(.hidden)
     }
 
     private func status(_ share: Double) -> String {
@@ -212,6 +243,45 @@ private struct ColorGallery: View {
         }
         .padding(8)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+    }
+}
+
+/// "All", then each category: the chosen one filled, as the Dashboards
+/// chips are, and 44 points tall, as a game's targets are.
+private struct CategoryChips: View {
+    @Binding var chosen: String
+    @Namespace private var space
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 8) {
+            chip("", "All")
+            ForEach(ColorByNumber.categories) { chip($0.id, $0.title) }
+        }
+        .padding(.vertical, 2)
+        .animation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.84), value: chosen)
+    }
+
+    private func chip(_ id: String, _ title: String) -> some View {
+        let on = id == chosen
+        return Button { chosen = id } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .foregroundStyle(on ? Theme.accentInk : Theme.text)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .background {
+                    if on {
+                        Capsule().fill(Theme.accent).matchedGeometryEffect(id: "chosen", in: space)
+                    } else {
+                        Capsule().fill(Theme.surface)
+                    }
+                }
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel(id.isEmpty ? "All pictures" : title)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -304,7 +374,7 @@ private struct ColorEasel: View {
     @ViewBuilder
     private var palette: some View {
         if game.board.done {
-            FlowLayout(spacing: 12) {
+            ChipFlow(spacing: 12) {
                 Text("Finished!")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Theme.success)
@@ -316,7 +386,7 @@ private struct ColorEasel: View {
             }
             .padding(.vertical, 4) // as tall as the swatches, so the picture stays put
         } else {
-            FlowLayout(spacing: 8) {
+            ChipFlow(spacing: 8) {
                 ForEach(game.board.colors) { swatch in
                     ColorSwatch(swatch: swatch, chosen: game.board.selected == swatch.number) {
                         game.board.select(swatch.number)
@@ -456,50 +526,5 @@ enum ColorBoardDrawing {
 extension Color {
     init(_ rgb: ColorByNumber.RGB) {
         self.init(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue)
-    }
-}
-
-/// Lays its children out in rows, left to right, starting a new row when
-/// one is full (the display's Flow).
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(width: proposal.width ?? .infinity, subviews)
-        let width = rows.map { $0.width }.max() ?? 0
-        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(0, rows.count - 1))
-        return CGSize(width: proposal.width ?? width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var y = bounds.minY
-        for row in arrange(width: bounds.width, subviews) {
-            var x = bounds.minX
-            for i in row.items {
-                let size = subviews[i].sizeThatFits(.unspecified)
-                subviews[i].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: .unspecified)
-                x += size.width + spacing
-            }
-            y += row.height + spacing
-        }
-    }
-
-    private struct Row { var items: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
-
-    private func arrange(width: CGFloat, _ subviews: Subviews) -> [Row] {
-        var rows: [Row] = [Row()]
-        for i in subviews.indices {
-            let size = subviews[i].sizeThatFits(.unspecified)
-            let needed = rows[rows.count - 1].items.isEmpty ? size.width : rows[rows.count - 1].width + spacing + size.width
-            if needed > width && !rows[rows.count - 1].items.isEmpty {
-                rows.append(Row())
-            }
-            var row = rows[rows.count - 1]
-            row.width = row.items.isEmpty ? size.width : row.width + spacing + size.width
-            row.height = max(row.height, size.height)
-            row.items.append(i)
-            rows[rows.count - 1] = row
-        }
-        return rows
     }
 }

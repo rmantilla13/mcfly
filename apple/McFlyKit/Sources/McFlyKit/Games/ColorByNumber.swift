@@ -6,279 +6,170 @@ import Foundation
 /// carry the number of their colour. Pick a colour and paint its cells; only
 /// a cell with the chosen number takes it. Written for McFly, after Araib
 /// Karim's Color by Number for iOS; none of its code or pictures (it has no
-/// licence) is used. The pictures are ours, the display's, copied here
-/// exactly, and the tests hold the two to each other cell for cell.
+/// licence) is used. The pictures are ours: the display's picture file
+/// (display/src/games/colorbynumber.txt), copied into the kit's resources and
+/// read the way the display reads it. The tests hold the copy to the file.
 public enum ColorByNumber {
     /// The most colours a picture has, so the palette stays one or two rows.
     public static let maxColors = 9
+    /// A picture is between these many cells wide and tall.
+    public static let minSize = 8, maxSize = 24
+    /// How far apart (CIE76) any two of a picture's colours are, at least, so
+    /// their swatches can be told apart.
+    public static let minColorDistance: Double = 10
     /// The biggest a cell gets when zoomed in, in points.
     public static let maxCell: Double = 96
 
+    /// A shelf of the gallery: animals, food, space…
+    public struct Category: Sendable, Identifiable, Equatable {
+        public let id: String
+        public let title: String
+    }
+
     /// A picture as written: rows of symbols, "." for an empty cell, and a
-    /// legend giving each symbol its colour. Numbers follow the legend's order.
+    /// legend giving each symbol its colour. Numbers follow the legend's
+    /// order. A symbol the file got wrong is nil, for check() to refuse.
     public struct Source: Sendable {
         public var id: String
         public var title: String
+        public var category: String
+        public var legend: [(symbol: Character?, hex: String)]
         public var rows: [String]
-        public var legend: [(symbol: Character, hex: String)]
     }
 
-    /// The pictures, easiest first: the display's `Colors::sources()`.
-    public static let sources: [Source] = [
-        Source(id: "heart", title: "Heart", rows: [
-            ".rrr....rrr.",
-            "rwwrr..rrrrr",
-            "rwrrrrrrrrrd",
-            "rrrrrrrrrrrd",
-            "rrrrrrrrrrrd",
-            ".rrrrrrrrrd.",
-            "..rrrrrrrd..",
-            "...rrrrrd...",
-            "....rrrd....",
-            ".....rd.....",
-        ], legend: [
-            ("r", "#E5484D"), ("d", "#B8303A"), ("w", "#FFC9CB"),
-        ]),
-        Source(id: "strawberry", title: "Strawberry", rows: [
-            "....g..g....",
-            "...ghgghg...",
-            "..ghhgghhg..",
-            ".rrgrrrrgrr.",
-            "rrwryrrrryrd",
-            "rwrrrrryrrrd",
-            "rrryrrrrrrrd",
-            ".rrrrryrrrd.",
-            ".rryrrrrryd.",
-            "..rrrrryrd..",
-            "...rryrrd...",
-            "....rrdd....",
-            ".....dd.....",
-        ], legend: [
-            ("r", "#E5484D"), ("d", "#B8303A"), ("y", "#FCE38A"), ("w", "#FFC9CB"),
-            ("g", "#3DB37A"), ("h", "#23824F"),
-        ]),
-        Source(id: "rainbow", title: "Rainbow", rows: [
-            "....rrrrrrrr....",
-            "..rroooooooorr..",
-            ".rooyyyyyyyyoor.",
-            "rooyyggggggyyoor",
-            "royyggbbbbggyyor",
-            "roygbbvvvvbbgyor",
-            "roygbv....vbgyor",
-            "wwwwbv....vbwwww",
-            "cwwwwc....cwwwwc",
-        ], legend: [
-            ("r", "#E5484D"), ("o", "#F59E0B"), ("y", "#FDE047"), ("g", "#4CBF6B"),
-            ("b", "#5B8DEF"), ("v", "#8E7CE6"), ("w", "#FFFFFF"), ("c", "#C9D3E3"),
-        ]),
-        Source(id: "mushroom", title: "Mushroom", rows: [
-            "....rrrrrr....",
-            "..rrwwrrrrrr..",
-            ".rrwwwwrrrwwr.",
-            ".rrrwwrrrwwwr.",
-            "rrrrrrrrrrwwrd",
-            "rwwrrrrrrrrrrd",
-            "rwwrrrwwrrrrdd",
-            ".ddrrrwwrrrdd.",
-            "...sssssssst..",
-            "...sskssksst..",
-            "...sssssssst..",
-            "...sssssssst..",
-            "....sssssst...",
-        ], legend: [
-            ("r", "#E5484D"), ("d", "#B8303A"), ("w", "#FFFFFF"), ("s", "#F5E6C8"),
-            ("t", "#D9C29A"), ("k", "#3A2E2A"),
-        ]),
-        Source(id: "icecream", title: "Ice Cream", rows: [
-            ".....s......",
-            "....cc......",
-            "....cc......",
-            "..pppppppp..",
-            ".pwwppppppp.",
-            "pwwppppppppq",
-            "pwpppppppppq",
-            "ppppppppppqq",
-            "qpqpqpqpqpqq",
-            ".klklklklkl.",
-            ".lklklklklk.",
-            "..klklklkl..",
-            "..lklklklk..",
-            "...klklkl...",
-            "....lklk....",
-            ".....kl.....",
-        ], legend: [
-            ("p", "#F7A1C4"), ("q", "#E27BA6"), ("w", "#FFE4EF"), ("k", "#E8A65D"),
-            ("l", "#B9773A"), ("c", "#D7263D"), ("s", "#3E7C3A"),
-        ]),
-        Source(id: "flower", title: "Flower", rows: [
-            ".....ppp.....",
-            "..pp.ppp.pp..",
-            ".pppqpppqppp.",
-            ".ppppqyqpppp.",
-            "..ppqyyoyqpp.",
-            "pppqyyooyyqpp",
-            "pppqyyyyyyqpp",
-            "..ppqyyyyqpp.",
-            ".ppppqqqqpppp",
-            ".ppp..g..ppp.",
-            "......g......",
-            "..hh..g......",
-            "...hh.g..hh..",
-            "....hhghh....",
-            "......g......",
-        ], legend: [
-            ("p", "#F78FB3"), ("q", "#D9568F"), ("y", "#FDD34D"), ("o", "#F2A93B"),
-            ("g", "#3DB37A"), ("h", "#23824F"),
-        ]),
-        Source(id: "cat", title: "Cat", rows: [
-            "oo..........oo",
-            "opo........opo",
-            "oppo......oppo",
-            "oooooddddooooo",
-            "ooooooddoooooo",
-            "oogkoooooogkoo",
-            "oogkoooooogkoo",
-            "dooooowwoooood",
-            "dooowwppwwoood",
-            ".ooowwwwwwooo.",
-            ".oowwkwwkwwoo.",
-            "..oowwkkwwoo..",
-            "....oooooo....",
-        ], legend: [
-            ("o", "#F2A04A"), ("d", "#C46A1E"), ("w", "#FFF6EA"), ("p", "#F7A6B5"),
-            ("g", "#7FD17A"), ("k", "#2B2B2B"),
-        ]),
-        Source(id: "rocket", title: "Rocket", rows: [
-            ".....rr.....",
-            "....rrrr....",
-            "...rrrrrr...",
-            "...wwwwwg...",
-            "..wwwwwwgg..",
-            "..wwnnnngg..",
-            "..wwnbbngg..",
-            "..wwnbbngg..",
-            "..wwnnnngg..",
-            "..wwwwwwgg..",
-            ".rwwwwwwggr.",
-            "rrwwwwwwggrr",
-            "rr.wwwwgg.rr",
-            "r...oyyo...r",
-            "....oyyo....",
-            ".....oo.....",
-        ], legend: [
-            ("r", "#E5484D"), ("w", "#F4F4F6"), ("g", "#C3C7D1"), ("n", "#2F4A8A"),
-            ("b", "#7FB3F5"), ("o", "#F59E0B"), ("y", "#FDE047"),
-        ]),
-        Source(id: "tree", title: "Apple Tree", rows: [
-            ".....gggg.....",
-            "...gglggggg...",
-            "..glllgggrgg..",
-            ".gllgggggggh..",
-            ".ggggrgggggggh",
-            "gggggggggrgghh",
-            "gglgggggggghh.",
-            ".gggrgggggghhh",
-            ".gggggggggghh.",
-            "..hggggghhhh..",
-            "....hhthhh....",
-            "......tu......",
-            "......tu......",
-            "......tu......",
-            ".....ttuu.....",
-            "....tt..uu....",
-        ], legend: [
-            ("g", "#4CBF6B"), ("h", "#2E9150"), ("l", "#8BE09B"), ("r", "#E5484D"),
-            ("t", "#8A5A3B"), ("u", "#5E3C26"),
-        ]),
-        Source(id: "house", title: "House", rows: [
-            "...........mm...",
-            ".......rr..mm...",
-            "......rrrr.mm...",
-            ".....rrrrrrmm...",
-            "....rrrrrrrr....",
-            "...rrrrrrrrrr...",
-            ".ssssssssssssss.",
-            "..ccccccccccce..",
-            "..cbbcnnnncbbe..",
-            "..cbbcnnnncbbe..",
-            "..ccccnnknccce..",
-            "..ccccnnnnccce..",
-            "gggggggggggggggg",
-            ".g.g.g.g.g.g.g.g",
-        ], legend: [
-            ("r", "#D64545"), ("s", "#A83232"), ("c", "#FFF1D6"), ("e", "#E9D3A8"),
-            ("b", "#7FB3F5"), ("n", "#8A5A3B"), ("k", "#F2C14E"), ("m", "#8C8C94"),
-            ("g", "#4CBF6B"),
-        ]),
-        Source(id: "pip", title: "Pip", rows: [
-            "....hhhhhh....",
-            "...gggggggg...",
-            "...nnnnnnnn...",
-            "..nnnnnnnnnn..",
-            ".nnnbbbbbbnnn.",
-            ".nnbekbbekbnn.",
-            ".nnbbbbbbbbnn.",
-            ".nnpbboobbpnn.",
-            "nnnbbbbbbbbnnn",
-            "nnbbbbbbbbbbnn",
-            "nnbbbbbbbbbbnn",
-            "nnbbbbbbbbbbnn",
-            ".nnbbbbbbbbnn.",
-            "..nnbbbbbbnn..",
-            "...nnnnnnnn...",
-            "..oooo..oooo..",
-        ], legend: [
-            ("n", "#26345A"), ("b", "#FFF4DF"), ("o", "#F29A38"), ("e", "#FFFFFF"),
-            ("k", "#111111"), ("p", "#F7A6B5"), ("h", "#FAFAFA"), ("g", "#3DB37A"),
-        ]),
-        Source(id: "lotl", title: "Lotl", rows: [
-            "dd............dd",
-            "..d..pppppp..d..",
-            "ddd.pppppppp.ddd",
-            "...pppppppppp...",
-            "dddppppppppppddd",
-            "..ppwkppppwkpp..",
-            "..ppkkppppkkpp..",
-            "..pppppmmppppp..",
-            "...pppllllppp...",
-            "....pllllllp....",
-            "...ppllllllpp...",
-            "..p.pllllllp.p..",
-            "..p..pppppp..p..",
-            "......pppp......",
-        ], legend: [
-            ("p", "#F7A8C8"), ("d", "#E05A93"), ("l", "#FDD7E6"), ("k", "#2B1B2A"),
-            ("w", "#FFFFFF"), ("m", "#B03A6A"),
-        ]),
-    ]
+    /// The picture file, as the kit carries it.
+    public static let pictureText: String = {
+        guard let url = Bundle.module.url(forResource: "colorbynumber", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+        return text
+    }()
+
+    private static let library = parse(pictureText)
+    public static var categories: [Category] { library.categories }
+    public static var sources: [Source] { library.sources }
+
+    /// Reads the picture file (its format is at its top), as the display's
+    /// `library()` does. Anything it can't read becomes a source that check()
+    /// turns down, so a mistake shows in the tests, not as a gap.
+    public static func parse(_ text: String) -> (categories: [Category], sources: [Source]) {
+        var categories: [Category] = []
+        var sources: [Source] = []
+        var open = false, wantLegend = false
+        func fields(_ line: String) -> [String] {
+            line.dropFirst().split(separator: "|", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        // "\n" as a string, so a "\r\n" (one Character in Swift) still splits; trimming takes the "\r".
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix("#") { continue }
+            if line.isEmpty {
+                open = false
+                continue
+            }
+            if line.hasPrefix("@") {
+                let f = fields(line)
+                categories.append(Category(id: f.first ?? "", title: f.count > 1 ? f[1] : ""))
+                continue
+            }
+            if line.hasPrefix("=") {
+                let f = fields(line)
+                sources.append(Source(id: f.first ?? "", title: f.count > 1 ? f[1] : "", category: f.count > 2 ? f[2] : "",
+                                      legend: [], rows: []))
+                open = true
+                wantLegend = true
+                continue
+            }
+            guard open else { continue }
+            if wantLegend {
+                wantLegend = false
+                let words = line.split(separator: " ").map(String.init)
+                var i = 0
+                while i + 1 < words.count {
+                    sources[sources.count - 1].legend.append((words[i].count == 1 ? words[i].first : nil, words[i + 1]))
+                    i += 2
+                }
+                if words.count % 2 == 1 { sources[sources.count - 1].legend.append((nil, "")) }
+                continue
+            }
+            sources[sources.count - 1].rows.append(line)
+        }
+        return (categories, sources)
+    }
+
+    /// CIE76 colour difference: how far apart two colours look (sRGB to Lab, D65).
+    public static func colorDistance(_ a: RGB, _ b: RGB) -> Double {
+        func lab(_ c: RGB) -> (Double, Double, Double) {
+            // From float channels, as Qt's QColor::redF() hands them over, so a
+            // pair near the line falls the same side of it as on the display.
+            func linear(_ channel: Double) -> Double {
+                let v = Double(Float(channel))
+                return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+            }
+            let r = linear(c.red), g = linear(c.green), b = linear(c.blue)
+            let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+            let y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+            func f(_ t: Double) -> Double { t > 0.008856 ? cbrt(t) : 7.787 * t + 16.0 / 116 }
+            return (116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z)))
+        }
+        let p = lab(a), q = lab(b)
+        return sqrt(pow(p.0 - q.0, 2) + pow(p.1 - q.1, 2) + pow(p.2 - q.2, 2))
+    }
 
     /// What's wrong with a source, or nil when nothing is.
     public static func check(_ source: Source) -> String? {
         if source.id.isEmpty || source.title.isEmpty { return "no id or title" }
-        guard let first = source.rows.first else { return "no rows" }
+        if !categories.contains(where: { $0.id == source.category }) { return "category \"\(source.category)\" isn't one" }
+        let sizes = minSize...maxSize
+        if !sizes.contains(source.rows.count) { return "\(source.rows.count) rows (\(minSize) to \(maxSize))" }
         if source.legend.isEmpty || source.legend.count > maxColors {
             return "\(source.legend.count) colours (1 to \(maxColors))"
         }
+        let rows = source.rows.map(Array.init)
+        let width = rows[0].count
+        if !sizes.contains(width) { return "\(width) wide (\(minSize) to \(maxSize))" }
         var symbols = Set<Character>(), used = Set<Character>()
+        var colours: [RGB] = []
         for entry in source.legend {
-            if entry.symbol == "." || symbols.contains(entry.symbol) { return "symbol \(entry.symbol) twice, or the empty one" }
-            if RGB(hex: entry.hex) == nil { return "\(entry.hex) isn't a colour" }
-            symbols.insert(entry.symbol)
+            guard let symbol = entry.symbol, symbol != ".", !symbols.contains(symbol) else {
+                return "a legend symbol twice, missing, or the empty one"
+            }
+            guard let colour = RGB(hex: entry.hex) else { return "\(entry.hex) isn't a colour" }
+            symbols.insert(symbol)
+            colours.append(colour)
         }
-        for (r, row) in source.rows.enumerated() {
-            if row.count != first.count { return "row \(r) is \(row.count) wide, not \(first.count)" }
+        // Every two colours far enough apart to tell their swatches apart.
+        for i in colours.indices {
+            for j in colours.indices where j > i {
+                let d = colorDistance(colours[i], colours[j])
+                if d < minColorDistance {
+                    return "\(source.legend[i].symbol.map(String.init) ?? "") and \(source.legend[j].symbol.map(String.init) ?? "") look alike (\(String(format: "%.1f", d)))"
+                }
+            }
+        }
+        for (r, row) in rows.enumerated() {
+            if row.count != width { return "row \(r) is \(row.count) wide, not \(width)" }
             for c in row where c != "." {
                 if !symbols.contains(c) { return "row \(r) has \(c), not in the legend" }
                 used.insert(c)
             }
         }
-        if let unused = source.legend.first(where: { !used.contains($0.symbol) }) { return "\(unused.symbol) is never used" }
+        if let unused = source.legend.first(where: { !used.contains($0.symbol ?? ".") }) {
+            return "\(unused.symbol.map(String.init) ?? "") is never used"
+        }
+        // Drawn to its edges: no empty row or column round the outside.
+        func emptyRow(_ row: [Character]) -> Bool { row.allSatisfy { $0 == "." } }
+        func emptyColumn(_ column: Int) -> Bool { rows.allSatisfy { $0[column] == "." } }
+        if emptyRow(rows[0]) || emptyRow(rows[rows.count - 1]) || emptyColumn(0) || emptyColumn(width - 1) {
+            return "an empty row or column round the outside"
+        }
         return nil
     }
 
     public struct Picture: Sendable, Identifiable {
         public let id: String
         public let title: String
+        public let category: String
         public let width: Int
         public let height: Int
         /// Number n is colors[n - 1].
@@ -291,10 +182,22 @@ public enum ColorByNumber {
     public static let pictures: [Picture] = sources.compactMap { source in
         guard check(source) == nil, let first = source.rows.first else { return nil }
         var number: [Character: Int] = [:]
-        for (i, entry) in source.legend.enumerated() { number[entry.symbol] = i + 1 }
-        return Picture(id: source.id, title: source.title, width: first.count, height: source.rows.count,
+        for (i, entry) in source.legend.enumerated() {
+            if let symbol = entry.symbol { number[symbol] = i + 1 }
+        }
+        return Picture(id: source.id, title: source.title, category: source.category, width: first.count, height: source.rows.count,
                        colors: source.legend.compactMap { RGB(hex: $0.hex) },
                        cells: source.rows.flatMap { row in row.map { number[$0] ?? 0 } })
+    }
+
+    /// A picture's place in `pictures`.
+    public static func index(of id: String) -> Int? {
+        pictures.firstIndex { $0.id == id }
+    }
+
+    /// The pictures in a category ("" for all of them), as indexes, in the file's order.
+    public static func pictures(in category: String) -> [Int] {
+        pictures.indices.filter { category.isEmpty || pictures[$0].category == category }
     }
 
     /// A colour as the board mixes it: sRGB channels from 0 to 1.

@@ -3,8 +3,9 @@ import XCTest
 
 /// Color by Number, as the display's tst_colors checks it: the pictures,
 /// painting and progress, and the board's view and touch. Then the Swift
-/// held to the display's C++: every picture cell for cell, and a scripted
-/// run of the board, with the numbers a scratch build of
+/// held to the display: the kit's copy of the picture file against
+/// display/src/games/colorbynumber.txt byte for byte, every picture cell for
+/// cell, and a scripted run of the board, with the numbers a scratch build of
 /// display/src/games/ColorByNumber.cpp printed.
 final class ColorByNumberTests: XCTestCase {
     /// The first cell (column, row) carrying `number`.
@@ -32,18 +33,32 @@ final class ColorByNumberTests: XCTestCase {
             XCTAssertNil(ColorByNumber.check(source), source.id)
             XCTAssertTrue(ids.insert(source.id).inserted, source.id)
         }
-        // None was dropped for a fault, and there are enough to choose from.
+        // None was dropped for a fault, and there are plenty to choose from.
         XCTAssertEqual(ColorByNumber.pictures.count, ColorByNumber.sources.count)
-        XCTAssertGreaterThanOrEqual(ColorByNumber.pictures.count, 10)
+        XCTAssertGreaterThanOrEqual(ColorByNumber.pictures.count, 100)
+        // The first twelve keep their places (the card's art and these tests count on them).
+        XCTAssertEqual(ColorByNumber.pictures.prefix(12).map(\.id),
+                       ["heart", "strawberry", "rainbow", "mushroom", "icecream", "flower", "cat", "rocket", "tree", "house", "pip", "lotl"])
+        XCTAssertEqual(ColorByNumber.index(of: "pip"), 10)
+        XCTAssertNil(ColorByNumber.index(of: "nothing"))
+        // Every category has a shelf's worth.
+        XCTAssertGreaterThanOrEqual(ColorByNumber.categories.count, 6)
+        for c in ColorByNumber.categories {
+            XCTAssertGreaterThanOrEqual(ColorByNumber.pictures(in: c.id).count, 8, c.id)
+            XCTAssertFalse(c.title.isEmpty)
+        }
+        XCTAssertEqual(ColorByNumber.pictures(in: "").count, ColorByNumber.pictures.count)
+        // Colours that look alike are told apart from ones that don't.
+        func rgb(_ hex: String) -> ColorByNumber.RGB { ColorByNumber.RGB(hex: hex)! }
+        XCTAssertLessThan(ColorByNumber.colorDistance(rgb("#FFFFFF"), rgb("#FAFAFA")), ColorByNumber.minColorDistance)
+        XCTAssertGreaterThan(ColorByNumber.colorDistance(rgb("#E5484D"), rgb("#5B8DEF")), ColorByNumber.minColorDistance)
         for p in ColorByNumber.pictures {
             XCTAssertLessThanOrEqual(p.colors.count, ColorByNumber.maxColors, p.id)
             XCTAssertTrue((8...24).contains(p.width) && (8...24).contains(p.height), p.id)
             XCTAssertEqual(p.cells.count, p.width * p.height)
-            // Every number is used, and no row is empty all the way.
+            // Every number is used (a gap inside, like the rain under its
+            // cloud, is fine; check() keeps the edges filled).
             for n in 1...p.colors.count { XCTAssertTrue(p.cells.contains(n), "\(p.id) \(n)") }
-            for row in 0..<p.height {
-                XCTAssertTrue(p.cells[row * p.width..<(row + 1) * p.width].contains { $0 != 0 }, "\(p.id) row \(row) is empty")
-            }
         }
         // check() catches a broken one.
         var broken = ColorByNumber.sources[0]
@@ -52,6 +67,20 @@ final class ColorByNumberTests: XCTestCase {
         broken = ColorByNumber.sources[0]
         broken.rows[0] = "z" + broken.rows[0].dropFirst()
         XCTAssertNotNil(ColorByNumber.check(broken))
+        broken = ColorByNumber.sources[0]
+        broken.category = "nowhere"
+        XCTAssertNotNil(ColorByNumber.check(broken))
+        broken = ColorByNumber.sources[0]
+        broken.legend[1].hex = broken.legend[0].hex // two swatches alike
+        XCTAssertNotNil(ColorByNumber.check(broken))
+        broken = ColorByNumber.sources[0]
+        broken.rows.insert(String(repeating: ".", count: broken.rows[0].count), at: 0) // an empty edge
+        XCTAssertNotNil(ColorByNumber.check(broken))
+        // A legend the file got wrong reads as a source check() refuses.
+        let odd = ColorByNumber.parse("@ things | Things\n= odd | Odd | things\nr #E5484D dd #B8303A w\n" + String(repeating: "rrrrrrrr\n", count: 8))
+        XCTAssertEqual(odd.sources.first?.legend.count, 3)
+        XCTAssertNil(odd.sources.first?.legend[1].symbol)
+        XCTAssertNotNil(odd.sources.first.flatMap(ColorByNumber.check))
     }
 
     func testPaintingTakesOnlyItsNumber() throws {
@@ -190,21 +219,53 @@ final class ColorByNumberTests: XCTestCase {
     // MARK: The display's own numbers
 
     /// FNV-1a over each picture as the C++ printed it:
-    /// "id|title|WxH|#rrggbb,...,|cells", from `Colors::pictures()`.
+    /// "id|title|category|WxH|#rrggbb,...,|cells", from `Colors::pictures()`.
     private static let pictureHashes: [String: UInt64] = [
-        "heart": 0x003c_bea1_3357_6eaa,
-        "strawberry": 0xb2fb_c3c3_68af_1b1a,
-        "rainbow": 0xaa9a_98f5_d919_69a0,
-        "mushroom": 0xdab5_a6a9_221d_9099,
-        "icecream": 0x02ff_f3bd_4e6c_2309,
-        "flower": 0x35b3_6005_c885_f09f,
-        "cat": 0xf006_9dd1_95c0_3b67,
-        "rocket": 0x2d9d_f043_dbab_ab16,
-        "tree": 0x2873_1d17_c2d4_1fe6,
-        "house": 0x8009_7563_7944_a33a,
-        "pip": 0xcbb3_ab4d_9d5d_63cb,
-        "lotl": 0xe9d6_3b12_6fd3_a4d8,
+        "heart": 0xf483_945b_13c2_a5f5,
+        "strawberry": 0xa1c1_33c6_c3d7_739c,
+        "rainbow": 0xd5b1_340d_6a15_a7c7,
+        "mushroom": 0xb370_6108_bdf0_bbd0,
+        "icecream": 0xedea_fa38_9ec5_25b3,
+        "flower": 0x5cbc_a475_09e7_fc20,
+        "cat": 0x4a7a_3166_d382_86e6,
+        "rocket": 0x358f_523c_fc5f_2728,
+        "tree": 0x3e14_d5f1_ee10_838f,
+        "house": 0x6b87_d070_3374_e540,
+        "pip": 0x56e0_1f48_e0ad_f008,
+        "lotl": 0x9497_6b89_f6b0_cdcd,
     ]
+    /// The same lines for every picture in the file, one under the other.
+    private static let allPicturesHash: UInt64 = 0xdc53_10a9_0128_3b11
+    /// Every picture's swatch inks, a line each ("#ffffff,#2b2522,…").
+    private static let allInksHash: UInt64 = 0x19c1_143b_f89d_c6cf
+
+    private static func fnv(_ text: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return hash
+    }
+
+    private static func line(_ p: ColorByNumber.Picture) -> String {
+        "\(p.id)|\(p.title)|\(p.category)|\(p.width)x\(p.height)|" + p.colors.map { $0.hex + "," }.joined()
+            + "|" + p.cells.map(String.init).joined()
+    }
+
+    /// The kit's picture file is the display's, byte for byte: edit the
+    /// display's and copy it over.
+    func testPictureFileIsTheDisplays() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let display = root.appendingPathComponent("display/src/games/colorbynumber.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: display.path), display.path)
+        let theirs = try String(contentsOf: display, encoding: .utf8)
+        XCTAssertFalse(ColorByNumber.pictureText.isEmpty)
+        XCTAssertTrue(ColorByNumber.pictureText == theirs,
+                      "apple/McFlyKit/Sources/McFlyKit/Resources/colorbynumber.txt differs from the display's: copy it over")
+    }
 
     /// Each picture on a 400 x 300 board: the swatches' ink, the cell, and
     /// where the first cell's middle is.
@@ -223,18 +284,27 @@ final class ColorByNumberTests: XCTestCase {
         ("#2b2522,#ffffff,#2b2522,#ffffff,#2b2522,#ffffff", 21.428571428571427, 39.285714285714299, 10.714285714285714),
     ]
 
+    /// When the picture file changes, these two hashes change with it: take
+    /// them from the display's C++ (the scratch build that printed them).
     func testPicturesMatchTheDisplay() {
-        XCTAssertEqual(ColorByNumber.pictures.map(\.id),
-                       ["heart", "strawberry", "rainbow", "mushroom", "icecream", "flower", "cat", "rocket", "tree", "house", "pip", "lotl"])
-        for (i, p) in ColorByNumber.pictures.enumerated() {
-            let line = "\(p.id)|\(p.title)|\(p.width)x\(p.height)|" + p.colors.map { $0.hex + "," }.joined()
-                + "|" + p.cells.map(String.init).joined()
-            var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-            for byte in line.utf8 {
-                hash ^= UInt64(byte)
-                hash = hash &* 0x0000_0100_0000_01b3
-            }
-            XCTAssertEqual(hash, Self.pictureHashes[p.id], "\(p.id): \(line)")
+        XCTAssertEqual(Self.fnv(ColorByNumber.pictures.map(Self.line).joined(separator: "\n")), Self.allPicturesHash)
+        XCTAssertEqual(Self.fnv(ColorByNumber.pictures.indices.map { i in
+            ColorBoard(picture: i).colors.map(\.ink.hex).joined(separator: ",")
+        }.joined(separator: "\n")), Self.allInksHash)
+        // The colour distances the C++ printed.
+        func rgb(_ hex: String) -> ColorByNumber.RGB { ColorByNumber.RGB(hex: hex)! }
+        let distances: [(String, String, Double)] = [
+            ("#FFFFFF", "#FAFAFA", 1.7279763048083254), ("#E5484D", "#5B8DEF", 98.966785169302938),
+            ("#26345A", "#111111", 30.865362248324914), ("#FFF4DF", "#FFFFFF", 11.953614059503561),
+            ("#3DB37A", "#23824F", 18.554875742835033),
+        ]
+        for (a, b, d) in distances {
+            XCTAssertEqual(ColorByNumber.colorDistance(rgb(a), rgb(b)), d, accuracy: 1e-9, "\(a) \(b)")
+        }
+        // The first twelve, one at a time, and on a board.
+        for (i, p) in ColorByNumber.pictures.prefix(12).enumerated() {
+            let line = Self.line(p)
+            XCTAssertEqual(Self.fnv(line), Self.pictureHashes[p.id], "\(p.id): \(line)")
 
             let board = ColorBoard(picture: i, size: CGSize(width: 400, height: 300))
             let golden = Self.boards[i]
