@@ -35,7 +35,7 @@ final class ColorByNumberTests: XCTestCase {
         }
         // None was dropped for a fault, and there are plenty to choose from.
         XCTAssertEqual(ColorByNumber.pictures.count, ColorByNumber.sources.count)
-        XCTAssertGreaterThanOrEqual(ColorByNumber.pictures.count, 100)
+        XCTAssertGreaterThanOrEqual(ColorByNumber.pictures.count, 600)
         // The first twelve keep their places (the card's art and these tests count on them).
         XCTAssertEqual(ColorByNumber.pictures.prefix(12).map(\.id),
                        ["heart", "strawberry", "rainbow", "mushroom", "icecream", "flower", "cat", "rocket", "tree", "house", "pip", "lotl"])
@@ -227,17 +227,17 @@ final class ColorByNumberTests: XCTestCase {
         "mushroom": 0xb370_6108_bdf0_bbd0,
         "icecream": 0xedea_fa38_9ec5_25b3,
         "flower": 0x5cbc_a475_09e7_fc20,
-        "cat": 0x4a7a_3166_d382_86e6,
+        "cat": 0xeb7d_f621_bbf4_9423,
         "rocket": 0x358f_523c_fc5f_2728,
         "tree": 0x3e14_d5f1_ee10_838f,
         "house": 0x6b87_d070_3374_e540,
-        "pip": 0x56e0_1f48_e0ad_f008,
-        "lotl": 0x9497_6b89_f6b0_cdcd,
+        "pip": 0x2aa1_e698_220a_d0a5,
+        "lotl": 0xf275_8c23_00d6_e206,
     ]
     /// The same lines for every picture in the file, one under the other.
-    private static let allPicturesHash: UInt64 = 0xdc53_10a9_0128_3b11
+    private static let allPicturesHash: UInt64 = 0x1f41_6251_cd0a_445e
     /// Every picture's swatch inks, a line each ("#ffffff,#2b2522,…").
-    private static let allInksHash: UInt64 = 0x19c1_143b_f89d_c6cf
+    private static let allInksHash: UInt64 = 0xe6a8_bd54_c7af_5a04
 
     private static func fnv(_ text: String) -> UInt64 {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325

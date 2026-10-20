@@ -35,7 +35,7 @@ private slots:
         }
         // None was dropped for a fault, and there are plenty to choose from.
         QCOMPARE(pictures().size(), sources().size());
-        QVERIFY(pictures().size() >= 100);
+        QVERIFY(pictures().size() >= 600);
         // The first twelve keep their places (the card's art, the tests and
         // the iPhone app's copy count on them).
         const QStringList first = {QStringLiteral("heart"), QStringLiteral("strawberry"), QStringLiteral("rainbow"),

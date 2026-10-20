@@ -58,7 +58,7 @@ Color by Number (`qml/games/ColorByNumber.qml`, with its progress and board
 in `src/games/ColorByNumber.cpp`) is written for this app too, after Araib
 Karim's [Color by Number for iOS](https://github.com/AraibKarim/ColorByNumber-iOS).
 That project has no licence, so none of its code, pictures or fonts is used.
-Its 121 pixel pictures, in eight categories, are our own, drawn for McFly in
+Its 656 pixel pictures, in 21 categories, are our own, drawn for McFly in
 `src/games/colorbynumber.txt` (the format is at the top of the file), which
 the build turns into a string in the app. `tests/tst_colors.cpp` checks
 every one: the shape, the legend, at most nine colours, any two far enough
