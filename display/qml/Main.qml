@@ -356,6 +356,54 @@ ApplicationWindow {
         }
     }
 
+    // A dismissal's few seconds to change your mind (Store.dismiss): what
+    // went, and Undo. After them it reaches every screen.
+    Item {
+        id: undoBar
+        z: 3
+        readonly property var pending: Store.pendingDismissal
+        width: Math.min(undoRow.implicitWidth + 44, window.width - 32)
+        height: 72
+        x: Math.round((window.width - width) / 2)
+        y: quick.shown ? 48 : window.height - Math.max(window.keyboardHeight, Theme.navHeight) - height - 48
+        opacity: undoBar.pending.id ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.quick } }
+        Rectangle { anchors.fill: parent; radius: height / 2; color: Theme.text }
+        RowLayout {
+            id: undoRow
+            anchors.centerIn: parent
+            spacing: 16
+            Label {
+                Layout.maximumWidth: window.width - 240
+                text: undoBar.pending.label ? qsTr("Dismissed %1").arg(undoBar.pending.label) : qsTr("Dismissed")
+                color: Theme.background
+                font.pixelSize: Theme.fontMd - 2
+                elide: Text.ElideRight
+            }
+            Item {
+                implicitWidth: undoLabel.implicitWidth + 40
+                implicitHeight: Theme.touchTarget
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width
+                    height: 48
+                    radius: 24
+                    color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.18)
+                }
+                Label {
+                    id: undoLabel
+                    anchors.centerIn: parent
+                    text: qsTr("Undo")
+                    color: Theme.background
+                    font.pixelSize: Theme.fontMd - 2
+                    font.weight: Font.DemiBold
+                }
+                TapHandler { onTapped: Store.undoDismiss() }
+            }
+        }
+    }
+
     // The screen saver covers everything but the wake-word card. It needs no
     // input of its own: DisplayController swallows the waking tap app-wide.
     property bool saverUnderSleep: false

@@ -48,6 +48,7 @@ role too), `is_device()`, `can_read()` (= device or admin).
 | Table | Notes |
 |---|---|
 | `devices` | Paired displays: `id`, `user_id` (its auth user, unique), `name`, `last_seen_at`, `created_at`, `settings` (jsonb, the keys `clean_device_settings` allows). A display reads its own row and may update only `last_seen_at` directly (`devices_guard`), its settings through `device_update_settings`; admins read all. `settings.voice` is also **the account's voice**: the first display's (by `created_at`) that has one is what the console and the Apple app speak with, and a voice they pick is written to every display ([VOICE.md](VOICE.md), One voice everywhere) |
+| `dismissals` | Callouts someone dismissed (migration 20261021000070): `key` (an insight's id, lower-cased: `blocked:<project id>`, `metric:<key>`, `mover:<symbol>`, …), `hide_until` (null: until the project's status or next step changes, which a trigger on `projects` sees to; anything else: the end of today in `platform_settings.timezone`), `dismissed_at`, `device_id`. Displays and admins read; written only by `dismiss(item)` (a paired display or an admin), which also prunes the run-out rows. The display, the console's Today and the app hide a Needs-you project or an insight while its id has a row that hasn't run out |
 | `pairing_codes` | Service role only (RLS on, no policies): `code` (6 digits), `secret_hash`, `device_id`, `claimed_by`, `expires_at` (10 min) |
 
 ### 1.3 Agents

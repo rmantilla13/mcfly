@@ -6,6 +6,7 @@ import {
   getSettings,
   listBriefs,
   listDevices,
+  listDismissals,
   listEvents,
   listIngestSince,
   listMetrics,
@@ -15,6 +16,7 @@ import {
   listSeries,
 } from "@/lib/data";
 import { dayKey, safeTimeZone } from "@/lib/events";
+import { isDismissed } from "@/lib/dismissals";
 import { buildInsights, type Insight } from "@/lib/insights";
 import type { SeriesPoint } from "@/lib/series";
 import { displayBackdrop, type Backdrop } from "@/lib/sky";
@@ -57,7 +59,7 @@ function extra<T>(what: string, fallback: T) {
 
 export async function loadToday(): Promise<TodayData> {
   const now = new Date();
-  const [settings, briefs, quotes, metrics, reports, projects, events, ingest, devices] = await Promise.all([
+  const [settings, briefs, quotes, metrics, reports, projects, events, ingest, devices, dismissals] = await Promise.all([
     getSettings(),
     listBriefs(1),
     listQuotes(),
@@ -71,6 +73,8 @@ export async function loadToday(): Promise<TodayData> {
     listIngestSince(24, { status: "error" }).catch(extra("push log", [])),
     // The displays, for the ambient view's backdrop: without them it is the mesh.
     listDevices().catch(extra("displays", [])),
+    // What's been dismissed on any screen: hidden here too.
+    listDismissals().catch(extra("dismissals", [])),
   ]);
   const timeZone = safeTimeZone(settings.timezone);
   const today = dayKey(now, timeZone);
@@ -96,7 +100,7 @@ export async function loadToday(): Promise<TodayData> {
 
   const timeline = buildTimeline({ briefs: briefs.rows, reports: fullReports, projects: projectsIn, events, timeZone, now });
   const tomorrow = buildTomorrow({ events, timeZone, now });
-  const facts = todayFacts({
+  const allFacts = todayFacts({
     now,
     timeZone,
     quotes,
@@ -107,6 +111,10 @@ export async function loadToday(): Promise<TodayData> {
     brief: briefs.rows[0] ?? null,
     report: fullReports[0] ?? null,
   });
+  // Needs you without the blocked projects someone dismissed (the next one
+  // takes the place of a dismissed first), and the insights without theirs.
+  const nowMs = now.getTime();
+  const facts = { ...allFacts, blocked: allFacts.blocked.filter((b) => !isDismissed(dismissals, `blocked:${b.id}`, nowMs)) };
 
   return {
     nowMs: now.getTime(),
@@ -117,7 +125,7 @@ export async function loadToday(): Promise<TodayData> {
     timeline,
     tomorrow,
     ...facts,
-    insights: buildInsights({ ...facts, timeZone, ingest }, now.getTime()),
+    insights: buildInsights({ ...facts, timeZone, ingest }, nowMs).filter((i) => !isDismissed(dismissals, i.id, nowMs)),
     suggestions: buildSuggestions({ ...facts, nowMs: now.getTime() }),
   };
 }

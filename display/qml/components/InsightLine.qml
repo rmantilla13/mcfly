@@ -6,7 +6,9 @@ import McFly.Core
 
 // What stands out right now (Store.highlights), one at a time: its icon on
 // its colour, the headline and a line of detail, turning to the next every
-// few seconds with a cross-fade. A tap asks McFly about the one showing.
+// few seconds with a cross-fade. A tap asks McFly about the one showing; the
+// × at the end dismisses it on every screen (until tomorrow; a blocked
+// project's, until the project changes), with an undo on the bar below.
 //
 //   InsightLine { items: Store.highlights; running: home.shown; onPicked: item => ask(item.question) }
 //
@@ -18,6 +20,8 @@ Rectangle {
     // Turning (and fading) only while someone can see it.
     property bool running: true
     property int interval: 8000
+    // Whether the × to dismiss the one showing is offered.
+    property bool dismissable: true
     signal picked(var item)
 
     readonly property int count: (items || []).length
@@ -137,11 +141,27 @@ Rectangle {
                 }
             }
         }
+        // The × takes the line's full height as its own target (the line
+        // clips, so no handler margin could reach past it).
+        Item {
+            id: dismissBox
+            visible: line.dismissable && !!line.current
+            Layout.preferredWidth: line.height
+            Layout.fillHeight: true
+            Icon { anchors.centerIn: parent; name: "close"; size: Theme.small ? 16 : 18; color: Theme.textMuted }
+            TapHandler { onTapped: if (line.current) Store.dismiss(line.current.id, line.current.title) }
+        }
     }
 
     // A card shorter than a touch target on the small panels; the hit area is not.
     TapHandler {
         margin: Math.max(0, (Theme.touchTarget - line.height) / 2)
-        onTapped: if (line.current) line.picked(line.current)
+        onTapped: point => {
+            // Not the ×: that one dismisses.
+            if (dismissBox.visible && dismissBox.contains(dismissBox.mapFromItem(line, point.position)))
+                return
+            if (line.current)
+                line.picked(line.current)
+        }
     }
 }

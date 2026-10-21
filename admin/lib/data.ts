@@ -1,3 +1,4 @@
+import type { Dismissal } from "@/lib/dismissals";
 import "server-only";
 import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
@@ -281,6 +282,19 @@ export async function listQuoteData(): Promise<QuoteLatestRow[]> {
     return [];
   }
   return Array.isArray(data) ? (data as QuoteLatestRow[]) : [];
+}
+
+// What's been dismissed on any screen (lib/dismissals.ts). Optional: a
+// database without the table dismisses nothing.
+export async function listDismissals(): Promise<Dismissal[]> {
+  const src = await source();
+  if (src.demo) return [];
+  const { data, error } = await src.db.from("dismissals").select("key,hide_until");
+  if (error) {
+    console.error("dismissals failed:", error.message);
+    return [];
+  }
+  return Array.isArray(data) ? (data as Dismissal[]) : [];
 }
 
 export async function listNewsReports(lim = 30): Promise<NewsReportRow[]> {

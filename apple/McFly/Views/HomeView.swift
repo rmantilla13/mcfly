@@ -70,14 +70,14 @@ struct HomeView: View {
                             .buttonStyle(PressableStyle())
                             .homeRise(0)
                     }
-                    if let project = feeds.blockedProjects.first {
+                    if let project = feeds.needsYou.first {
                         NavigationLink(value: project) {
-                            BlockedCard(project: project, others: feeds.blockedProjects.count - 1)
+                            BlockedCard(project: project, others: feeds.needsYou.count - 1)
                         }
                         .buttonStyle(PressableStyle())
                         .homeRise(1)
                     }
-                    let shownProject = feeds.blockedProjects.first
+                    let shownProject = feeds.needsYou.first
                     // The Mac's Home has no Top story or Needs you tile.
                     let shownReport: UUID? = nil
                     let shownBrief: UUID? = nil

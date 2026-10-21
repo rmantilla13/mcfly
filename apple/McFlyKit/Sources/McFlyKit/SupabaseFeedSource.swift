@@ -65,6 +65,10 @@ public struct SupabaseFeedSource: FeedSource {
             .execute().data)
     }
 
+    public func loadDismissals() async throws -> [Dismissal] {
+        try decode(await client.from("dismissals").select("key,hide_until").execute().data)
+    }
+
     public func loadMetrics(limit: Int) async throws -> [Metric] {
         try decode(await client.from("metrics").select()
             .order("as_of", ascending: false)

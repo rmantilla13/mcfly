@@ -29,7 +29,7 @@ struct GlanceGrid: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             HStack(alignment: .top, spacing: 12) {
-                NeedsYouTile(alerts: alerts, blocked: feeds.blockedProjects)
+                NeedsYouTile(alerts: alerts, blocked: feeds.needsYou)
                     .homeRise(2)
                 TopStoryTile(report: Self.shownReport(feeds, now: now), now: now, feeds: feeds)
                     .homeRise(3)
@@ -52,7 +52,7 @@ struct GlanceGrid: View {
 
     /// The blocked project the Needs you tile shows (none when an alert takes it).
     static func shownProject(_ feeds: FeedStore, now: Date) -> Project? {
-        todaysAlerts(feeds, now: now).isEmpty ? feeds.blockedProjects.first : nil
+        todaysAlerts(feeds, now: now).isEmpty ? feeds.needsYou.first : nil
     }
 }
 

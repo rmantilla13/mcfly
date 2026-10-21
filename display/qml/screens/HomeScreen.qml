@@ -46,7 +46,8 @@ Item {
 
     // Every symbol: the strip is a ticker tape, so none has to be left out.
     readonly property var tickers: Store.quotes
-    readonly property var blocked: Store.projects.filter(p => p.status === "blocked")
+    // The blocked projects McFly calls out: less any dismissed (Store.needsYou).
+    readonly property var blocked: Store.needsYou
     // The event on now, else the next one today or later (not all-day).
     readonly property var nextEvent: {
         const t = minuteMs
@@ -313,8 +314,10 @@ Item {
         TapHandler { onTapped: home.openScreen(6) }
     }
 
-    // The first blocked project, on a warm tint.
+    // The first blocked project, on a warm tint. Its × dismisses it until the
+    // project changes, on every screen (the next one, if any, takes its place).
     component BlockedCard: Rectangle {
+        id: blockedCard
         readonly property var project: home.blocked.length > 0 ? home.blocked[0] : null
         visible: !!project
         implicitHeight: blockedRow.implicitHeight + (Theme.mini ? 20 : 30)
@@ -353,8 +356,26 @@ Item {
                     elide: Text.ElideRight
                 }
             }
+            // A small disc; its tap reaches a touch target wide.
+            IconButton {
+                id: dismissBlocked
+                implicitWidth: 44
+                implicitHeight: 44
+                hitMargin: (Theme.touchTarget - 44) / 2
+                icon: "close"
+                iconSize: 18
+                onClicked: if (blockedCard.project) Store.dismiss("blocked:" + blockedCard.project.id, blockedCard.project.name)
+            }
         }
-        TapHandler { onTapped: home.openScreen(4) }
+        TapHandler {
+            onTapped: point => {
+                // Not on the × (or its margin): that one dismisses.
+                const p = dismissBlocked.mapFromItem(blockedCard, point.position)
+                const m = dismissBlocked.hitMargin
+                if (p.x < -m || p.y < -m || p.x > dismissBlocked.width + m || p.y > dismissBlocked.height + m)
+                    home.openScreen(4)
+            }
+        }
     }
 
     // "Ask McFly" on the voice glow.

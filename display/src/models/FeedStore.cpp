@@ -512,6 +512,9 @@ FeedStore::FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent)
     connect(&m_minuteTimer, &QTimer::timeout, this, &FeedStore::onMinute);
     m_reminderTimer.setSingleShot(true);
     connect(&m_reminderTimer, &QTimer::timeout, this, &FeedStore::fireReminders);
+    m_dismissTimer.setSingleShot(true);
+    m_dismissTimer.setInterval(6000);
+    connect(&m_dismissTimer, &QTimer::timeout, this, &FeedStore::commitDismissal);
 
     connect(m_client, &SupabaseClient::sessionChanged, this, [this]() {
         if (m_client->refreshToken().isEmpty())
@@ -1024,6 +1027,25 @@ void FeedStore::loadLive()
                 qInfo() << "todos not available:" << error;
             else
                 m_rawTodos = toList(doc);
+            finish();
+        });
+        // What's been dismissed (newer too): same, optional. Once a row is the
+        // server's, the copy made here isn't needed (the server ends it).
+        ++sync->pending;
+        m_client->select("dismissals", QUrlQuery("select=key,hide_until"), [this, generation, finish](const QJsonDocument &doc, const QString &error) {
+            if (generation != m_generation)
+                return;
+            if (!error.isEmpty()) {
+                qInfo() << "dismissals not available:" << error;
+            } else {
+                m_rawDismissals = toList(doc);
+                const QString pending = m_pendingDismissal.value("id").toString();
+                for (const QVariant &v : std::as_const(m_rawDismissals)) {
+                    const QString key = v.toMap().value("key").toString();
+                    if (key != pending)
+                        m_localDismissed.remove(key);
+                }
+            }
             finish();
         });
         load("briefs", QUrlQuery("select=*&order=published_at.desc&limit=100"),
@@ -1664,7 +1686,7 @@ void FeedStore::rebuild()
     }
     rebuildProductivity(agentById);
     rebuildTimeline(agentById);
-    rebuildHighlights();
+    applyDismissals(); // needsYou, then the highlights
     m_calendarSources.clear();
     for (const QVariant &v : std::as_const(m_rawCalendarSources)) {
         QVariantMap c = v.toMap();
@@ -1827,6 +1849,86 @@ QVariantMap FeedStore::stageTrack(const QStringList &stages, const QString &stag
                          : here == QLatin1String("paused") ? tr("Paused in %1").arg(name)
                                                            : name},
             {"position", tr("%1 of %2").arg(index + 1).arg(n)}};
+}
+
+// ───────────────────────────── Dismissals ─────────────────────────────
+
+bool FeedStore::isDismissed(const QString &id) const
+{
+    const QString key = id.trimmed().toLower();
+    if (key.isEmpty())
+        return false;
+    if (m_localDismissed.contains(key))
+        return true;
+    for (const QVariant &v : m_rawDismissals) {
+        const QVariantMap d = v.toMap();
+        if (d.value("key").toString() != key)
+            continue;
+        // Null: until what it's about changes (the server ends it).
+        const QString until = d.value("hide_until").toString();
+        return until.isEmpty() || parseTimestamp(until) > now();
+    }
+    return false;
+}
+
+void FeedStore::applyDismissals()
+{
+    QVariantList needsYou;
+    for (const QVariant &v : std::as_const(m_projects)) {
+        const QVariantMap p = v.toMap();
+        if (p.value("status").toString() == QLatin1String("blocked") && !isDismissed(QStringLiteral("blocked:") + p.value("id").toString()))
+            needsYou << v;
+    }
+    if (needsYou != m_needsYou) {
+        m_needsYou = needsYou;
+        emit dismissalsChanged();
+    }
+    rebuildHighlights();
+}
+
+void FeedStore::dismiss(const QString &id, const QString &label)
+{
+    const QString key = id.trimmed().toLower();
+    if (key.isEmpty() || key.size() > 300)
+        return;
+    if (!m_pendingDismissal.isEmpty())
+        commitDismissal();
+    m_localDismissed.insert(key);
+    m_pendingDismissal = QVariantMap{{"id", key}, {"label", label}};
+    m_dismissTimer.start();
+    emit pendingDismissalChanged();
+    applyDismissals();
+}
+
+void FeedStore::undoDismiss()
+{
+    if (m_pendingDismissal.isEmpty())
+        return;
+    m_dismissTimer.stop();
+    m_localDismissed.remove(m_pendingDismissal.value("id").toString());
+    m_pendingDismissal.clear();
+    emit pendingDismissalChanged();
+    applyDismissals();
+}
+
+void FeedStore::commitDismissal()
+{
+    m_dismissTimer.stop();
+    const QString key = m_pendingDismissal.value("id").toString();
+    m_pendingDismissal.clear();
+    emit pendingDismissalChanged();
+    if (key.isEmpty() || m_mode != QLatin1String("live"))
+        return; // the demo keeps it hidden here until the app restarts
+    withSession([this, key]() {
+        m_client->rpc("dismiss", QJsonObject{{"item", key}}, [this, key](const QJsonDocument &, const QString &error) {
+            if (error.isEmpty())
+                return; // the next sync brings it back as the server's row
+            qWarning() << "dismissing" << key << "failed:" << error;
+            m_localDismissed.remove(key);
+            applyDismissals();
+            emit notify(tr("Couldn't dismiss that, so it's back"));
+        });
+    });
 }
 
 QVariantList FeedStore::groupProjects(const QVariantList &projects)
@@ -2550,11 +2652,9 @@ void FeedStore::rebuildHighlights()
         }
     };
 
-    // 1. A blocked project: the one thing only you can unstick.
-    QVariantList blocked;
-    for (const QVariant &v : std::as_const(m_projects))
-        if (v.toMap().value("status").toString() == QLatin1String("blocked"))
-            blocked << v;
+    // 1. A blocked project: the one thing only you can unstick (one that
+    // hasn't been dismissed).
+    const QVariantList &blocked = m_needsYou;
     if (!blocked.isEmpty()) {
         const QVariantMap p = blocked.first().toMap();
         const QString name = p.value("name").toString();
@@ -2658,6 +2758,9 @@ void FeedStore::rebuildHighlights()
         out.removeLast();
     if (out == m_highlights)
         return;
+    // Whatever has been dismissed stays out.
+    out.erase(std::remove_if(out.begin(), out.end(), [this](const QVariant &v) { return isDismissed(v.toMap().value("id").toString()); }),
+              out.end());
     m_highlights = out;
     emit highlightsChanged();
 }

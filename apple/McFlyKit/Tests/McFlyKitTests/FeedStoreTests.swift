@@ -6,6 +6,7 @@ import XCTest
 private struct TestSource: FeedSource {
     var data: DemoData
     var fails = false
+    var dismissals: [Dismissal] = []
 
     func loadAgents() async throws -> [Agent] { try check(); return data.agents }
     func loadBriefs(limit: Int) async throws -> [Brief] {
@@ -37,6 +38,8 @@ private struct TestSource: FeedSource {
         try check()
         return data.events.filter { $0.endsAt >= from && $0.startsAt <= to }.reversed()
     }
+
+    func loadDismissals() async throws -> [Dismissal] { try check(); return dismissals }
 
     private func check() throws {
         if fails { throw URLError(.notConnectedToInternet) }
@@ -73,6 +76,24 @@ final class FeedStoreTests: XCTestCase {
         XCTAssertEqual(store.metricSeries.count, 5)
         XCTAssertEqual(store.events.first?.title, "Standup")
         XCTAssertEqual(store.settings?.assistantProvider, .claude)
+    }
+
+    func testDismissedCalloutsStayHidden() async throws {
+        let demo = try DemoData.load()
+        let onyx = try XCTUnwrap(demo.projects.first { $0.key == "onyx" })
+        var source = TestSource(data: demo)
+        // Onyx's callout until it changes, and a mover's that has run out.
+        source.dismissals = [Dismissal(key: "blocked:\(onyx.id.uuidString.lowercased())"),
+                             Dismissal(key: "mover:aapl", hideUntil: Date().addingTimeInterval(-60))]
+        let store = FeedStore(source: source)
+        await store.refresh()
+        // Still blocked on the Projects screen, but no longer called out.
+        XCTAssertEqual(store.blockedProjects.map(\.key), ["onyx"])
+        XCTAssertTrue(store.needsYou.isEmpty)
+        XCTAssertFalse(store.insights().contains { $0.kind == .blocked })
+        // Any case (Swift writes a UUID in capitals); a run-out one hides nothing.
+        XCTAssertTrue(store.isDismissed("BLOCKED:\(onyx.id.uuidString)"))
+        XCTAssertFalse(store.isDismissed("mover:AAPL"))
     }
 
     func testAFailedRefreshKeepsWhatWasLoaded() async throws {

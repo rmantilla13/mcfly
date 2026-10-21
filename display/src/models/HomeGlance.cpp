@@ -44,6 +44,7 @@ HomeGlance::HomeGlance(FeedStore *store, QObject *parent)
 {
     if (m_store) {
         connect(m_store, &FeedStore::dataChanged, this, &HomeGlance::refresh);
+        connect(m_store, &FeedStore::dismissalsChanged, this, &HomeGlance::refresh);
         connect(m_store, &FeedStore::todayChanged, this, &HomeGlance::refresh);
     }
     m_tick.setInterval(30 * 1000);
@@ -57,7 +58,7 @@ void HomeGlance::refresh()
     Feed feed;
     if (m_store) {
         feed.upcoming = m_store->upcoming();
-        feed.projects = m_store->projects();
+        feed.projects = m_store->needsYou(); // the blocked ones not dismissed
         feed.quotes = m_store->quotes();
         feed.latestBrief = m_store->latestBrief();
         feed.news = m_store->news();

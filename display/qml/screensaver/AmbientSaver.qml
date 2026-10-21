@@ -67,7 +67,8 @@ Item {
     readonly property var laterEvents: todaysEvents.slice(1, 3)
     readonly property var brief: Store.latestBrief
     readonly property var hero: Store.news.isToday ? (Store.news.hero || ({})) : ({})
-    readonly property var blocked: Store.projects.filter(p => p.status === "blocked")
+    // Needs you: the blocked projects not dismissed.
+    readonly property var blocked: Store.needsYou
     readonly property var tickers: Store.quotes.slice(0, 4)
 
     function untilLabel(ms) {

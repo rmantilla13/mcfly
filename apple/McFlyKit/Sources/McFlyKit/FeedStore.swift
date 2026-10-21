@@ -19,11 +19,15 @@ public protocol FeedSource: Sendable {
     func loadDashboards() async throws -> [Dashboard]
     /// Events overlapping the window.
     func loadEvents(from: Date, to: Date) async throws -> [CalendarEvent]
+    /// The callouts dismissed on any screen.
+    func loadDismissals() async throws -> [Dismissal]
 }
 
 extension FeedSource {
     /// A source whose quote rows carry their own `data` (the demo) needs none.
     public func loadLatestQuoteData() async throws -> [QuoteLatest] { [] }
+    /// The demo has nothing dismissed.
+    public func loadDismissals() async throws -> [Dismissal] { [] }
 }
 
 /// Everything the feed screens read. One refresh loads every feed at once,
@@ -51,6 +55,8 @@ public final class FeedStore {
     public private(set) var dashboards: [Dashboard] = []
     /// From yesterday to about two months out, by start.
     public private(set) var events: [CalendarEvent] = []
+    /// What's been dismissed, on any screen (`isDismissed`).
+    public private(set) var dismissals: [Dismissal] = []
     public private(set) var isLoading = false
     public private(set) var loadedAt: Date?
     public var errorMessage: String?
@@ -94,6 +100,7 @@ public final class FeedStore {
             async let metricSettings = source.loadMetricSettings()
             async let dashboards = source.loadDashboards()
             async let events = source.loadEvents(from: eventsFrom, to: eventsTo)
+            async let dismissals = source.loadDismissals()
             self.agents = try await agents
             self.briefs = try await briefs
                 .filter { $0.expiresAt.map { $0 > now } ?? true }
@@ -111,6 +118,8 @@ public final class FeedStore {
             self.metricSettings = try await metricSettings
             self.dashboards = try await dashboards.filter { !$0.hidden }.sorted { ($0.sortOrder, $0.title) < ($1.sortOrder, $1.title) }
             self.events = try await events.sorted { ($0.startsAt, $0.title) < ($1.startsAt, $1.title) }
+            // Extra too (an older server has no table): kept as it was when it fails.
+            if let dismissals = try? await dismissals { self.dismissals = dismissals }
             loadedAt = now
             errorMessage = nil
         } catch is CancellationError {
@@ -135,6 +144,14 @@ public final class FeedStore {
 
     /// Blocked projects, in the console's order.
     public var blockedProjects: [Project] { projects.filter { $0.status == .blocked } }
+
+    /// The blocked projects McFly calls out ("Needs you"): less those dismissed.
+    public var needsYou: [Project] { blockedProjects.filter { !isDismissed("blocked:\($0.id.uuidString)") } }
+
+    /// Whether a callout's id (an insight's, any case) has been dismissed and hasn't run out.
+    public func isDismissed(_ id: String, now: Date = .now) -> Bool {
+        dismissals.contains { $0.hides(id, now: now) }
+    }
 
     /// Today's newest report, if one has come in.
     public func todaysReport(now: Date = .now, calendar: Calendar = .current) -> NewsReport? {

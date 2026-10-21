@@ -90,6 +90,11 @@ class FeedStore : public QObject
     // question, ... }. Time-relative ("starts in 12 min"), so it is checked
     // again each minute, apart from dataChanged.
     Q_PROPERTY(QVariantList highlights READ highlights NOTIFY highlightsChanged)
+    // The blocked projects McFly calls out ("Needs you" on Home, Ambient and
+    // the glance): `projects`' blocked ones, less those dismissed.
+    Q_PROPERTY(QVariantList needsYou READ needsYou NOTIFY dismissalsChanged)
+    // The dismissal waiting out its undo: { id, label }, or empty.
+    Q_PROPERTY(QVariantMap pendingDismissal READ pendingDismissal NOTIFY pendingDismissalChanged)
     // How the quotes moved today: { up, down, flat, total, label }.
     Q_PROPERTY(QVariantMap marketBreadth READ marketBreadth NOTIFY dataChanged)
     // Where now sits on a 24-hour dial: degrees clockwise from midnight at the
@@ -127,6 +132,8 @@ public:
     QString newsSource() const { return m_newsSourceId; }
     QVariantList projects() const { return m_projects; }
     QVariantList projectGroups() const { return m_projectGroups; }
+    QVariantList needsYou() const { return m_needsYou; }
+    QVariantMap pendingDismissal() const { return m_pendingDismissal; }
     QVariantList metrics() const { return m_metrics; }
     QVariantList metricGroups() const { return m_metricGroups; }
     QVariantList dashboards() const { return m_dashboards; }
@@ -167,6 +174,14 @@ public:
     Q_INVOKABLE void showSource(const QString &agentId);
     // A project by id, decorated like the `projects` rows, or an empty map.
     Q_INVOKABLE QVariantMap project(const QString &id) const;
+    // Dismiss a callout everywhere (the dismissals table, 20261021000070):
+    // `id` is a highlight's id, or "blocked:<project id>" for Needs you. It
+    // hides here at once and reaches the server after a few seconds unless
+    // undoDismiss() takes it back; `label` names it on the undo bar. A
+    // second dismissal sends the first straight away.
+    Q_INVOKABLE void dismiss(const QString &id, const QString &label = QString());
+    Q_INVOKABLE void undoDismiss();
+    Q_INVOKABLE bool isDismissed(const QString &id) const;
     // Forgets this display's session and shows a new pairing code (Settings → Re-pair).
     Q_INVOKABLE void unpair();
     // The quote for a symbol, decorated like the `quotes` rows, or an empty map.
@@ -209,6 +224,8 @@ signals:
     void todayChanged();
     void dataChanged();
     void highlightsChanged();
+    void dismissalsChanged();
+    void pendingDismissalChanged();
     // Once a minute, on the minute (and nothing else changes with it).
     void nowAngleChanged();
     void notify(const QString &message);
@@ -273,12 +290,22 @@ private:
     QDate m_today;
     QTimer m_dayTimer; // fires just after local midnight
     QTimer m_minuteTimer; // fires just after each minute: nowAngle, highlights
+    QTimer m_dismissTimer; // a dismissal's undo window
     QTimer m_reminderTimer;     // fires at the next reminder's time
     QSet<QString> m_reminded;   // reminders already announced, by id
 
     // Raw rows as loaded (demo JSON or Supabase).
     QString m_displayName = QStringLiteral("McFly");
     QVariantList m_rawAgents, m_rawBriefs, m_rawQuotes, m_rawSymbols, m_rawReports;
+    // Dismissals: the server's rows (key, hide_until), and the ones made here
+    // that a sync hasn't brought back yet.
+    QVariantList m_rawDismissals;
+    QSet<QString> m_localDismissed;
+    QVariantMap m_pendingDismissal;
+    QVariantList m_needsYou;
+    void commitDismissal();
+    // needsYou and the highlights again, after a dismissal or a sync.
+    void applyDismissals();
     QVariantList m_rawQuoteData; // quotes_latest: symbol, agent_id, as_of, data
     QVariantList m_rawMemories, m_memories;
     QVariantList m_published; // what the last dataChanged announced (publishedState)

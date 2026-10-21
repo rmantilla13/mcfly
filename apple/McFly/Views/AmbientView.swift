@@ -124,7 +124,7 @@ struct AmbientView: View {
         let brief = shown.contains(.brief) ? feeds.latestBrief?.id : nil
         let report = shown.contains(.pulse) ? feeds.todaysReport(now: now)?.id : nil
         return HomeView.noticed(feeds.insights(now: now), upNext: events.first,
-                                shownProject: shown.contains(.blocked) ? feeds.blockedProjects.first : nil)
+                                shownProject: shown.contains(.blocked) ? feeds.needsYou.first : nil)
             .filter { insight in
                 switch insight.target {
                 case .brief(let id): return id != brief
@@ -138,7 +138,7 @@ struct AmbientView: View {
         var list: [Card] = []
         if feeds.latestBrief != nil { list.append(.brief) }
         if !feeds.series.isEmpty { list.append(.markets) }
-        if !feeds.blockedProjects.isEmpty { list.append(.blocked) }
+        if !feeds.needsYou.isEmpty { list.append(.blocked) }
         if feeds.todaysReport(now: now)?.hero != nil { list.append(.pulse) }
         if events.count > 3 { list.append(.later) }
         return list
@@ -240,8 +240,8 @@ struct AmbientView: View {
                 }
                 .padding(18)
             case .blocked:
-                if let project = feeds.blockedProjects.first {
-                    let others = feeds.blockedProjects.count - 1
+                if let project = feeds.needsYou.first {
+                    let others = feeds.needsYou.count - 1
                     TextCard(kicker: "NEEDS YOU", kickerColor: night ? Color(rgb: 0xFF9B8A) : Color(rgb: 0xB23224),
                              title: others > 0 ? "\(project.name) and \(others) more are blocked" : "\(project.name) is blocked",
                              text: [project.nextStep ?? project.summary, project.progress.map { "\($0)% done" } ?? ""]

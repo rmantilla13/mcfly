@@ -47,11 +47,20 @@ Item {
 
     // A card in the evidence column: a door into `target`'s screen.
     component Evidence: Rectangle {
+        id: evidence
         property int target: -1
+        // A control on the card that takes its own taps (a ×), not the card's.
+        property Item exclude: null
         radius: Theme.radius - 2
         color: Theme.surface
         clip: true
-        TapHandler { onTapped: home.openScreen(parent.target) }
+        TapHandler {
+            onTapped: point => {
+                if (evidence.exclude && evidence.exclude.visible && evidence.exclude.contains(evidence.exclude.mapFromItem(evidence, point.position)))
+                    return
+                home.openScreen(evidence.target)
+            }
+        }
     }
 
     // ---- The card where McFly speaks.
@@ -366,9 +375,24 @@ Item {
         }
     }
 
+    // Its × dismisses the project until it changes, on every screen.
     component BlockedCard: Evidence {
+        id: blockedEvidence
         target: 4
+        exclude: dismissBlocked
         visible: !!home.blockedProject
+        IconButton {
+            id: dismissBlocked
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 6
+            icon: "close"
+            z: 1
+            iconSize: 18
+            implicitWidth: 44
+            implicitHeight: 44
+            onClicked: if (home.blockedProject) Store.dismiss("blocked:" + home.blockedProject.id, home.blockedProject.name)
+        }
         color: Qt.tint(Theme.surface, Qt.rgba(0.94, 0.42, 0.33, Theme.dark ? 0.22 : 0.16))
         implicitHeight: blockedCol.implicitHeight + 34
         ColumnLayout {
@@ -377,6 +401,7 @@ Item {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.margins: 20
+            anchors.rightMargin: 20 + Theme.touchTarget - 6
             spacing: 4
             Caps { Layout.fillWidth: true; color: Theme.danger; text: qsTr("BLOCKED") }
             Label {

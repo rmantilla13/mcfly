@@ -14,9 +14,13 @@ public extension FeedStore {
                      events: events, briefs: briefs, reports: reports, agents: agents)
     }
 
-    /// At most five things that stand out, in the display's order (`Insights.build`).
+    /// At most five things that stand out, in the display's order (`Insights.build`),
+    /// less what's been dismissed: a dismissed blocked project gives way to the
+    /// next one.
     func insights(now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> [Insight] {
-        Insights.build(snapshot, now: now, calendar: calendar, locale: locale)
+        var shown = snapshot
+        shown.projects = projects.filter { !($0.status == .blocked && isDismissed("blocked:\($0.id.uuidString)", now: now)) }
+        return Insights.build(shown, now: now, calendar: calendar, locale: locale).filter { !isDismissed($0.id, now: now) }
     }
 
     /// The Ask bar's four questions (`Suggestions.build`).

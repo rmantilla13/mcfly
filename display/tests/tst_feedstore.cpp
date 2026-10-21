@@ -552,6 +552,47 @@ private slots:
 
     // The console's cases (admin/tests/feed-layout.test.mjs), so the display
     // and the console tell a project's stages the same way.
+    void dismissingHidesACallout()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        // The server's dismissals: one still running, one run out.
+        m_server.route("/rest/v1/dismissals", [now](const Request &) {
+            return json(rows({QJsonObject{{"key", "status:board:api"}, {"hide_until", iso(now.addSecs(3600))}},
+                              QJsonObject{{"key", "blocked:p2"}, {"hide_until", iso(now.addSecs(-60))}}}));
+        });
+        m_server.route("/rest/v1/rpc/dismiss", [](const Request &) { return json(R"({"key":"blocked:p2","hide_until":null})"); });
+        startLive();
+        QTRY_COMPARE(rig->store.projects().size(), 2);
+        auto ids = [this]() {
+            QStringList out;
+            for (const QVariant &h : rig->store.highlights())
+                out << h.toMap().value("id").toString();
+            return out;
+        };
+        // A run-out dismissal hides nothing: Onyx (blocked) still needs you.
+        QCOMPARE(rig->store.needsYou().size(), 1);
+        QVERIFY(ids().contains(QStringLiteral("blocked:p2")));
+        QVERIFY(rig->store.isDismissed(QStringLiteral("STATUS:board:api")));
+        QVERIFY(!rig->store.isDismissed(QStringLiteral("blocked:p2")));
+        // Dismissed here (any case): gone from Needs you and the highlights at once, with an undo.
+        rig->store.dismiss(QStringLiteral("Blocked:P2"), QStringLiteral("Onyx"));
+        QVERIFY(rig->store.needsYou().isEmpty());
+        QVERIFY(!ids().contains(QStringLiteral("blocked:p2")));
+        QCOMPARE(rig->store.pendingDismissal().value("label").toString(), QStringLiteral("Onyx"));
+        // Undo brings it back, and nothing is sent.
+        rig->store.undoDismiss();
+        QCOMPARE(rig->store.needsYou().size(), 1);
+        QVERIFY(ids().contains(QStringLiteral("blocked:p2")));
+        QVERIFY(rig->store.pendingDismissal().isEmpty());
+        QVERIFY(m_server.requests("POST", "/rest/v1/rpc/dismiss").isEmpty());
+        // Again, and the undo runs out: it reaches the server, and stays hidden.
+        rig->store.dismiss(QStringLiteral("blocked:p2"), QStringLiteral("Onyx"));
+        QTRY_VERIFY_WITH_TIMEOUT(!m_server.requests("POST", "/rest/v1/rpc/dismiss").isEmpty(), 10000);
+        QCOMPARE(m_server.requests("POST", "/rest/v1/rpc/dismiss").last().body.value("item").toString(), QStringLiteral("blocked:p2"));
+        QVERIFY(rig->store.pendingDismissal().isEmpty());
+        QVERIFY(rig->store.needsYou().isEmpty());
+    }
+
     void projectsGroupByStatus()
     {
         auto project = [](const char *name, const char *status) { return QVariant(QVariantMap{{"name", name}, {"status", status}}); };
