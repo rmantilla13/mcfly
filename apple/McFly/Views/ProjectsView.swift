@@ -249,8 +249,9 @@ private struct ProjectCardLink: View {
 }
 
 /// Name, kind and agent, a progress ring in the project's colour, the
-/// summary, the next step and the newest update, on a card with the colour
-/// down its edge. A blocked card's border breathes.
+/// summary, its stages as a bar (when the agent lays them out), the next step
+/// and the newest update, on a card with the colour down its edge. A blocked
+/// card's border breathes.
 struct ProjectCard: View {
     let project: Project
     var compact = false
@@ -312,13 +313,19 @@ struct ProjectCard: View {
                         .multilineTextAlignment(.leading)
                         .padding(.top, 10)
                 }
+            }
+            if let track = project.stageTrack {
+                StageBar(track: track, color: color)
+                    .padding(.top, 12)
+            }
+            if !compact {
                 if let next = project.nextStep, !next.isEmpty, !done {
                     Text("\(Text("Next:").fontWeight(.semibold)) \(next)")
                         .font(.subheadline)
                         .foregroundStyle(Theme.text)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                        .padding(.top, 6)
+                        .padding(.top, project.stages.isEmpty ? 6 : 10)
                 }
             }
             if let update = project.lastUpdate {
@@ -409,7 +416,7 @@ struct ProgressBar: View {
 // MARK: Detail
 
 /// The project on a gradient tile with a big ring (the display's detail),
-/// what's next, Ask why and the link out; then its last month as a strip of
+/// its stages as steps, what's next, Ask why and the link out; then its last month as a strip of
 /// days and its updates as a timeline: a rail with a node per update, the
 /// kind as its icon and colour, a line for each day, newest at the top (the
 /// feed's newest five at once, then up to 200 from `admin_project_updates`).
@@ -434,6 +441,9 @@ struct ProjectDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ProjectHeroTile(project: project, agent: agent)
+                if let track = project.stageTrack {
+                    ProjectStages(track: track, color: color, since: project.timeInStage())
+                }
                 if let next = project.nextStep, !next.isEmpty, project.status != .done {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("NEXT")
@@ -577,6 +587,210 @@ private struct ProjectHeroTile: View {
             .padding(22)
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+// MARK: Stages
+
+private extension StageTrack.State {
+    /// A segment's or node's fill: the project's colour behind it and where it
+    /// is, the lanes' coral while blocked and amber while paused, the rest a
+    /// faint track.
+    func fill(_ color: Color) -> Color {
+        switch self {
+        case .done, .current: return color
+        case .blocked: return Theme.down
+        case .paused: return Theme.amber
+        case .next: return Theme.text.opacity(0.1)
+        }
+    }
+
+    /// The words' ink: red while blocked, amber while paused.
+    var ink: Color {
+        switch self {
+        case .blocked: return Theme.danger
+        case .paused: return Theme.warningInk
+        default: return Theme.text
+        }
+    }
+}
+
+/// A project's stages as a bar (the console's StageBar): the headline and its
+/// place ("Blocked in App Review", "3 of 4") over a segment per stage, the
+/// ones behind it in the project's colour, the one it is in taller (coral
+/// while blocked, amber while paused). It grows in from the left once.
+struct StageBar: View {
+    let track: StageTrack
+    let color: Color
+    @State private var grown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(track.headline)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(track.here?.state.ink ?? Theme.text)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(track.position)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Theme.muted)
+            }
+            HStack(spacing: 4) {
+                ForEach(track.steps, id: \.number) { step in
+                    Capsule()
+                        .fill(step.state.fill(color))
+                        .opacity(step.state == .done ? 0.55 : 1)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: step.number - 1 == track.index ? 10 : 6)
+                }
+            }
+            .frame(height: 10)
+            .scaleEffect(x: grown || reduceMotion ? 1 : 0.02, y: 1, anchor: .leading)
+            .animation(.smooth(duration: 0.6).delay(0.2), value: grown)
+        }
+        .onAppear { grown = true }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Stages")
+        .accessibilityValue("\(track.headline), \(track.position)")
+    }
+}
+
+/// A project's stages as steps (the console's StageSteps): where it is and
+/// for how long, its place, then a node per stage with its name, joined by a
+/// line drawn in the project's colour once the next one is reached too. Done
+/// stages are ticked, the one it is in is ringed (blocked and paused say so),
+/// the rest numbered. Across where they fit, down the card where they don't.
+private struct ProjectStages: View {
+    let track: StageTrack
+    let color: Color
+    /// How long it has been in its stage ("5 days"), or empty.
+    let since: String
+
+    private static let node: CGFloat = 30
+    private static let stepWidth: CGFloat = 88
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("STAGES")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.muted)
+                    Spacer()
+                    Text(track.position)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(Theme.muted)
+                }
+                Text(since.isEmpty ? track.headline : "\(track.headline) for \(since)")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(track.here?.state.ink ?? Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(track.steps, id: \.number) { across($0) }
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(track.steps, id: \.number) { down($0) }
+                }
+            }
+        }
+        .card()
+        .accessibilityElement(children: .contain)
+    }
+
+    private func isLast(_ step: StageTrack.Step) -> Bool { step.number == track.steps.count }
+
+    /// The line on from a step: in the colour once the next stage is reached too.
+    private func line(after step: StageTrack.Step) -> some View {
+        let onward = !isLast(step) && track.steps[step.number].state != .next
+        return Capsule().fill(onward ? color.opacity(0.55) : Theme.text.opacity(0.12))
+    }
+
+    private func across(_ step: StageTrack.Step) -> some View {
+        VStack(spacing: 8) {
+            node(step)
+            words(step, alignment: .center)
+        }
+        .frame(minWidth: Self.stepWidth, maxWidth: .infinity)
+        .overlay(alignment: .topLeading) {
+            if !isLast(step) {
+                GeometryReader { g in
+                    line(after: step)
+                        .frame(width: max(0, g.size.width - Self.node - 12), height: 2)
+                        .offset(x: (g.size.width + Self.node) / 2 + 6, y: Self.node / 2 - 1)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func down(_ step: StageTrack.Step) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            node(step)
+            words(step, alignment: .leading)
+                .padding(.top, 5)
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, isLast(step) ? 0 : 14)
+        .background(alignment: .topLeading) {
+            if !isLast(step) {
+                line(after: step)
+                    .frame(width: 2)
+                    .padding(.top, Self.node + 4)
+                    .padding(.bottom, 4)
+                    .padding(.leading, Self.node / 2 - 1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func words(_ step: StageTrack.Step, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(step.name)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(step.state == .next ? Theme.muted : Theme.text)
+                .multilineTextAlignment(alignment == .center ? .center : .leading)
+                .lineLimit(2)
+            Text(step.word)
+                .font(.caption.weight(step.state == .next || step.state == .done ? .regular : .semibold))
+                .foregroundStyle(step.state == .current ? Theme.text : step.state == .next || step.state == .done ? Theme.muted : step.state.ink)
+        }
+        .padding(.horizontal, alignment == .center ? 4 : 0)
+    }
+
+    private func node(_ step: StageTrack.Step) -> some View {
+        ZStack {
+            switch step.state {
+            case .done:
+                Circle().fill(color.opacity(0.8))
+                Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.accentInk)
+            case .current:
+                Circle().fill(color)
+                Circle().fill(Theme.accentInk).frame(width: 10, height: 10)
+            case .blocked:
+                Circle().fill(Theme.down)
+                Image(systemName: "exclamationmark").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.accentInk)
+            case .paused:
+                Circle().fill(Theme.surface)
+                Circle().strokeBorder(Theme.amber, lineWidth: 3)
+                Image(systemName: "pause.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.warningInk)
+            case .next:
+                Circle().strokeBorder(Theme.text.opacity(0.12), lineWidth: 2)
+                Text("\(step.number)").font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.muted)
+            }
+        }
+        .frame(width: Self.node, height: Self.node)
+        .background {
+            // The one it is in wears a soft ring.
+            if step.number - 1 == track.index {
+                Circle().fill(step.state.fill(color).opacity(0.22)).padding(-5)
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

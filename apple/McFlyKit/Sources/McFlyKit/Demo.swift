@@ -77,7 +77,7 @@ public struct DemoData: Decodable, Sendable {
         }
         copy.projects = projects.map { p in
             var p = p
-            p.createdAt = moved(p.createdAt); p.updatedAt = moved(p.updatedAt)
+            p.createdAt = moved(p.createdAt); p.updatedAt = moved(p.updatedAt); p.stageSince = p.stageSince.map(moved)
             p.updates = p.updates.map { u in
                 var u = u
                 u.happenedAt = moved(u.happenedAt); u.createdAt = u.createdAt.map(moved)

@@ -814,6 +814,8 @@ void FeedStore::loadDemo()
         }
         pr.insert("project_updates", updates);
         pr.insert("updated_at", nowDt.addSecs(-qint64(pr.value("hoursAgo").toDouble(1) * 3600)).toString(Qt::ISODateWithMs));
+        if (pr.contains("stageHoursAgo"))
+            pr.insert("stage_since", nowDt.addSecs(-qint64(pr.value("stageHoursAgo").toDouble() * 3600)).toString(Qt::ISODateWithMs));
         m_rawProjects << pr.toVariantMap();
     }
     m_rawMetrics.clear();
@@ -1745,6 +1747,18 @@ int statusRank(const QString &status)
     return 3;
 }
 
+// A project's `stages` as names: the database's jsonb list, which arrives as
+// a list, or (from an older row or a hand-made one) not at all.
+QStringList stageNames(const QVariant &stages)
+{
+    QStringList names;
+    for (const QVariant &v : stages.toList()) {
+        if (!v.toString().isEmpty())
+            names << v.toString();
+    }
+    return names;
+}
+
 // A metric's value as people read it: 1.2M, 4,280, 99.98 %, 212 ms.
 QString metricLabel(double value, const QString &unit)
 {
@@ -1762,6 +1776,58 @@ QString metricLabel(double value, const QString &unit)
 }
 
 } // namespace
+
+QVariantMap FeedStore::stageTrack(const QStringList &stages, const QString &stage, const QString &status)
+{
+    const int n = int(stages.size());
+    if (!n)
+        return {};
+    // Each step's name, its state, and the word under it on the stepper.
+    auto step = [](const QString &name, const QString &state, int i) {
+        QString word;
+        if (state == QLatin1String("done")) word = tr("Done");
+        else if (state == QLatin1String("current")) word = tr("Now");
+        else if (state == QLatin1String("blocked")) word = tr("Blocked here");
+        else if (state == QLatin1String("paused")) word = tr("Paused here");
+        else word = tr("Stage %1").arg(i + 1);
+        return QVariantMap{{"name", name}, {"state", state}, {"word", word}};
+    };
+    QVariantList steps;
+    if (status == QLatin1String("done")) {
+        for (int i = 0; i < n; ++i)
+            steps << step(stages.at(i), QStringLiteral("done"), i);
+        return {{"steps", steps}, {"current", QString()}, {"index", n},
+                {"headline", n == 1 ? tr("Done") : tr("All %1 stages done").arg(n)}, {"position", tr("%1 of %2").arg(n).arg(n)}};
+    }
+    const int index = stage.isEmpty() ? -1 : int(stages.indexOf(stage));
+    const QString here = status == QLatin1String("blocked") ? QStringLiteral("blocked")
+                         : status == QLatin1String("paused") ? QStringLiteral("paused")
+                                                             : QStringLiteral("current");
+    for (int i = 0; i < n; ++i)
+        steps << step(stages.at(i), i < index ? QStringLiteral("done") : i == index ? here : QStringLiteral("next"), i);
+    if (index < 0)
+        return {{"steps", steps}, {"current", QString()}, {"index", -1}, {"headline", tr("Not started")},
+                {"position", n == 1 ? tr("1 stage") : tr("%1 stages").arg(n)}};
+    const QString name = stages.at(index);
+    return {{"steps", steps}, {"current", name}, {"index", index},
+            {"headline", here == QLatin1String("blocked") ? tr("Blocked in %1").arg(name)
+                         : here == QLatin1String("paused") ? tr("Paused in %1").arg(name)
+                                                           : name},
+            {"position", tr("%1 of %2").arg(index + 1).arg(n)}};
+}
+
+QString FeedStore::timeInStage(const QDateTime &since, const QDateTime &now)
+{
+    if (!since.isValid())
+        return {};
+    const double hours = double(std::max<qint64>(0, since.msecsTo(now))) / 3600000.0;
+    if (hours < 1) return tr("under an hour");
+    if (hours < 24) return tr("%1 hr").arg(int(hours));
+    const int days = int(hours / 24);
+    if (days < 14) return days == 1 ? tr("1 day") : tr("%1 days").arg(days);
+    if (days < 60) return tr("%1 wk").arg(days / 7);
+    return tr("%1 mo").arg(days / 30);
+}
 
 // Projects, metrics, dashboards and the calendar, decorated for QML.
 void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById)
@@ -1784,6 +1850,13 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
         p.insert("color", p.value("color").toString().isEmpty() ? agentColor(p.value("agent_id").toString()) : p.value("color"));
         p.insert("agentName", agentName(p.value("agent_id").toString()));
         p.insert("hasProgress", !p.value("progress").isNull());
+        // Its stages, when the agent lays them out, and how long it has been
+        // in the one it is in (not once it's done).
+        const QVariantMap track = stageTrack(stageNames(p.value("stages")), p.value("stage").toString(), status);
+        p.insert("hasStages", !track.isEmpty());
+        p.insert("track", track);
+        p.insert("stageFor", !track.value("current").toString().isEmpty()
+                                 ? timeInStage(parseTimestamp(p.value("stage_since").toString()), nowDt) : QString());
         const QDateTime updated = parseTimestamp(p.value("updated_at").toString());
         p.insert("updatedLabel", updated.isValid() ? (updated.date() == m_today ? timeLabel(updated) : dayLabel(updated.date())) : QString());
         QVariantList updates = p.value("project_updates").toList();
@@ -2095,6 +2168,15 @@ QString FeedStore::snapshotText(int maxChars) const
             if (p.value("hasProgress").toBool())
                 part += QStringLiteral(", %1%").arg(p.value("progress").toInt());
             part += QLatin1Char(')');
+            // As the console's assistant reads it: ", stage Build (2 of 4: Plan,
+            // Build, Review, Ship)", or ", stages …" before the first.
+            const QStringList stages = stageNames(p.value("stages"));
+            if (!stages.isEmpty()) {
+                const QString stage = p.value("stage").toString();
+                const qsizetype at = stage.isEmpty() ? -1 : stages.indexOf(stage);
+                part += at < 0 ? tr(", stages %1").arg(stages.join(QStringLiteral(", ")))
+                               : tr(", stage %1 (%2 of %3: %4)").arg(stage).arg(at + 1).arg(stages.size()).arg(stages.join(QStringLiteral(", ")));
+            }
             if (!p.value("next_step").toString().isEmpty())
                 part += tr(": next, %1").arg(p.value("next_step").toString());
             parts << part;

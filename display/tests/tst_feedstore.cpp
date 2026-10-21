@@ -110,6 +110,9 @@ class TestFeedStore : public QObject
                 QJsonObject{{"id", "p1"}, {"agent_id", "a1"}, {"key", "mcfly"}, {"name", "McFly"}, {"kind", "code"}, {"status", "active"},
                             {"progress", 62}, {"summary", "The display."}, {"next_step", "Ship it"}, {"link", "https://x/1"}, {"color", QJsonValue::Null},
                             {"sort_order", 1}, {"updated_at", iso(now)},
+                            // Postgres writes microseconds.
+                            {"stages", QJsonArray{"Plan", "Build", "Review", "Ship"}}, {"stage", "Build"},
+                            {"stage_since", now.addDays(-3).addSecs(-60).toUTC().toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss.zzz")) + QStringLiteral("456+00:00")},
                             {"project_updates", QJsonArray{
                                  QJsonObject{{"id", 1}, {"kind", "ci"}, {"text", "CI green"}, {"url", QJsonValue::Null}, {"happened_at", iso(now.addSecs(-600))}},
                                  QJsonObject{{"id", 2}, {"kind", "pr"}, {"text", "PR opened"}, {"url", "https://x/pr"}, {"happened_at", iso(now.addSecs(-7200))}}}}},
@@ -463,6 +466,20 @@ private slots:
         QCOMPARE(mcfly.value("lastUpdate").toMap().value("text").toString(), QStringLiteral("CI green"));
         QCOMPARE(mcfly.value("updates").toList().at(1).toMap().value("icon").toString(), QStringLiteral("link"));
         QCOMPARE(rig->store.project("p2").value("key").toString(), QStringLiteral("onyx"));
+        // Stages, shaped as the console's stageTrack(); a row from before
+        // stages (Onyx here sends none) has no track.
+        QVERIFY(mcfly.value("hasStages").toBool());
+        const QVariantMap track = mcfly.value("track").toMap();
+        QCOMPARE(track.value("headline").toString(), QStringLiteral("Build"));
+        QCOMPARE(track.value("position").toString(), QStringLiteral("2 of 4"));
+        QCOMPARE(track.value("index").toInt(), 1);
+        QCOMPARE(track.value("steps").toList().size(), 4);
+        QCOMPARE(track.value("steps").toList().at(0).toMap().value("state").toString(), QStringLiteral("done"));
+        QCOMPARE(track.value("steps").toList().at(1).toMap().value("word").toString(), QStringLiteral("Now"));
+        QCOMPARE(mcfly.value("stageFor").toString(), QStringLiteral("3 days"));
+        QVERIFY(!onyx.value("hasStages").toBool());
+        QVERIFY(onyx.value("track").toMap().isEmpty());
+        QVERIFY(onyx.value("stageFor").toString().isEmpty());
 
         // Metrics: in order, grouped, with history; a setting without rows is left out.
         QCOMPARE(rig->store.metrics().size(), 2);
@@ -518,6 +535,74 @@ private slots:
         QCOMPARE(rig->store.assistantProvider(), QStringLiteral("claude"));
         const QString snapshot = rig->store.snapshotText();
         QVERIFY2(snapshot.contains("Onyx (blocked)") && snapshot.contains("Sales today $4,280") && snapshot.contains("Standup"), qPrintable(snapshot));
+        QVERIFY2(snapshot.contains("McFly (active, 62%), stage Build (2 of 4: Plan, Build, Review, Ship): next, Ship it"), qPrintable(snapshot));
+    }
+
+    // The console's cases (admin/tests/feed-layout.test.mjs), so the display
+    // and the console tell a project's stages the same way.
+    void projectStagesFollowTheConsole()
+    {
+        const QStringList stages{"Plan", "Build", "Review", "Ship"};
+        auto states = [](const QVariantMap &t) {
+            QStringList out;
+            for (const QVariant &s : t.value("steps").toList())
+                out << s.toMap().value("state").toString();
+            return out.join(QLatin1Char(' '));
+        };
+        const QVariantMap active = FeedStore::stageTrack(stages, "Build", "active");
+        QCOMPARE(states(active), QStringLiteral("done current next next"));
+        QCOMPARE(active.value("current").toString(), QStringLiteral("Build"));
+        QCOMPARE(active.value("index").toInt(), 1);
+        QCOMPARE(active.value("headline").toString(), QStringLiteral("Build"));
+        QCOMPARE(active.value("position").toString(), QStringLiteral("2 of 4"));
+        // Blocked or paused, the stage it's in says so.
+        const QVariantMap blocked = FeedStore::stageTrack(stages, "Review", "blocked");
+        QCOMPARE(states(blocked), QStringLiteral("done done blocked next"));
+        QCOMPARE(blocked.value("headline").toString(), QStringLiteral("Blocked in Review"));
+        QCOMPARE(blocked.value("steps").toList().at(2).toMap().value("word").toString(), QStringLiteral("Blocked here"));
+        QCOMPARE(blocked.value("steps").toList().at(3).toMap().value("word").toString(), QStringLiteral("Stage 4"));
+        const QVariantMap paused = FeedStore::stageTrack(stages, "Ship", "paused");
+        QCOMPARE(paused.value("headline").toString(), QStringLiteral("Paused in Ship"));
+        QCOMPARE(states(paused), QStringLiteral("done done done paused"));
+        // Done: through them all, whatever stage it last named.
+        const QVariantMap done = FeedStore::stageTrack(stages, "Build", "done");
+        QCOMPARE(states(done), QStringLiteral("done done done done"));
+        QVERIFY(done.value("current").toString().isEmpty());
+        QCOMPARE(done.value("index").toInt(), 4);
+        QCOMPARE(done.value("headline").toString(), QStringLiteral("All 4 stages done"));
+        QCOMPARE(done.value("position").toString(), QStringLiteral("4 of 4"));
+        QCOMPARE(FeedStore::stageTrack({"Ship"}, QString(), "done").value("headline").toString(), QStringLiteral("Done"));
+        // Stages but no stage yet, or one the stages don't name (exactly, as
+        // the console's indexOf): none reached.
+        const QVariantMap fresh = FeedStore::stageTrack(stages, QString(), "active");
+        QCOMPARE(states(fresh), QStringLiteral("next next next next"));
+        QCOMPARE(fresh.value("index").toInt(), -1);
+        QCOMPARE(fresh.value("headline").toString(), QStringLiteral("Not started"));
+        QCOMPARE(fresh.value("position").toString(), QStringLiteral("4 stages"));
+        QCOMPARE(FeedStore::stageTrack(stages, "build", "active").value("headline").toString(), QStringLiteral("Not started"));
+        QCOMPARE(FeedStore::stageTrack({"Ship"}, QString(), "active").value("position").toString(), QStringLiteral("1 stage"));
+        // No stages, no track.
+        QVERIFY(FeedStore::stageTrack({}, QString(), "active").isEmpty());
+
+        // How long it has been in its stage.
+        const QDateTime now(QDate(2026, 10, 21), QTime(15, 0));
+        auto ago = [&](double hours) { return FeedStore::timeInStage(now.addSecs(-qint64(hours * 3600)), now); };
+        QCOMPARE(ago(20.0 / 60), QStringLiteral("under an hour"));
+        QCOMPARE(ago(59.0 / 60), QStringLiteral("under an hour"));
+        QCOMPARE(ago(1), QStringLiteral("1 hr"));
+        QCOMPARE(ago(5 + 10.0 / 60), QStringLiteral("5 hr"));
+        QCOMPARE(ago(23.9), QStringLiteral("23 hr"));
+        QCOMPARE(ago(24), QStringLiteral("1 day"));
+        QCOMPARE(ago(30), QStringLiteral("1 day"));
+        QCOMPARE(ago(3 * 24), QStringLiteral("3 days"));
+        QCOMPARE(ago(14 * 24 - 1), QStringLiteral("13 days"));
+        QCOMPARE(ago(14 * 24), QStringLiteral("2 wk"));
+        QCOMPARE(ago(20 * 24), QStringLiteral("2 wk"));
+        QCOMPARE(ago(60 * 24 - 1), QStringLiteral("8 wk"));
+        QCOMPARE(ago(60 * 24), QStringLiteral("2 mo"));
+        QCOMPARE(ago(130 * 24), QStringLiteral("4 mo"));
+        QCOMPARE(ago(-1), QStringLiteral("under an hour")); // a clock a little ahead
+        QCOMPARE(FeedStore::timeInStage(QDateTime(), now), QString());
     }
 
     void todayTimeline()
@@ -918,6 +1003,15 @@ private slots:
         QVERIFY(rig->store.stories().size() == 6);
         QVERIFY(rig->store.projects().size() >= 4);
         QCOMPARE(rig->store.projects().first().toMap().value("status").toString(), QStringLiteral("blocked"));
+        // The demo's projects have stages, as the console's do, but one.
+        {
+            const QVariantMap onyx = rig->store.project("demo-project-onyx");
+            QCOMPARE(onyx.value("track").toMap().value("headline").toString(), QStringLiteral("Blocked in App Review"));
+            QCOMPARE(onyx.value("stageFor").toString(), QStringLiteral("5 days"));
+            QCOMPARE(rig->store.project("demo-project-taxes").value("track").toMap().value("headline").toString(), QStringLiteral("All 3 stages done"));
+            QVERIFY(rig->store.project("demo-project-taxes").value("stageFor").toString().isEmpty());
+            QVERIFY(!rig->store.project("demo-project-pulse").value("hasStages").toBool());
+        }
         QVERIFY(rig->store.metrics().size() >= 5);
         QVERIFY(rig->store.metricGroups().size() >= 2);
         QVERIFY(rig->store.dashboards().size() >= 2);

@@ -22,6 +22,18 @@ final class ProductivityTests: XCTestCase {
         XCTAssertTrue(demo.projects[2].updates.isEmpty)
         XCTAssertEqual(Project.Status.blocked.attention, 0)
         XCTAssertLessThan(Project.Status.active.attention, Project.Status.done.attention)
+        // The seed's stages, and when each project reached its own.
+        XCTAssertEqual(mcfly.stages, ["Plan", "Build", "Review", "Ship"])
+        XCTAssertEqual(mcfly.stage, "Build")
+        XCTAssertEqual(onyx.stageTrack?.headline, "Blocked in App Review")
+        XCTAssertEqual(demo.projects[2].stageTrack?.headline, "Paused in Launch")
+        let since = try XCTUnwrap(onyx.stageSince)
+        // Rebased, the demo keeps it five days before the newest push.
+        let now = Date()
+        let rebased = demo.rebased(to: now)
+        XCTAssertEqual(rebased.projects[1].timeInStage(now: now), "5 days")
+        XCTAssertEqual(try XCTUnwrap(rebased.projects[1].stageSince).timeIntervalSince(rebased.projects[1].updatedAt),
+                       since.timeIntervalSince(onyx.updatedAt), accuracy: 0.001)
     }
 
     func testProjectRowWithoutEmbedAndUnknownEnums() throws {
@@ -35,6 +47,29 @@ final class ProductivityTests: XCTestCase {
         XCTAssertEqual(project.summary, "")
         XCTAssertEqual(project.sortOrder, 1000)
         XCTAssertTrue(project.updates.isEmpty)
+        // A database from before stages: none, so no track.
+        XCTAssertEqual(project.stages, [])
+        XCTAssertNil(project.stage)
+        XCTAssertNil(project.stageSince)
+        XCTAssertNil(project.stageTrack)
+        // Postgres writes microseconds; a null stage list reads as none too.
+        let staged = """
+        {"id":"00000000-0000-0000-0000-00000000f00a","agent_id":"00000000-0000-0000-0000-00000000a004","key":"y","name":"Y",
+         "status":"active","stages":["Plan","Build"],"stage":"Build","stage_since":"2026-10-18T14:03:11.123456+00:00",
+         "created_at":"2026-10-01T00:00:00Z","updated_at":"2026-10-01T00:00:00Z"}
+        """
+        let y = try JSONDecoder.mcfly.decode(Project.self, from: Data(staged.utf8))
+        XCTAssertEqual(y.stageTrack?.position, "2 of 2")
+        XCTAssertNotNil(y.stageSince)
+        let unset = """
+        {"id":"00000000-0000-0000-0000-00000000f00b","agent_id":"00000000-0000-0000-0000-00000000a004","key":"z","name":"Z",
+         "stages":null,"stage":null,"stage_since":null,"created_at":"2026-10-01T00:00:00Z","updated_at":"2026-10-01T00:00:00Z"}
+        """
+        XCTAssertEqual(try JSONDecoder.mcfly.decode(Project.self, from: Data(unset.utf8)).stages, [])
+        // And it round-trips, as the feed's cache writes it.
+        let again = try JSONDecoder.mcfly.decode(Project.self, from: JSONEncoder.mcfly.encode(y))
+        XCTAssertEqual(again.stages, y.stages)
+        XCTAssertEqual(again.stage, "Build")
         let update = """
         {"id":9,"kind":"release","text":"v2","happened_at":"2026-10-01T00:00:00Z"}
         """

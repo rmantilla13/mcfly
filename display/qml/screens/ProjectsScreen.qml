@@ -9,8 +9,10 @@ import McFly.Core
 // deploys and notes, beside the board or on a page pushed over it.
 //
 // A card's progress is a ring that sweeps in as the board settles; a
-// blocked card's outline breathes. The picked project heads its detail on a
-// gradient tile in its status colour, a big ring beside its name, over its
+// blocked card's outline breathes. A project whose agent lays out stages
+// shows them as the console does: a bar on its card, and a step per stage
+// in its detail. The picked project heads its detail on a gradient tile in
+// its status colour, a big ring beside its name, over its stages and its
 // updates as a thread of moments, newest first.
 Item {
     id: projects
@@ -39,6 +41,215 @@ Item {
         md.open()
         if (again && Device.animatedTiles)
             detailAnim.restart()
+    }
+
+    // A project's stages as a bar (the console's StageBar): the headline and
+    // its place ("Blocked in App Review", "3 of 4") over a segment per stage,
+    // the ones behind it in the project's colour, the one it is in taller (in
+    // its status colour while blocked or paused), the rest a faint track. It
+    // grows in from the left as `shown` goes to 1. On a gradient tile
+    // (`onTile`) it is drawn in the tile's ink instead.
+    component StageBar: ColumnLayout {
+        id: stageBar
+        property var project: ({})
+        property real shown: 1
+        property bool onTile: false
+        property color ink: Theme.text
+        property color inkMuted: Theme.textMuted
+        readonly property var track: project.track || ({})
+        readonly property var steps: track.steps || []
+        readonly property int here: track.index === undefined ? -1 : track.index
+        readonly property string hereState: here >= 0 && here < steps.length ? steps[here].state : ""
+        function fill(phase) {
+            if (onTile)
+                return Qt.rgba(ink.r, ink.g, ink.b, phase === "next" ? 0.16 : phase === "done" ? 0.7 : 1)
+            if (phase === "blocked" || phase === "paused")
+                return project.statusColor
+            if (phase === "next")
+                return Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1)
+            return project.color || Theme.accent
+        }
+        spacing: Theme.mini ? 4 : 6
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                text: stageBar.track.headline || ""
+                color: stageBar.onTile ? stageBar.ink
+                     : stageBar.hereState === "blocked" ? Theme.danger : stageBar.hereState === "paused" ? Theme.warningInk : Theme.text
+                font.pixelSize: Theme.fontXs
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Label {
+                text: stageBar.track.position || ""
+                color: stageBar.inkMuted
+                font.pixelSize: Theme.fontXs - 1
+                font.features: ({ "tnum": 1 })
+            }
+        }
+        Item {
+            id: segments
+            Layout.fillWidth: true
+            implicitHeight: 10
+            transform: Scale { xScale: stageBar.shown }
+            Repeater {
+                model: stageBar.steps
+                Rectangle {
+                    required property var modelData
+                    required property int index
+                    readonly property real slot: (segments.width + 4) / Math.max(1, stageBar.steps.length)
+                    x: index * slot
+                    width: slot - 4
+                    height: index === stageBar.here ? 10 : 6
+                    y: (segments.height - height) / 2
+                    radius: height / 2
+                    color: stageBar.fill(modelData.state)
+                    opacity: modelData.state === "done" && !stageBar.onTile ? 0.55 : 1
+                }
+            }
+        }
+    }
+
+    // A project's stages as steps (the console's StageSteps): a node per
+    // stage with its name under it, joined by a line drawn in the project's
+    // colour once the next one is reached too. Done stages are ticked, the
+    // one it is in is ringed (blocked and paused say so), the rest are
+    // numbered. Too many to fit side by side, it flicks, opening on the one
+    // it is in.
+    component StageSteps: Flickable {
+        id: stepper
+        property var project: ({})
+        property real shown: 1
+        readonly property var track: project.track || ({})
+        readonly property var steps: track.steps || []
+        readonly property int here: track.index === undefined ? -1 : track.index
+        readonly property color tint: project.color || Theme.accent
+        readonly property color faint: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+        readonly property int node: Theme.wide ? 34 : 30
+        readonly property real stepWidth: Math.max(92, width / Math.max(1, steps.length))
+        function fill(phase) {
+            if (phase === "blocked" || phase === "paused")
+                return project.statusColor
+            return phase === "next" ? faint : tint
+        }
+        function settle() {
+            contentX = Math.max(0, Math.min(contentWidth - width, (here + 0.5) * stepWidth - width / 2))
+        }
+        implicitHeight: row.implicitHeight
+        contentWidth: steps.length * stepWidth
+        contentHeight: height
+        flickableDirection: Flickable.HorizontalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentWidth > width + 1
+        clip: true
+        onWidthChanged: settle()
+        onContentWidthChanged: settle()
+        onHereChanged: settle()
+        Row {
+            id: row
+            Repeater {
+                model: stepper.steps
+                Item {
+                    id: step
+                    required property var modelData
+                    required property int index
+                    readonly property string phase: modelData.state
+                    readonly property bool reached: phase !== "next"
+                    readonly property bool onward: index < stepper.steps.length - 1 && stepper.steps[index + 1].state !== "next"
+                    width: stepper.stepWidth
+                    height: stepWord.y + stepWord.height
+                    // Each a beat after the one before, as the project is picked.
+                    opacity: Math.max(0, Math.min(1, stepper.shown * 2.5 - Math.min(index, 6) * 0.2))
+                    Rectangle {
+                        visible: step.index < stepper.steps.length - 1
+                        x: (step.width + stepper.node) / 2 + 6
+                        y: stepper.node / 2 - 1
+                        width: step.width - stepper.node - 12
+                        height: 2
+                        radius: 1
+                        color: step.onward ? stepper.tint : stepper.faint
+                        opacity: step.onward ? 0.55 : 1
+                    }
+                    Item {
+                        id: dot
+                        width: stepper.node
+                        height: width
+                        x: (step.width - width) / 2
+                        // The one it is in wears a soft ring.
+                        Rectangle {
+                            visible: step.index === stepper.here
+                            anchors.centerIn: parent
+                            width: parent.width + 10
+                            height: width
+                            radius: width / 2
+                            color: Qt.rgba(dotFill.color.r, dotFill.color.g, dotFill.color.b, 0.22)
+                        }
+                        Rectangle {
+                            id: dotFill
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: step.phase === "paused" ? Theme.surface : step.reached ? stepper.fill(step.phase) : "transparent"
+                            opacity: step.phase === "done" ? 0.8 : 1
+                            border.width: step.phase === "paused" ? 3 : step.reached ? 0 : 2
+                            border.color: step.phase === "paused" ? stepper.project.statusColor : stepper.faint
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: name.length > 0
+                            name: step.phase === "done" ? "check" : step.phase === "blocked" ? "info" : step.phase === "paused" ? "pause" : ""
+                            size: Math.round(stepper.node * 0.5)
+                            color: step.phase === "paused" ? Theme.warningInk : Theme.accentInk
+                        }
+                        Rectangle {
+                            visible: step.phase === "current"
+                            anchors.centerIn: parent
+                            width: Math.round(stepper.node * 0.32)
+                            height: width
+                            radius: width / 2
+                            color: Theme.accentInk
+                        }
+                        Label {
+                            visible: !step.reached
+                            anchors.centerIn: parent
+                            text: step.index + 1
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontXs - 2
+                            font.weight: Font.DemiBold
+                            font.features: ({ "tnum": 1 })
+                        }
+                    }
+                    Label {
+                        id: stepName
+                        x: 4
+                        y: dot.height + 8
+                        width: step.width - 8
+                        horizontalAlignment: Text.AlignHCenter
+                        text: step.modelData.name
+                        color: step.reached ? Theme.text : Theme.textMuted
+                        font.pixelSize: Theme.fontXs
+                        font.weight: Font.DemiBold
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        id: stepWord
+                        x: 4
+                        y: stepName.y + stepName.height + 2
+                        width: step.width - 8
+                        horizontalAlignment: Text.AlignHCenter
+                        text: step.modelData.word || ""
+                        color: step.phase === "blocked" ? Theme.danger : step.phase === "paused" ? Theme.warningInk
+                             : step.phase === "current" ? Theme.text : Theme.textMuted
+                        font.pixelSize: Theme.fontXs - 2
+                        font.weight: step.phase === "next" || step.phase === "done" ? Font.Normal : Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+        }
     }
 
     MasterDetail {
@@ -125,7 +336,10 @@ Item {
                                     Rectangle { width: 12; height: 12; radius: 6; color: cell.modelData.statusColor }
                                     Label { text: cell.modelData.name; color: Theme.text; font.pixelSize: Theme.fontMd - 2; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
                                 }
+                                // With stages, the bar's headline ("Blocked in App
+                                // Review") says it instead, beside the status dot.
                                 Label {
+                                    visible: !cell.modelData.hasStages
                                     text: (cell.modelData.statusLabel || "").toUpperCase()
                                     color: cell.modelData.statusColor
                                     font.pixelSize: 13
@@ -134,14 +348,20 @@ Item {
                                 }
                                 Label {
                                     Layout.fillWidth: true
-                                    visible: !Theme.mini
+                                    // Portrait's cards are shorter: its stages take the summary's place.
+                                    visible: !Theme.mini && !(Theme.tall && cell.modelData.hasStages)
                                     text: cell.modelData.summary || ""
                                     color: Theme.textMuted
                                     font.pixelSize: Theme.fontXs + 1
                                     wrapMode: Text.WordWrap
-                                    // Portrait's cards are shorter.
-                                    maximumLineCount: Theme.tall ? 1 : 2
+                                    maximumLineCount: Theme.tall || cell.modelData.hasStages ? 1 : 2
                                     elide: Text.ElideRight
+                                }
+                                StageBar {
+                                    Layout.fillWidth: true
+                                    visible: !!cell.modelData.hasStages
+                                    project: cell.modelData
+                                    shown: rv.at(cell.index + 1)
                                 }
                                 Item { Layout.fillHeight: true }
                                 Label {
@@ -249,8 +469,19 @@ Item {
                             color: head.inkMuted
                             font.pixelSize: Theme.fontSm
                             wrapMode: Text.WordWrap
-                            maximumLineCount: Theme.mini ? 2 : 3
+                            maximumLineCount: Theme.mini ? (projects.current.hasStages ? 1 : 2) : 3
                             elide: Text.ElideRight
+                        }
+                        // Mini's page has no room for the stages' own card: its bar rides on the tile.
+                        StageBar {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 4
+                            visible: Theme.mini && !!projects.current.hasStages
+                            project: projects.current
+                            onTile: true
+                            ink: head.ink
+                            inkMuted: head.inkMuted
+                            shown: Math.min(rv.at(1), projects.detailIn)
                         }
                     }
                     Ring {
@@ -281,6 +512,56 @@ Item {
                                 font.pixelSize: Theme.fontXs - 1
                             }
                         }
+                    }
+                }
+            }
+
+            // Its stages, when the agent lays them out: the one it is in (and
+            // for how long), its place, and a step per stage.
+            Rectangle {
+                visible: !Theme.mini && !!projects.current.hasStages
+                Layout.fillWidth: true
+                Layout.preferredHeight: stagesCol.implicitHeight + 2 * stagesCol.anchors.margins
+                radius: Theme.radius
+                color: Theme.surface
+                ColumnLayout {
+                    id: stagesCol
+                    readonly property var track: projects.current.track || ({})
+                    readonly property string hereState: track.index >= 0 && track.steps && track.index < track.steps.length ? track.steps[track.index].state : ""
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.compact ? 20 : 24
+                    spacing: 14
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { Layout.fillWidth: true; text: qsTr("STAGES"); color: Theme.textMuted; font.pixelSize: Theme.fontXs; font.weight: Font.DemiBold; font.letterSpacing: 1.2 }
+                            Label {
+                                text: stagesCol.track.position || ""
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontXs
+                                font.features: ({ "tnum": 1 })
+                            }
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: (stagesCol.track.headline || "") + (projects.current.stageFor ? qsTr(" for %1").arg(projects.current.stageFor) : "")
+                            color: stagesCol.hereState === "blocked" ? Theme.danger : stagesCol.hereState === "paused" ? Theme.warningInk : Theme.text
+                            font.pixelSize: Theme.fontSm
+                            font.weight: Font.DemiBold
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
+                    }
+                    StageSteps {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
+                        project: projects.current
+                        shown: Math.min(rv.at(1), projects.detailIn)
                     }
                 }
             }

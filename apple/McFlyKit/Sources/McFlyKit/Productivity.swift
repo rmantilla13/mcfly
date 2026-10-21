@@ -62,24 +62,34 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var updatedAt: Date
     /// Newest first (embedded as `project_updates`).
     public var updates: [ProjectUpdate]
+    /// The steps the agent lays out, in order (migration 20261021000050);
+    /// empty when it sends none, or from a database without them.
+    public var stages: [String]
+    /// The stage it is in, one of `stages`; nil before the first.
+    public var stage: String?
+    /// When it reached that stage.
+    public var stageSince: Date?
 
     public init(id: UUID, agentId: UUID, key: String, name: String, kind: Kind = .other, status: Status = .active,
                 progress: Int? = nil, summary: String = "", nextStep: String? = nil, link: String? = nil, color: String? = nil,
-                sortOrder: Int = 1000, createdAt: Date, updatedAt: Date, updates: [ProjectUpdate] = []) {
+                sortOrder: Int = 1000, createdAt: Date, updatedAt: Date, updates: [ProjectUpdate] = [],
+                stages: [String] = [], stage: String? = nil, stageSince: Date? = nil) {
         self.id = id; self.agentId = agentId; self.key = key; self.name = name; self.kind = kind; self.status = status
         self.progress = progress; self.summary = summary; self.nextStep = nextStep; self.link = link; self.color = color
         self.sortOrder = sortOrder; self.createdAt = createdAt; self.updatedAt = updatedAt
         self.updates = updates.sorted { ($0.happenedAt, $0.id) > ($1.happenedAt, $1.id) }
+        self.stages = stages; self.stage = stage; self.stageSince = stageSince
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, key, name, kind, status, progress, summary, link, color
+        case id, key, name, kind, status, progress, summary, link, color, stages, stage
         case agentId = "agent_id"
         case nextStep = "next_step"
         case sortOrder = "sort_order"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case updates = "project_updates"
+        case stageSince = "stage_since"
     }
 
     public init(from decoder: Decoder) throws {
@@ -98,7 +108,10 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
                   sortOrder: try c.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 1000,
                   createdAt: try c.decode(Date.self, forKey: .createdAt),
                   updatedAt: try c.decode(Date.self, forKey: .updatedAt),
-                  updates: try c.decodeIfPresent([ProjectUpdate].self, forKey: .updates) ?? [])
+                  updates: try c.decodeIfPresent([ProjectUpdate].self, forKey: .updates) ?? [],
+                  stages: try c.decodeIfPresent([String].self, forKey: .stages) ?? [],
+                  stage: try c.decodeIfPresent(String.self, forKey: .stage),
+                  stageSince: try c.decodeIfPresent(Date.self, forKey: .stageSince))
     }
 
     public var latestUpdate: ProjectUpdate? { updates.first }

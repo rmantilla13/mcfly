@@ -172,6 +172,18 @@ public:
     // assistant's prompt and the demo answers.
     Q_INVOKABLE QString snapshotText(int maxChars = 6000) const;
 
+    // A project's stages as the console draws them (stageTrack() in
+    // admin/lib/feed-layout.ts): { steps: [{ name, state, word }], current,
+    // index, headline, position }. Stages before the one it is in are done,
+    // that one takes the project's status (blocked or paused, else current),
+    // the rest are next; a done project has been through them all. `index`
+    // is -1 before the first stage and the count once done. Empty for a
+    // project without stages.
+    static QVariantMap stageTrack(const QStringList &stages, const QString &stage, const QString &status);
+    // How long a project has been in its stage: "under an hour", "5 hr",
+    // "3 days", "2 wk", "4 mo"; empty when `since` isn't a time.
+    static QString timeInStage(const QDateTime &since, const QDateTime &now);
+
     // Tests: a stand-in for the wall clock (local time). Call before start().
     void setClock(std::function<QDateTime()> now) { m_clock = std::move(now); }
     // Tests: how often live mode syncs.
