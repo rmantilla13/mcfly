@@ -17,6 +17,8 @@ import {
   pushBars,
   sectionColor,
   sectionColorByName,
+  stageTrack,
+  timeInStage,
   widgetBlocks,
 } from "../lib/feed-layout.ts";
 
@@ -164,6 +166,42 @@ test("projects in lanes, the one that needs you first", () => {
   assert.deepEqual(lanes.map((l) => l.status), ["blocked", "active", "paused", "done"]);
   assert.deepEqual(lanes[1].projects.map((x) => x.name), ["McFly", "Two", "Odd"]);
   assert.deepEqual(projectLanes([]).map((l) => l.projects.length), [0, 0, 0, 0]);
+});
+
+test("a project's stages as steps, in its status", () => {
+  const stages = ["Plan", "Build", "Review", "Ship"];
+  const states = (t) => t.steps.map((s) => s.state);
+  const active = stageTrack({ stages, stage: "Build", status: "active" });
+  assert.deepEqual(states(active), ["done", "current", "next", "next"]);
+  assert.deepEqual([active.current, active.index, active.headline, active.position], ["Build", 1, "Build", "2 of 4"]);
+  // Blocked or paused, the stage it's in says so.
+  const blocked = stageTrack({ stages, stage: "Review", status: "blocked" });
+  assert.deepEqual(states(blocked), ["done", "done", "blocked", "next"]);
+  assert.equal(blocked.headline, "Blocked in Review");
+  assert.equal(stageTrack({ stages, stage: "Ship", status: "paused" }).headline, "Paused in Ship");
+  // Done: through them all, whatever stage it last named.
+  const done = stageTrack({ stages, stage: "Build", status: "done" });
+  assert.deepEqual(states(done), ["done", "done", "done", "done"]);
+  assert.deepEqual([done.current, done.index, done.headline, done.position], [null, 4, "All 4 stages done", "4 of 4"]);
+  assert.equal(stageTrack({ stages: ["Ship"], stage: null, status: "done" }).headline, "Done");
+  // Stages but no stage yet: none reached.
+  const fresh = stageTrack({ stages, stage: null, status: "active" });
+  assert.deepEqual(states(fresh), ["next", "next", "next", "next"]);
+  assert.deepEqual([fresh.index, fresh.headline, fresh.position], [-1, "Not started", "4 stages"]);
+  // No stages, no track: the page shows the status alone.
+  assert.equal(stageTrack({ stages: [], stage: null, status: "active" }), null);
+});
+
+test("how long a project has been in its stage", () => {
+  assert.equal(timeInStage(ago(20 * MIN), NOW), "under an hour");
+  assert.equal(timeInStage(ago(5 * HOUR + 10 * MIN), NOW), "5 hr");
+  assert.equal(timeInStage(ago(30 * HOUR), NOW), "1 day");
+  assert.equal(timeInStage(ago(3 * 24 * HOUR), NOW), "3 days");
+  assert.equal(timeInStage(ago(20 * 24 * HOUR), NOW), "2 wk");
+  assert.equal(timeInStage(ago(130 * 24 * HOUR), NOW), "4 mo");
+  assert.equal(timeInStage(null, NOW), "");
+  assert.equal(timeInStage("nope", NOW), "");
+  assert.equal(timeInStage(ago(-HOUR), NOW), "under an hour"); // a clock a little ahead
 });
 
 test("a brief's lead and its points", () => {

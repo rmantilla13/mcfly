@@ -419,8 +419,20 @@ export interface ProjectRow {
   progress?: unknown;
   summary?: unknown;
   next_step?: unknown;
+  stages?: unknown;
+  stage?: unknown;
   project_updates?: UpdateRow[] | null;
 }
+// ", stage Build (2 of 4: Plan, Build, Review, Ship)", or nothing for a
+// project without stages.
+function stageText(p: ProjectRow): string {
+  const stages = Array.isArray(p.stages) ? p.stages.map((s) => oneLine(s, 40)).filter(Boolean) : [];
+  const stage = oneLine(p.stage, 40);
+  if (!stages.length) return "";
+  const at = stages.indexOf(stage);
+  return at < 0 ? `, stages ${stages.join(", ")}` : `, stage ${stage} (${at + 1} of ${stages.length}: ${stages.join(", ")})`;
+}
+
 export interface MetricSettingRow {
   key: string;
   label?: unknown;
@@ -623,7 +635,7 @@ export function formatSnapshot(rows: SnapshotRows, now = Date.now()): Snapshot {
   else if (!rows.projects.length) lines.push("- (none)");
   for (const p of rows.projects ?? []) {
     const progress = num(p.progress);
-    let line = `- ${oneLine(p.name, 120)} — ${oneLine(p.status, 16) || "active"}${progress === null ? "" : `, ${progress}%`}`;
+    let line = `- ${oneLine(p.name, 120)} — ${oneLine(p.status, 16) || "active"}${progress === null ? "" : `, ${progress}%`}${stageText(p)}`;
     const summary = oneLine(p.summary, SNAPSHOT.summaryChars);
     if (summary) line += `. ${summary}`;
     const next = oneLine(p.next_step, 200);

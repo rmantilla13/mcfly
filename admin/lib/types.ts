@@ -171,6 +171,11 @@ export type ProjectRow = {
   update_count: number;
   last_update: string | null;
   last_update_at: string | null;
+  // The steps the agent laid out, in order, and the one it is in now (one
+  // of them, or null) since stage_since (migration 20261021000050).
+  stages: string[];
+  stage: string | null;
+  stage_since: string | null;
 };
 
 export type ProjectUpdateKind = "note" | "commit" | "pr" | "ci" | "deploy" | "alert" | "done";

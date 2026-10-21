@@ -79,6 +79,9 @@ export type DemoProject = {
   color: string | null;
   sort_order: number;
   updated_at: string;
+  stages: string[];
+  stage: string | null;
+  stage_since: string | null;
   updates: ProjectUpdate[]; // newest first
 };
 
@@ -512,8 +515,8 @@ export function buildDemoState(now = Date.now()): DemoState {
     });
   }
 
-  // Projects, as the GitHub watcher reports them: the seed's three and one
-  // that's finished.
+  // Projects, as the GitHub watcher reports them: the seed's three, one
+  // that's finished, and one in flight that lays out no stages.
   let nextUpdateId = 1;
   const update = (kind: ProjectUpdate["kind"], text: string, at: string, url: string | null = null): ProjectUpdate => ({
     id: nextUpdateId++, kind, text, url, happened_at: at,
@@ -523,6 +526,7 @@ export function buildDemoState(now = Date.now()): DemoState {
       id: uuid(), agent_id: GITHUB_ID, key: "mcfly", name: "McFly", kind: "code", status: "active", progress: 62, sort_order: 0,
       summary: "The agent display: Pi app, console and the iPhone app.", next_step: "Ship the dashboards screen",
       link: "https://github.com/rmantilla13/mcfly", color: null, updated_at: minutes(35),
+      stages: ["Plan", "Build", "Review", "Ship"], stage: "Build", stage_since: days(3),
       updates: [
         update("ci", "CI green on main (14 checks)", minutes(35)),
         update("pr", "#12 Dashboards screen: opened by Ricky", hours(2), "https://github.com/rmantilla13/mcfly/pull/12"),
@@ -535,21 +539,30 @@ export function buildDemoState(now = Date.now()): DemoState {
       id: uuid(), agent_id: GITHUB_ID, key: "onyx", name: "Onyx", kind: "code", status: "blocked", progress: 80, sort_order: 1,
       summary: "Collections and the Mac app.", next_step: "App Review answer on the FSKit entitlement",
       link: null, color: null, updated_at: hours(22),
+      stages: ["Plan", "Build", "App Review", "Release"], stage: "App Review", stage_since: days(5),
       updates: [update("alert", "App Review: waiting on the FSKit entitlement", hours(22)), update("ci", "CI green on claude/collections", days(1.2))],
     },
     {
       id: uuid(), agent_id: GITHUB_ID, key: "homestead", name: "Homestead", kind: "launch", status: "paused", progress: 95, sort_order: 2,
       summary: "Voice handbook app; launch copy is done.", next_step: null, link: null, color: "#F07F5A", updated_at: days(4),
+      stages: ["Write", "Record", "Beta", "Launch"], stage: "Launch", stage_since: days(4),
       updates: [update("done", "Launch copy approved", days(4))],
     },
     {
       id: uuid(), agent_id: GITHUB_ID, key: "voice", name: "Voice replies", kind: "task", status: "done", progress: 100, sort_order: 3,
       summary: "Spoken answers with Kokoro on the display and in the console.", next_step: null, link: null, color: null, updated_at: days(1),
+      stages: ["Prototype", "Display", "Console"], stage: "Console", stage_since: days(1.5),
       updates: [
         update("done", "Kokoro voice shipped to the display and the console", days(1)),
         update("deploy", "Voice service 1.2 on the kitchen display", days(1.3)),
         update("pr", "#9 Read replies aloud: merged", days(2.5)),
       ],
+    },
+    {
+      id: uuid(), agent_id: GITHUB_ID, key: "portfolio", name: "Portfolio site", kind: "other", status: "active", progress: 40, sort_order: 4,
+      summary: "A new home page and three case studies.", next_step: "Write the McFly case study", link: null, color: "#14C2C2",
+      updated_at: hours(7), stages: [], stage: null, stage_since: null,
+      updates: [update("note", "Home page layout picked", hours(7))],
     },
   ];
 

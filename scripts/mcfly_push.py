@@ -8,7 +8,7 @@
     mcfly_push.py quote AAPL 247.90 --change 2.78 --pct 1.13 --name Apple --note "Services beat"
     mcfly_push.py news items-2026-10-14.json       # the Daily Pulse items JSON, as is
     mcfly_push.py project mcfly --name McFly --status active --progress 62 --next "Ship it" \\
-        --update "ci: CI green on main"
+        --stages "Plan, Build, Review, Ship" --stage Build --update "ci: CI green on main"
     mcfly_push.py metric sales.today 4280 --unit USD --pct 12.5 --group Store
     mcfly_push.py event "Standup" 2026-10-15T09:30 --end 2026-10-15T09:45 --calendar Work
     mcfly_push.py dashboard ops.json                # { key, title, widgets: [...] }
@@ -106,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--summary")
     p.add_argument("--next", dest="next_step")
     p.add_argument("--link")
+    p.add_argument("--stages", help='the steps in order, comma-separated: "Plan, Build, Review, Ship"')
+    p.add_argument("--stage", help="the one it is in now")
     p.add_argument("--update", action="append", default=[], help='"kind: text" or just text; repeatable')
 
     p = sub.add_parser("metric", help="one number")
@@ -161,7 +163,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 updates.append({"text": line.strip()})
         project = drop_none({"key": args.key, "name": args.name, "kind": args.kind, "status": args.status, "progress": args.progress,
-                             "summary": args.summary, "next_step": args.next_step, "link": args.link, "updates": updates or None})
+                             "summary": args.summary, "next_step": args.next_step, "link": args.link,
+                             "stages": [s.strip() for s in args.stages.split(",") if s.strip()] if args.stages is not None else None,
+                             "stage": args.stage, "updates": updates or None})
         return send("projects", {"projects": [project]}, args.dry_run)
     if args.command == "metric":
         metric = drop_none({"key": args.key, "value": args.value, "label": args.label, "unit": args.unit, "delta": args.delta,

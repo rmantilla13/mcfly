@@ -26,12 +26,13 @@ import { MetricsTable } from "@/components/MetricsTable";
 import { NewsReportsTable } from "@/components/NewsReportsTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ProjectsBoard } from "@/components/ProjectsBoard";
+import { ProjectsList } from "@/components/ProjectsList";
 import { ProjectsTable } from "@/components/ProjectsTable";
 import { QuotesTable } from "@/components/QuotesTable";
 import { Pagination, pageHref, readPage, readString } from "@/components/bits";
 import { FeedHeader } from "@/components/feed/bits";
 import { NewsReportCards } from "@/components/feed/NewsReportCards";
-import { ViewSwitch } from "@/components/feed/ViewSwitch";
+import { type FeedView, ViewSwitch } from "@/components/feed/ViewSwitch";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,10 +116,10 @@ export default async function FeedPage({ searchParams }: Props) {
   const timeZone = safeTimeZone(settings.timezone);
   const deleted = DELETED[readString(sp.deleted)];
   const { quotes: quoteHistory, metrics: metricHistory, now } = await histories(quotes, metrics);
-  // Manage (the tables) or cards, for the tab the page opened on; the others
-  // open on their cards.
-  const manage = readString(sp.view) === "manage";
-  const viewOf = (t: FeedTab) => (manage && t === tab ? "manage" : "cards");
+  // Manage (the tables), a list (Projects) or cards, for the tab the page
+  // opened on; the others open on their cards.
+  const view = readString(sp.view);
+  const viewOf = (t: FeedTab): FeedView => (t === tab && (view === "manage" || view === "list") ? view : "cards");
 
   return (
     <>
@@ -195,8 +196,9 @@ export default async function FeedPage({ searchParams }: Props) {
             content: (
               <ViewSwitch
                 initial={viewOf("projects")}
-                header={<FeedHeader title="Projects" description="What the agents report work on, by status. Open one for its history." />}
+                header={<FeedHeader title="Projects" description="What the agents report work on, by status and stage. Open one for its history." />}
                 cards={<ProjectsBoard projects={projects} />}
+                list={<ProjectsList projects={projects} now={now} />}
                 manage={
                   <Section title="Projects" description="What the agents report work on, done ones last. Open one for its history.">
                     <ProjectsTable projects={projects} deleteAction={deleteProjectAction} />

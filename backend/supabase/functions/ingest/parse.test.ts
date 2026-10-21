@@ -191,6 +191,24 @@ Deno.test("parseProjects: the list, one project, defaults and normalisations", (
   assertEquals(parseProjects([{ key: "x", summary: "", next_step: " " }]), { projects: [{ key: "x", name: "x", kind: "other", status: "active" }] });
 });
 
+Deno.test("parseProjects: stages and the one it's in", () => {
+  const stages = (p: Record<string, unknown>) => {
+    const r = parseProjects({ key: "k", ...p }) as { projects: { stages?: string[]; stage?: string | null }[] };
+    return { stages: r.projects[0].stages, stage: r.projects[0].stage };
+  };
+  // Trimmed, and the stage named in any case comes back as the stage's own name.
+  assertEquals(stages({ stages: [" Plan ", "Build", "Review", "Ship"], stage: "build" }), { stages: ["Plan", "Build", "Review", "Ship"], stage: "Build" });
+  // Left out, each stays out (the project keeps what it had); a stage alone is checked by the database.
+  assertEquals(stages({}), { stages: undefined, stage: undefined });
+  assertEquals(stages({ stage: " Review " }), { stages: undefined, stage: "Review" });
+  assertEquals(stages({ stages: ["Plan"] }), { stages: ["Plan"], stage: undefined });
+  // Null (or blank) clears.
+  assertEquals(stages({ stages: null, stage: null }), { stages: [], stage: null });
+  assertEquals(stages({ stages: [], stage: " " }), { stages: [], stage: null });
+  // Sent through as the SQL function reads them.
+  assertEquals(JSON.parse(JSON.stringify(parseProjects({ key: "k", stage: null }))).projects[0].stage, null);
+});
+
 Deno.test("parseProjects: what it refuses", () => {
   const one = (p: Record<string, unknown>) => fail(parseProjects({ projects: [{ key: "k", ...p }] }));
   assertEquals(fail(parseProjects({})), "send { projects: [{ key, name }] } or one { key, name }");
@@ -215,6 +233,15 @@ Deno.test("parseProjects: what it refuses", () => {
   assertEquals(one({ updates: [{ text: "x", kind: "merge" }] }), "project k update 1: kind must be note, commit, pr, ci, deploy, alert or done");
   assertEquals(one({ updates: [{ text: "x", url: "x" }] }), "project k update 1: url must be an http(s) URL");
   assertEquals(one({ updates: [{ text: "x", at: "yesterday" }] }), "project k update 1: at must be an ISO-8601 timestamp");
+  assertEquals(one({ stages: "Plan, Build" }), "project k: stages must be a list of names");
+  assertEquals(one({ stages: Array.from({ length: 13 }, (_, i) => `S${i}`) }), "project k: at most 12 stages");
+  assertEquals(one({ stages: ["Plan", " "] }), "project k: each stage must be a name of 1 to 40 characters");
+  assertEquals(one({ stages: ["Plan", 2] }), "project k: each stage must be a name of 1 to 40 characters");
+  assertEquals(one({ stages: ["x".repeat(41)] }), "project k: each stage must be a name of 1 to 40 characters");
+  assertEquals(one({ stages: ["Plan", "plan"] }), 'project k: stage "plan" is listed twice');
+  assertEquals(one({ stages: ["Plan"], stage: "Launch" }), 'project k: stage "Launch" is not one of its stages');
+  assertEquals(one({ stages: [], stage: "Plan" }), "project k: a stage needs stages to be one of");
+  assertEquals(one({ stage: 2 }), "project k: stage must be the name of one of its stages");
   assertEquals(fail(parseProjects({ projects: Array.from({ length: 101 }, () => ({ key: "k" })) })), "at most 100 projects per push");
   const long = parseProjects({ projects: [{ key: "k", name: "n".repeat(200), summary: "s".repeat(3000), next_step: "x".repeat(600) }] });
   const p = (long as { projects: { name: string; summary: string; next_step: string }[] }).projects[0];

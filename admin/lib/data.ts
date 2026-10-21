@@ -663,7 +663,16 @@ export async function listProjects(): Promise<ProjectRow[]> {
     update_count: num(p.update_count),
     last_update: p.last_update ?? null,
     last_update_at: p.last_update_at ?? null,
+    ...readStages(p.stages, p.stage, p.stage_since),
   }));
+}
+
+// A project's stages as the list returns them, or none from a database
+// without them yet; the stage only when it is one of them.
+function readStages(raw: unknown, stage: unknown, since: unknown): Pick<ProjectRow, "stages" | "stage" | "stage_since"> {
+  const stages = Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s.length > 0) : [];
+  const current = typeof stage === "string" && stages.includes(stage) ? stage : null;
+  return { stages, stage: current, stage_since: current && typeof since === "string" ? since : null };
 }
 
 // There is no single-project RPC; the list is small and already carries

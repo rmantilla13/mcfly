@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { FormAction } from "@/lib/action-result";
+import { stageTrack } from "@/lib/feed-layout";
 import { formatNumber, preview } from "@/lib/format";
 import type { ProjectRow } from "@/lib/types";
 
@@ -23,6 +24,7 @@ export function ProjectsTable({ projects, deleteAction }: { projects: ProjectRow
         <TableRow>
           <TableHead className="pl-4">Project</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Stage</TableHead>
           <TableHead>Progress</TableHead>
           <TableHead>Summary</TableHead>
           <TableHead>Last update</TableHead>
@@ -60,6 +62,9 @@ export function ProjectsTable({ projects, deleteAction }: { projects: ProjectRow
               <ProjectStatusBadge status={p.status} />
             </TableCell>
             <TableCell>
+              <StageCell p={p} />
+            </TableCell>
+            <TableCell>
               {p.progress == null ? (
                 <span className="text-muted-foreground">—</span>
               ) : (
@@ -69,7 +74,7 @@ export function ProjectsTable({ projects, deleteAction }: { projects: ProjectRow
                 </div>
               )}
             </TableCell>
-            <TableCell className="min-w-[260px] max-w-sm whitespace-normal">
+            <TableCell className="min-w-[220px] max-w-sm whitespace-normal">
               <div className="text-sm">{preview(p.summary, 120) || <span className="text-muted-foreground">—</span>}</div>
               {p.next_step ? (
                 <div className="text-[13px] text-muted-foreground">
@@ -77,7 +82,7 @@ export function ProjectsTable({ projects, deleteAction }: { projects: ProjectRow
                 </div>
               ) : null}
             </TableCell>
-            <TableCell className="min-w-[180px] max-w-xs whitespace-normal">
+            <TableCell className="max-w-[220px] min-w-[180px] whitespace-normal">
               {p.last_update ? (
                 <>
                   <div className="truncate text-sm" title={p.last_update}>
@@ -111,5 +116,19 @@ export function ProjectsTable({ projects, deleteAction }: { projects: ProjectRow
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+// The stage it is in and where that falls ("Build", "2 of 4"), or a dash for
+// a project without stages. Short, so the table keeps its delete buttons in
+// view: the status beside it says blocked or paused.
+function StageCell({ p }: { p: ProjectRow }) {
+  const track = stageTrack(p);
+  if (!track) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="min-w-0" title={p.stages.join(" → ")}>
+      <div className="text-sm">{track.current ?? (track.index < 0 ? "Not started" : "Done")}</div>
+      <div className="text-xs text-muted-foreground tabular-nums">{track.position}</div>
+    </div>
   );
 }

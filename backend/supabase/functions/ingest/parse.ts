@@ -56,6 +56,8 @@ export type Project = {
   color?: string;
   sort_order?: number;
   data?: Record<string, unknown>;
+  stages?: string[];
+  stage?: string | null;
   updates?: ProjectUpdate[];
 };
 
@@ -146,6 +148,7 @@ export const MAX_QUOTES = 500;
 export const MAX_NEWS_ITEMS = 500;
 export const MAX_PROJECTS = 100;
 export const MAX_UPDATES = 20;
+export const MAX_STAGES = 12;
 export const MAX_METRICS = 500;
 export const MAX_DASHBOARDS = 20;
 export const MAX_WIDGETS = 40;
@@ -387,6 +390,8 @@ export function parseProjects(body: unknown): { projects: Project[] } | Fail {
     if (color && !COLOR.test(color)) return { error: `project ${key}: color must be #rrggbb` };
     const sortOrder = int(raw.sort_order);
     if (sortOrder === null) return { error: `project ${key}: sort_order must be a whole number` };
+    const staging = projectStages(key, raw.stages, raw.stage);
+    if (isFail(staging)) return staging;
     const updates: ProjectUpdate[] = [];
     if (raw.updates != null) {
       if (!Array.isArray(raw.updates)) return { error: `project ${key}: updates must be a list` };
@@ -418,10 +423,41 @@ export function parseProjects(body: unknown): { projects: Project[] } | Fail {
       ...(color ? { color: color.toUpperCase() } : {}),
       ...(sortOrder !== undefined ? { sort_order: sortOrder } : {}),
       ...(isObject(raw.data) ? { data: raw.data } : {}),
+      ...staging,
       ...(updates.length ? { updates } : {}),
     });
   }
   return { projects };
+}
+
+// A project's stages (a list of names; null or [] clears them) and the one
+// it is in now (named in any case; null clears it). Each is left out when
+// the agent left it out, so the project keeps what it had; a stage alone is
+// checked against the stored stages by ingest_projects.
+function projectStages(key: string, rawStages: unknown, rawStage: unknown): { stages?: string[]; stage?: string | null } | Fail {
+  const out: { stages?: string[]; stage?: string | null } = {};
+  if (rawStages === null) out.stages = [];
+  else if (rawStages !== undefined) {
+    if (!Array.isArray(rawStages)) return { error: `project ${key}: stages must be a list of names` };
+    if (rawStages.length > MAX_STAGES) return { error: `project ${key}: at most ${MAX_STAGES} stages` };
+    const stages: string[] = [];
+    for (const s of rawStages as unknown[]) {
+      const name = typeof s === "string" ? s.trim() : "";
+      if (!name || name.length > 40) return { error: `project ${key}: each stage must be a name of 1 to 40 characters` };
+      if (stages.some((x) => x.toLowerCase() === name.toLowerCase())) return { error: `project ${key}: stage "${name}" is listed twice` };
+      stages.push(name);
+    }
+    out.stages = stages;
+  }
+  if (rawStage === undefined) return out;
+  if (rawStage !== null && typeof rawStage !== "string") return { error: `project ${key}: stage must be the name of one of its stages` };
+  const wanted = rawStage?.trim() || null;
+  if (wanted && out.stages) {
+    const match = out.stages.find((x) => x.toLowerCase() === wanted.toLowerCase());
+    if (!match) return { error: out.stages.length ? `project ${key}: stage "${wanted}" is not one of its stages` : `project ${key}: a stage needs stages to be one of` };
+    out.stage = match;
+  } else out.stage = wanted ? wanted.slice(0, 40) : null;
+  return out;
 }
 
 // { metrics: [...], as_of? } | { metric: {...} } | [...] | one { key, value }

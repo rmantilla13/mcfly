@@ -48,7 +48,7 @@ Change it first when a shape changes.
 | `briefs` | Text updates (Grok's hourly and daily notes, alerts) |
 | `quotes`, `symbols`, `quotes_latest` | Stock quotes: one row per push, the newest per symbol shows, the history draws sparklines; order and hiding per symbol |
 | `news_reports`, `news_items` | Daily Pulse reports: sections of sourced stories with takeaways and pictures. Several agents can push (several sources) |
-| `projects`, `project_updates` | What's in flight: status, progress, next step and a timeline of commits, PRs, CI runs, deploys, notes |
+| `projects`, `project_updates` | What's in flight: status, progress, stages and the one it is in, next step, and a timeline of commits, PRs, CI runs, deploys, notes |
 | `metrics`, `metric_settings`, `metrics_latest` | Any number over time, grouped |
 | `dashboards` | Boards agents lay out: a title and a widgets array (metric, status, progress, chart, list, text). A board made in the console has `sources` too, the parts it pulls from, and the database draws its widgets from them and keeps them drawn |
 | `events` | Calendar events, per calendar; a push can replace a calendar whole |

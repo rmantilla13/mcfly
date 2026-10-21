@@ -48,6 +48,50 @@ select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a0
 select tests.eq(ingest_projects(:'ops', '[{"key": "mcfly", "name": "Other McFly"}]'), 1, 'same key, other agent');
 select tests.eq((select count(*)::int from projects where key = 'mcfly'), 2, 'two rows');
 
+-- Stages (20261021000050): the seed's, kept by the push above, which sent none.
+\set mine 'from projects where key = ''mcfly'' and agent_id = ''00000000-0000-0000-0000-00000000a004'''
+select tests.eq((select row(stages, stage)::text :mine), row('["Plan", "Build", "Review", "Ship"]'::jsonb, 'Build')::text, 'a push without stages keeps them');
+select stage_since as since0 :mine \gset
+select tests.ok(:'since0' <> '', 'the seed''s stage has a time');
+-- A stage in any case lands as the stage's own name, at the time it moved.
+select tests.eq(ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stage": " review "}]'), 1, 'move on a stage');
+select tests.eq((select stage :mine), 'Review', 'the stage''s own name');
+select stage_since as since1 :mine \gset
+select tests.ok(:'since1'::timestamptz <> :'since0'::timestamptz, 'stage_since moves with the stage');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stage": "Review"}]');
+select tests.eq((select stage_since :mine), :'since1'::timestamptz, 'the same stage again keeps its time');
+-- New stages keep the stage when they still name it, and clear it when not.
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stages": [" Plan ", "Review", "Ship"]}]');
+select tests.eq((select row(stages, stage, stage_since)::text :mine), row('["Plan", "Review", "Ship"]'::jsonb, 'Review', :'since1'::timestamptz)::text,
+                'new stages, trimmed, keep the stage they still name');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stages": ["Plan", "Ship"]}]');
+select tests.eq((select row(stage, stage_since)::text :mine), row(null::text, null::timestamptz)::text, 'and drop one they don''t');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stage": "ship"}]');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stage": null}]');
+select tests.eq((select row(stages, stage)::text :mine), row('["Plan", "Ship"]'::jsonb, null::text)::text, 'a null stage clears it, not the stages');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stages": ["Plan", "Ship"], "stage": "Ship"}]');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stages": []}]');
+select tests.eq((select row(stages, stage)::text :mine), row('[]'::jsonb, null::text)::text, 'no stages clears both');
+select ingest_projects(:'gh', '[{"key": "mcfly", "name": "McFly v2", "status": "done", "stages": ["Plan", "Build", "Review", "Ship"], "stage": "Ship"}]');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "mcfly", "name": "x", "stage": "Launch"}]')$$,
+                    'project mcfly: stage "Launch" is not one of its stages', 'a stage that isn''t listed');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "fresh", "name": "x", "stage": "Build"}]')$$,
+                    'project fresh: a stage needs stages to be one of', 'a stage without stages');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "stages": "Plan, Build"}]')$$,
+                    'project k: stages must be a list of names', 'stages not a list');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "stages": ["1","2","3","4","5","6","7","8","9","10","11","12","13"]}]')$$,
+                    'project k: at most 12 stages', 'too many stages');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "stages": ["Plan", " "]}]')$$,
+                    'project k: each stage must be a name of 1 to 40 characters', 'a blank stage');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "stages": ["Plan", 2]}]')$$,
+                    'project k: each stage must be a name of 1 to 40 characters', 'a stage that isn''t text');
+select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "stages": ["Plan", "plan"]}]')$$,
+                    'project k: stage "plan" is listed twice', 'a stage twice');
+-- The table checks them too, whoever writes.
+select tests.throws($$update projects set stage = 'Nope' where key = 'mcfly'$$, '%check constraint%', 'the stage must be listed');
+select tests.throws($$update projects set stages = '["a", "A"]' where key = 'mcfly'$$, '%check constraint%', 'stages stay distinct');
+select tests.eq((select count(*)::int from projects where key in ('fresh', 'k')), 0, 'failed pushes add nothing');
+
 -- ───────────────────────────── Metrics ─────────────────────────────
 select tests.eq((select value from metrics_latest where key = 'sales.today'), 4280::numeric, 'newest value');
 select tests.eq((select label from metric_settings where key = 'api.p95'), 'API p95', 'label kept');
@@ -90,6 +134,10 @@ select tests.login(:'admin');
 select tests.eq((select count(*)::int from admin_list_projects()), 4, 'lists projects');
 select tests.eq((select name from admin_list_projects() limit 1), 'Onyx', 'done projects sort last');
 select tests.eq((select last_update from admin_list_projects() where key = 'mcfly' and agent_name = 'GitHub watcher'), 'Shipped 1.0', 'last update');
+select tests.eq((select row(stages, stage, stage_since is not null)::text from admin_list_projects() where key = 'mcfly' and agent_name = 'GitHub watcher'),
+                row('["Plan", "Build", "Review", "Ship"]'::jsonb, 'Ship', true)::text, 'with its stages');
+select tests.eq((select row(stages, stage)::text from admin_list_projects() where key = 'mcfly' and agent_name = 'Ops metrics'),
+                row('[]'::jsonb, null::text)::text, 'none for a project without');
 select id as proj from admin_list_projects() where key = 'onyx' \gset
 select tests.eq((select count(*)::int from admin_project_updates(:'proj')), 1, 'project updates');
 select admin_delete_project(:'proj');

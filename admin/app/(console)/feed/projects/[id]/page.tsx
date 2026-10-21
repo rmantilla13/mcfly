@@ -7,6 +7,7 @@ import { deleteProjectAction } from "@/app/(console)/actions";
 import { ConfirmAction } from "@/components/ConfirmAction";
 import { PageHeader } from "@/components/PageHeader";
 import { ActivityStrip, ProjectTimeline } from "@/components/ProjectTimeline";
+import { StageSteps } from "@/components/StageTrack";
 import { AgentLabel, EmptyState, ProjectKindBadge, ProjectStatusBadge, Time } from "@/components/bits";
 import { RingGauge } from "@/components/charts";
 import { AskLink } from "@/components/feed/bits";
@@ -14,6 +15,7 @@ import { CARD, rise } from "@/components/feed/styles";
 import { Button } from "@/components/ui/button";
 import { getProject, getProjectUpdates, getSettings, requireAdmin } from "@/lib/data";
 import { safeTimeZone } from "@/lib/events";
+import { stageTrack, timeInStage } from "@/lib/feed-layout";
 import { cssColor, formatNumber, plural } from "@/lib/format";
 import type { ProjectUpdateKind } from "@/lib/types";
 
@@ -42,8 +44,9 @@ async function history(id: string) {
 }
 
 // A project: where it stands (its progress as a big ring, what it is and
-// what's next), its last month as a strip of days, and its history as a
-// timeline, newest first.
+// what's next), its stages (when the agent sends them) as steps from the
+// first to the last, its last month as a strip of days, and its history as
+// a timeline, newest first.
 export default async function ProjectPage({ params }: Props) {
   await requireAdmin();
   const project = await getProject((await params).id);
@@ -53,6 +56,8 @@ export default async function ProjectPage({ params }: Props) {
   const color = cssColor(project.color) ?? cssColor(project.agent_color);
   // What kind of work the history is made of, busiest first.
   const kinds = [...updates.reduce((m, u) => m.set(u.kind, (m.get(u.kind) ?? 0) + 1), new Map<ProjectUpdateKind, number>())].sort((a, b) => b[1] - a[1]);
+  const track = stageTrack(project);
+  const inStage = track?.current && project.status !== "done" ? timeInStage(project.stage_since, now) : "";
 
   return (
     <>
@@ -143,6 +148,24 @@ export default async function ProjectPage({ params }: Props) {
             </div>
           </div>
         </section>
+
+        {track ? (
+          <section className={cn(CARD, "flex flex-col gap-5 p-6 max-sm:p-5", rise(1).className)} style={rise(1).style} aria-labelledby="stages-title">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <div>
+                <h2 id="stages-title" className="font-heading text-base font-semibold">
+                  Stages
+                </h2>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">
+                  {track.headline}
+                  {inStage ? ` for ${inStage}` : ""}
+                </p>
+              </div>
+              <span className="text-[13px] text-muted-foreground tabular-nums">{track.position}</span>
+            </div>
+            <StageSteps track={track} color={color} />
+          </section>
+        ) : null}
 
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section className={cn(CARD, "flex flex-col gap-4 p-6 max-sm:p-5 lg:order-2", rise(1).className)} style={rise(1).style} aria-labelledby="month-title">

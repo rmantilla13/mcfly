@@ -140,7 +140,7 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     db.from("symbols").select("symbol, name").eq("hidden", false).order("sort_order").order("symbol"),
     db.from("quotes_latest").select("symbol, name, price, change_pct, currency, note, as_of"),
     // Open projects with the newest update of each.
-    db.from("projects").select("name, status, progress, summary, next_step, project_updates(kind, text, happened_at)")
+    db.from("projects").select("name, status, progress, summary, next_step, stages, stage, project_updates(kind, text, happened_at)")
       .neq("status", "done").order("sort_order").order("updated_at", { ascending: false }).limit(SNAPSHOT.projects)
       .order("happened_at", { ascending: false, referencedTable: "project_updates" })
       .limit(1, { referencedTable: "project_updates" }),

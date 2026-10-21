@@ -5,13 +5,15 @@ import { EmptyState, Time } from "@/components/bits";
 import { RingGauge, type StatusState, StatusDot } from "@/components/charts";
 import { AskLink } from "@/components/feed/bits";
 import { CARD, LIFT, rise, STRETCH } from "@/components/feed/styles";
-import { projectLanes } from "@/lib/feed-layout";
+import { StageBar } from "@/components/StageTrack";
+import { projectLanes, stageTrack } from "@/lib/feed-layout";
 import { cssColor, plural } from "@/lib/format";
 import type { ProjectRow, ProjectStatus } from "@/lib/types";
 
 // The Projects tab as a board: a lane per status, the one that needs you
 // first. Each card wears its project's colour (or its agent's) down the left
-// edge and its progress as a ring, with the next step and the newest update.
+// edge and its progress as a ring, with its stages as a bar (when the agent
+// sends them), the next step and the newest update.
 // The blocked lane's border breathes, slowly, while anything is in it. Cards
 // open the project's history.
 
@@ -65,6 +67,7 @@ function ProjectCard({ p, index }: { p: ProjectRow; index: number }) {
   const color = cssColor(p.color) ?? cssColor(p.agent_color);
   const r = rise(index);
   const done = p.status === "done";
+  const track = stageTrack(p);
   return (
     <article className={cn(CARD, LIFT, "relative overflow-hidden rounded-[22px] p-4 pl-5", r.className)} style={r.style}>
       <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1.5 bg-primary" style={color ? { background: color } : undefined} />
@@ -99,6 +102,7 @@ function ProjectCard({ p, index }: { p: ProjectRow; index: number }) {
         ) : null}
       </div>
       {p.summary ? <p className="mt-2.5 line-clamp-2 text-[13px] text-muted-foreground">{p.summary}</p> : null}
+      {track ? <StageBar track={track} color={color} className="mt-3" /> : null}
       {p.next_step && !done ? (
         <p className="mt-2 text-[13px] leading-snug">
           <span className="font-medium">Next:</span> {p.next_step}

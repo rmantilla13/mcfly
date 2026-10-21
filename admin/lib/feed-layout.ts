@@ -203,6 +203,63 @@ export function projectLanes<P extends Pick<ProjectRow, "status">>(projects: P[]
   }));
 }
 
+// ---- Projects' stages
+
+export type StageState = "done" | "current" | "blocked" | "paused" | "next";
+
+export type StageTrack = {
+  steps: { name: string; state: StageState }[];
+  // The stage it is in and its place (from 0): -1 before the first, the
+  // count once the project is done.
+  current: string | null;
+  index: number;
+  headline: string; // "Build", "Blocked in App Review", "All 4 stages done", "Not started"
+  position: string; // "2 of 4", or "4 stages" before the first
+};
+
+// A project's stages as steps: the ones before its stage done, its stage in
+// the project's status (blocked or paused, else current), the rest next. A
+// done project has been through them all. Null for one without stages.
+export function stageTrack(p: Pick<ProjectRow, "stages" | "stage" | "status">): StageTrack | null {
+  const n = p.stages.length;
+  if (!n) return null;
+  if (p.status === "done") {
+    return {
+      steps: p.stages.map((name) => ({ name, state: "done" })),
+      current: null,
+      index: n,
+      headline: n === 1 ? "Done" : `All ${n} stages done`,
+      position: `${n} of ${n}`,
+    };
+  }
+  const index = p.stage ? p.stages.indexOf(p.stage) : -1;
+  const here: StageState = p.status === "blocked" ? "blocked" : p.status === "paused" ? "paused" : "current";
+  const steps = p.stages.map((name, i) => ({ name, state: (i < index ? "done" : i === index ? here : "next") as StageState }));
+  if (index < 0) return { steps, current: null, index: -1, headline: "Not started", position: n === 1 ? "1 stage" : `${n} stages` };
+  const name = p.stages[index];
+  return {
+    steps,
+    current: name,
+    index,
+    headline: here === "blocked" ? `Blocked in ${name}` : here === "paused" ? `Paused in ${name}` : name,
+    position: `${index + 1} of ${n}`,
+  };
+}
+
+// How long a project has been in its stage: "under an hour", "5 hr",
+// "3 days", "2 wk", "4 mo". Empty when the time can't be read.
+export function timeInStage(since: string | null, now: number): string {
+  const t = since ? Date.parse(since) : NaN;
+  if (!Number.isFinite(t)) return "";
+  const hours = Math.max(0, now - t) / HOUR;
+  if (hours < 1) return "under an hour";
+  if (hours < 24) return `${Math.floor(hours)} hr`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return days === 1 ? "1 day" : `${days} days`;
+  if (days < 60) return `${Math.floor(days / 7)} wk`;
+  return `${Math.floor(days / 30)} mo`;
+}
+
 // ---- Briefs
 
 // A brief's body as a lead and its "- " points, the way the agents write a

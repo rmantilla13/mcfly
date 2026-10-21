@@ -77,14 +77,17 @@ insert into public.agent_keys (agent_id, key_hash, key_prefix) values
 
 select public.ingest_projects('00000000-0000-0000-0000-00000000a004', $json$[
   {"key": "mcfly", "name": "McFly", "kind": "code", "status": "active", "progress": 62, "sort_order": 0,
+   "stages": ["Plan", "Build", "Review", "Ship"], "stage": "Build",
    "summary": "The agent display: Pi app, console and the iPhone app.", "next_step": "Ship the dashboards screen",
    "link": "https://github.com/rmantilla13/mcfly",
    "updates": [{"kind": "ci", "text": "CI green on main (14 checks)", "at": "2026-10-14T19:40:00Z"},
                {"kind": "pr", "text": "#12 Dashboards screen: opened by Ricky", "url": "https://github.com/rmantilla13/mcfly/pull/12", "at": "2026-10-14T18:05:00Z"}]},
   {"key": "onyx", "name": "Onyx", "kind": "code", "status": "blocked", "progress": 80, "sort_order": 1,
+   "stages": ["Plan", "Build", "App Review", "Release"], "stage": "App Review",
    "summary": "Collections and the Mac app.", "next_step": "App Review answer on the FSKit entitlement",
    "updates": [{"kind": "alert", "text": "App Review: waiting on the FSKit entitlement", "at": "2026-10-13T22:00:00Z"}]},
   {"key": "homestead", "name": "Homestead", "kind": "launch", "status": "paused", "progress": 95, "sort_order": 2,
+   "stages": ["Write", "Record", "Beta", "Launch"], "stage": "Launch",
    "summary": "Voice handbook app; launch copy is done."}
 ]$json$::jsonb);
 

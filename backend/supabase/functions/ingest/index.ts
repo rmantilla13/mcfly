@@ -5,7 +5,7 @@
 //   POST /ingest/briefs      { briefs: [{ title, body, kind?, id?, published_at? }] }
 //   POST /ingest/quotes      { as_of?, quotes: [{ symbol, price, change?, change_pct?, name?, note? }] }
 //   POST /ingest/news        the Daily Pulse items JSON: { date, slug, hero, sections: [...] }
-//   POST /ingest/projects    { projects: [{ key, name, kind?, status?, progress?, summary?, next_step?, updates? }] }
+//   POST /ingest/projects    { projects: [{ key, name, kind?, status?, progress?, summary?, next_step?, stages?, stage?, updates? }] }
 //   POST /ingest/metrics     { as_of?, metrics: [{ key, value, label?, unit?, delta?, delta_pct?, note?, group? }] }
 //   POST /ingest/dashboards  { dashboards: [{ key, title, subtitle?, widgets: [{ type, ... }] }] }
 //   POST /ingest/events      { calendar?, replace?, events: [{ id?, title, starts_at, ends_at?, all_day?, location? }] }

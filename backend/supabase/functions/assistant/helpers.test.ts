@@ -417,6 +417,7 @@ const rows = (): SnapshotRows => ({
   projects: [
     {
       name: "McFly", status: "active", progress: 62, summary: "The agent display.", next_step: "Ship the dashboards screen",
+      stages: ["Plan", "Build", "Review", "Ship"], stage: "Build",
       project_updates: [
         { kind: "pr", text: "#12 opened", happened_at: "2026-10-14T18:05:00Z" },
         { kind: "ci", text: "CI green on main (14 checks)", happened_at: "2026-10-14T19:40:00Z" },
@@ -504,7 +505,7 @@ Deno.test("formatSnapshot: projects, metrics, dashboards and the calendar", () =
   // Projects: status and progress, the summary, the next step, the newest update.
   assertEquals(
     lines[at("- McFly")],
-    "- McFly — active, 62%. The agent display. Next: Ship the dashboards screen Last update (ci, Wed, Oct 14, 2:40 PM): CI green on main (14 checks)",
+    "- McFly — active, 62%, stage Build (2 of 4: Plan, Build, Review, Ship). The agent display. Next: Ship the dashboards screen Last update (ci, Wed, Oct 14, 2:40 PM): CI green on main (14 checks)",
   );
   assertEquals(lines[at("- Onyx")], "- Onyx — blocked");
   // Metrics: in the settings' order, value with unit, change, time, note; a key without a value says so.
