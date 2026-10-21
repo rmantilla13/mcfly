@@ -28,6 +28,14 @@ Item {
         target: System
         function onWifiChanged() { setup.retry() }
         function onIpChanged() { setup.retry() }
+        // A saved network's password changed: ask for the new one.
+        function onPasswordNeeded(ssid) {
+            if (setup.step !== 1)
+                return
+            setup.joinSsid = ssid
+            wifiPassword.text = ""
+            wifiPassword.forceActiveFocus()
+        }
     }
     function retry() {
         if (Store.mode === "pairing" && setup.online)

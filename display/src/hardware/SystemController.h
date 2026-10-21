@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QProcess>
-#include <QTemporaryFile>
 #include <QTimer>
 #include <QVariantList>
 #include <QVector>
@@ -79,6 +78,8 @@ public:
     static bool validSsid(const QString &ssid);
     static bool validPassword(const QString &password);
     static QString friendlyWifiError(const QString &stderrText);
+    // The network turned the password down, or wanted one nmcli didn't have.
+    static bool wrongPassword(const QString &stderrText);
 
 signals:
     void availabilityChanged();
@@ -89,6 +90,9 @@ signals:
     void messageChanged();
     void networksChanged();
     void actionFinished(bool ok);
+    // A saved network's password stopped working: ask for the new one, since
+    // tapping the network again only tries the old one.
+    void passwordNeeded(const QString &ssid);
 
 private:
     void rescanWifi();
@@ -117,7 +121,8 @@ private:
     bool m_audioApplied = false;
     bool m_muteAfter = false;
     bool m_radioGoal = false;
-    QTemporaryFile *m_secret = nullptr;
+    QString m_joinSsid;
+    bool m_joinSaved = false;
     bool m_wifiAvailable = false;
     bool m_canManageWifi = false;
     bool m_canReboot = false;

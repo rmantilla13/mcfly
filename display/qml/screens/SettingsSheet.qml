@@ -57,6 +57,13 @@ Popup {
             if (sheet.joinSsid !== "" && System.wifiSsid === sheet.joinSsid)
                 sheet.joinSsid = ""
         }
+        function onPasswordNeeded(ssid) {
+            if (sheet.tab !== "wifi")
+                return
+            sheet.joinSsid = ssid
+            wifiPassword.text = ""
+            wifiPassword.forceActiveFocus()
+        }
     }
     onOpened: System.refresh()
     onClosed: {

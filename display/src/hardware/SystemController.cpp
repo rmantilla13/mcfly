@@ -156,22 +156,17 @@ void SystemController::connectWifi(const QString &ssid, const QString &password,
         mode = QStringLiteral("saved");
     }
     setMessage({});
+    m_joinSsid = ssid;
+    m_joinSaved = mode == QLatin1String("saved");
     const QByteArray input = password.toUtf8() + '\n';
     if (helperReady()) {
         begin(QStringLiteral("connect"), QStringLiteral("sudo"),
               {QStringLiteral("-n"), helperPath(), QStringLiteral("wifi-connect"), ssid, mode}, input, 40000);
     } else if (mode == QLatin1String("psk")) {
-        delete m_secret;
-        m_secret = new QTemporaryFile(this);
-        if (!m_secret->open()) {
-            setMessage(QStringLiteral("Couldn't store that password."));
-            return;
-        }
-        m_secret->write(password.toUtf8());
-        m_secret->flush();
+        // nmcli takes a Wi-Fi password only as an argument (see mcfly-system).
         begin(QStringLiteral("connect"), QStringLiteral("nmcli"),
               {QStringLiteral("--wait"), QStringLiteral("25"), QStringLiteral("device"), QStringLiteral("wifi"),
-               QStringLiteral("connect"), ssid, QStringLiteral("password-file"), m_secret->fileName()},
+               QStringLiteral("connect"), ssid, QStringLiteral("password"), password},
               {}, 40000);
     } else if (mode == QLatin1String("saved")) {
         begin(QStringLiteral("connect"), QStringLiteral("nmcli"),
@@ -274,10 +269,6 @@ void SystemController::onFinished(int code, QProcess::ExitStatus status)
 
 void SystemController::finish(const QString &action, bool ok, const QString &out, const QString &err)
 {
-    if (action == QLatin1String("connect")) {
-        delete m_secret;
-        m_secret = nullptr;
-    }
     m_lastAction = action;
     if (!ok && action != QLatin1String("volume") && action != QLatin1String("status"))
         qWarning().noquote() << "mcfly system" << action << "failed:" << err.trimmed();
@@ -380,7 +371,12 @@ void SystemController::finish(const QString &action, bool ok, const QString &out
             emit actionFinished(true);
             return;
         }
-        setMessage(friendlyWifiError(err));
+        if (m_joinSaved && wrongPassword(err)) {
+            setMessage(QStringLiteral("The saved password didn't work. Enter the new one."));
+            emit passwordNeeded(m_joinSsid);
+        } else {
+            setMessage(friendlyWifiError(err));
+        }
     } else if (action == QLatin1String("radio")) {
         if (ok) {
             m_wifiEnabled = m_radioGoal;
@@ -571,6 +567,12 @@ QString SystemController::friendlyWifiError(const QString &stderrText)
     if (text.contains(QLatin1String("password is required")) || text.contains(QLatin1String("a password is required"))
         || text.contains(QLatin1String("not authorized")) || text.contains(QLatin1String("sudo:")))
         return QStringLiteral("This display isn't allowed to change Wi-Fi yet. Run the display install again.");
+    // nmcli turning down its own arguments is a fault here, never a wrong
+    // password, even when the argument it names is one.
+    if (text.contains(QLatin1String("invalid extra argument")) || text.contains(QLatin1String("argument is missing")))
+        return QStringLiteral("Couldn't change Wi-Fi.");
+    if (text.contains(QLatin1String("that password isn't usable")) || text.contains(QLatin1String("that network name isn't usable")))
+        return QStringLiteral("That network name or password isn't usable.");
     if (text.contains(QLatin1String("password")) || text.contains(QLatin1String("secret"))
         || text.contains(QLatin1String("802-11-wireless-security")))
         return QStringLiteral("That password didn't work.");
@@ -578,7 +580,10 @@ QString SystemController::friendlyWifiError(const QString &stderrText)
         return QStringLiteral("That network isn't in range.");
     if (text.contains(QLatin1String("nmcli")) && text.contains(QLatin1String("not found")))
         return QStringLiteral("Wi-Fi isn't available on this computer.");
-    if (text.contains(QLatin1String("that password isn't usable")) || text.contains(QLatin1String("that network name isn't usable")))
-        return QStringLiteral("That network name or password isn't usable.");
     return QStringLiteral("Couldn't change Wi-Fi.");
+}
+
+bool SystemController::wrongPassword(const QString &stderrText)
+{
+    return friendlyWifiError(stderrText) == QLatin1String("That password didn't work.");
 }

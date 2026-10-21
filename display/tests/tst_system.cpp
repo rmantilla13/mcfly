@@ -91,6 +91,22 @@ private slots:
         QCOMPARE(SystemController::friendlyWifiError(QStringLiteral("Error: No network with SSID x found")),
                  QStringLiteral("That network isn't in range."));
         QCOMPARE(SystemController::friendlyWifiError(QStringLiteral("something else")), QStringLiteral("Couldn't change Wi-Fi."));
+        QCOMPARE(SystemController::friendlyWifiError(QStringLiteral("that password isn't usable")),
+                 QStringLiteral("That network name or password isn't usable."));
+    }
+
+    // nmcli's usage errors can name a password argument. Read as a wrong
+    // password, the one for `password-file` sent people re-typing a right
+    // password for every join.
+    void errors_usageIsNotAWrongPassword()
+    {
+        const QString usage = QStringLiteral("Error: invalid extra argument 'password-file'.");
+        QCOMPARE(SystemController::friendlyWifiError(usage), QStringLiteral("Couldn't change Wi-Fi."));
+        QVERIFY(!SystemController::wrongPassword(usage));
+        QVERIFY(!SystemController::wrongPassword(QStringLiteral("Error: password argument is missing.")));
+        QVERIFY(!SystemController::wrongPassword(QStringLiteral("sudo: a password is required")));
+        QVERIFY(SystemController::wrongPassword(
+            QStringLiteral("Error: Connection activation failed: Secrets were required, but not provided.")));
     }
 };
 

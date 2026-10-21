@@ -59,11 +59,13 @@ case "$cmd" in
                 [ "$pwbytes" -ge 1 ] && [ "$pwbytes" -le 64 ] || die "that password isn't usable"
                 cleaned=$(printf '%s' "$pw" | LC_ALL=C tr -d '\000-\037\177')
                 [ "$cleaned" = "$pw" ] || die "that password isn't usable"
-                pwfile=$(mktemp) || die "could not store the password"
-                trap 'rm -f "$pwfile"' EXIT
-                printf '%s' "$pw" > "$pwfile"
-                chmod 600 "$pwfile"
-                nmcli --wait 25 device wifi connect "$ssid" password-file "$pwfile"
+                # `device wifi connect` takes the password only as an argument:
+                # it has no file or stdin form (passwd-file belongs to
+                # `connection up`, which can't work out WPA2 from WPA3 or
+                # replace a saved password). So it shows in this process's
+                # command line while nmcli waits, 25 s at most, on a Pi with
+                # one user. It also updates a saved profile for this network.
+                nmcli --wait 25 device wifi connect "$ssid" password "$pw"
                 ;;
             saved)
                 nmcli --wait 25 connection up id "$ssid"

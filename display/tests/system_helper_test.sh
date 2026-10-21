@@ -11,16 +11,31 @@ log="$tmp/log"
 cat > "$tmp/nmcli" << 'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MCFLY_LOG"
-i=1
 for arg in "$@"; do
     printf 'ARG %s\n' "$arg" >> "$MCFLY_LOG"
-    if [ "$arg" = "password-file" ]; then
-        next=$((i + 1))
-        eval "file=\${$next}"
-        printf 'PW %s\n' "$(cat "$file")" >> "$MCFLY_LOG"
-    fi
-    i=$((i + 1))
 done
+# Turn down what the real nmcli turns down. `device wifi connect` takes only
+# these options, each with a value (NetworkManager's src/nmcli/devices.c); a
+# fake that took anything let `password-file` ship, which nmcli has never had.
+if [ "${1:-}" = "--wait" ]; then
+    shift 2
+fi
+if [ "${1:-}" = device ] && [ "${2:-}" = wifi ] && [ "${3:-}" = connect ]; then
+    [ "$#" -ge 4 ] || { echo "Error: SSID or BSSID are missing." >&2; exit 2; }
+    shift 4
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            password|wep-key-type|ifname|bssid|name|private|hidden)
+                [ "$#" -ge 2 ] || { echo "Error: $1 argument is missing." >&2; exit 2; }
+                shift 2
+                ;;
+            *)
+                printf "Error: invalid extra argument '%s'.\n" "$1" >&2
+                exit 2
+                ;;
+        esac
+    done
+fi
 exit 0
 EOF
 cat > "$tmp/systemctl" << 'EOF'
@@ -49,12 +64,21 @@ fi
 grep -q 'need on or off' "$tmp/err"
 
 : > "$log"
-printf '%s' 'correct horse' | "$helper" wifi-connect 'Cafe:Bar' psk
-grep -q 'ARG Cafe:Bar' "$log" || fail "SSID was not passed through intact"
-grep -q 'PW correct horse' "$log" || fail "password file was not given to nmcli"
-if grep '^ARG ' "$log" | grep -q 'correct horse'; then
-    fail "password appeared in nmcli arguments"
+if ! printf '%s' 'correct horse' | "$helper" wifi-connect 'Cafe:Bar' psk 2>"$tmp/err"; then
+    fail "joining with a password failed: $(cat "$tmp/err")"
 fi
+grep -q 'ARG Cafe:Bar' "$log" || fail "SSID was not passed through intact"
+# nmcli takes a Wi-Fi password only as the word after `password`.
+grep -A1 -x 'ARG password' "$log" | grep -qx 'ARG correct horse' \
+    || fail "password was not given to nmcli as its password"
+
+# Spaces at either end and a leading dash are part of a password.
+: > "$log"
+if ! printf '%s' ' -dash and spaces ' | "$helper" wifi-connect 'Home' psk 2>"$tmp/err"; then
+    fail "a password with a leading dash failed: $(cat "$tmp/err")"
+fi
+grep -A1 -x 'ARG password' "$log" | grep -qx 'ARG  -dash and spaces ' \
+    || fail "a password with spaces at its ends or a leading dash was changed"
 
 : > "$log"
 if "$helper" wifi-connect '-sneaky' psk >/dev/null 2>"$tmp/err"; then
