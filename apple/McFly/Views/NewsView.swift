@@ -109,50 +109,490 @@ struct StoryCard: View {
     }
 }
 
-/// The story's picture, takeaway and source, and the link out.
+/// A story opened: its picture and headline, then the article, as a summary
+/// (the assistant's few sentences and key points, with the article's pictures
+/// and videos in a strip) or as the full story (the page's own text with its
+/// pictures and videos in place). The choice is remembered. The takeaway
+/// shows until the article is in, and stays when the page can't be read.
 struct StoryDetailView: View {
     let item: NewsItem
+    @Environment(AppModel.self) private var app
     @Environment(\.openURL) private var openURL
+    @AppStorage("newsReadMode") private var mode: ReadMode = .summary
+    @State private var phase: Phase = .loading
+    @State private var viewing: ViewedImage?
+
+    enum ReadMode: String { case summary, full }
+
+    enum Phase: Equatable {
+        case loading
+        case loaded(NewsArticle)
+        case failed(String)
+    }
+
+    private var article: NewsArticle? {
+        if case .loaded(let article) = phase { return article }
+        return nil
+    }
+
+    /// Grok's picture of the story, which leads the summary.
+    private var drawn: URL? { shown == .summary ? article?.illustration : nil }
+
+    /// The full story when there is one to show, else the summary.
+    private var shown: ReadMode {
+        guard let article else { return mode }
+        return article.hasFullStory ? mode : .summary
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                StoryImage(url: item.image, height: 220)
-                Tag(text: item.sectionName, color: Theme.coral)
+                StoryImage(url: drawn ?? article?.leadImage ?? item.image, height: 240)
+                    .overlay(alignment: .bottomLeading) {
+                        if drawn != nil {
+                            Text("Drawn by Grok")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.black.opacity(0.5), in: Capsule())
+                                .padding(12)
+                        }
+                    }
+                HStack(spacing: 8) {
+                    Tag(text: item.sectionName, color: Theme.coral)
+                    Spacer(minLength: 0)
+                    if let time = article?.readingTime {
+                        Label(time, systemImage: "book")
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
+                }
                 Text(item.headline)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.text)
                     .textSelection(.enabled)
-                if !item.takeaway.isEmpty {
-                    Text(item.takeaway)
-                        .font(.body)
-                        .foregroundStyle(Theme.text.opacity(0.9))
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
+                byline
+                Picker("Show", selection: $mode) {
+                    Text("Summary").tag(ReadMode.summary)
+                    Text("Full story").tag(ReadMode.full)
                 }
-                HStack(spacing: 6) {
-                    Image(systemName: "link").font(.caption)
-                    Text(item.source).font(.footnote)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(article.map { !$0.hasFullStory } ?? false)
+
+                Group {
+                    switch phase {
+                    case .loading:
+                        takeaway
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            Text(mode == .summary ? "Summarizing the article…" : "Reading the article…")
+                                .font(.footnote)
+                                .foregroundStyle(Theme.muted)
+                        }
+                    case .failed(let message):
+                        takeaway
+                        note("The article couldn't be loaded: \(message)", systemImage: "exclamationmark.triangle") {
+                            Button("Try Again") { Task { await load(force: true) } }
+                                .buttonStyle(.pill(.soft))
+                        }
+                    case .loaded(let article):
+                        if let working = article.working {
+                            HStack(spacing: 10) {
+                                ProgressView().controlSize(.small)
+                                Text(working).font(.footnote).foregroundStyle(Theme.muted)
+                            }
+                        }
+                        if shown == .full {
+                            ArticleBlocks(blocks: article.blocks, viewing: $viewing)
+                        } else {
+                            summary(article)
+                        }
+                    }
                 }
-                .foregroundStyle(Theme.muted)
+                .transition(.opacity)
+
                 if let link = item.link {
                     Button {
                         openURL(link)
                     } label: {
-                        Label("Open Link", systemImage: "safari")
+                        Label(item.source.isEmpty ? "Open Link" : "Read on \(item.source)", systemImage: "safari")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
                     }
                     .buttonStyle(.pill())
+                    .padding(.top, 4)
                 }
             }
             .padding(Theme.page)
             .frame(maxWidth: 680, alignment: .leading)
             .frame(maxWidth: .infinity)
+            .animation(.easeOut(duration: 0.25), value: phase)
+            .animation(.easeOut(duration: 0.2), value: mode)
         }
         .screenBackground()
         .navigationTitle(item.sectionName)
         .inlineTitle()
+        .task(id: item.id) { await load() }
+        .sheet(item: $viewing) { image in ImageViewer(url: image.url) }
+    }
+
+    // MARK: Parts
+
+    @ViewBuilder
+    private var byline: some View {
+        let parts = [article?.byline, item.source.isEmpty ? article?.siteName : item.source,
+                     article?.publishedAt.map { $0.formatted(date: .abbreviated, time: .omitted) }]
+            .compactMap { $0 }.filter { !$0.isEmpty }
+        if !parts.isEmpty {
+            Text(parts.joined(separator: " · "))
+                .font(.footnote)
+                .foregroundStyle(Theme.muted)
+                .lineLimit(2)
+        }
+    }
+
+    @ViewBuilder
+    private var takeaway: some View {
+        if !item.takeaway.isEmpty {
+            Text(item.takeaway)
+                .font(.body)
+                .foregroundStyle(Theme.text.opacity(0.9))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder
+    private func summary(_ article: NewsArticle) -> some View {
+        if let summary = article.summary {
+            Text(summary)
+                .font(.body)
+                .foregroundStyle(Theme.text)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+        } else if article.status == .partial, case .paragraph(let teaser)? = article.blocks.first, item.takeaway.isEmpty {
+            Text(teaser).font(.body).foregroundStyle(Theme.text).lineSpacing(4)
+        } else {
+            takeaway
+        }
+        if !article.points.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("KEY POINTS")
+                    .font(.caption.weight(.semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.muted)
+                ForEach(Array(article.points.enumerated()), id: \.offset) { _, point in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Circle().fill(Theme.coral).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                        Text(point)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .card(padding: 16, radius: Theme.radiusSm)
+        }
+        if !article.media.isEmpty {
+            MediaStrip(media: article.media, viewing: $viewing)
+        }
+        if let model = article.summaryModel, article.summary != nil {
+            Label(Self.summarizedBy(model), systemImage: "sparkles")
+                .font(.caption)
+                .foregroundStyle(Theme.muted)
+        }
+        switch article.status {
+        case .ready:
+            EmptyView()
+        case .partial:
+            note("\(item.source.isEmpty ? "The page" : item.source) shares only a preview. The whole story is on its site.", systemImage: "lock")
+        case .unavailable:
+            note("This page can't be shown here. The whole story is on its site.", systemImage: "doc.questionmark")
+        }
+    }
+
+    private func note(_ text: String, systemImage: String) -> some View {
+        note(text, systemImage: systemImage) { EmptyView() }
+    }
+
+    private func note<Action: View>(_ text: String, systemImage: String, @ViewBuilder action: () -> Action) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: systemImage)
+                .font(.footnote)
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            action()
+        }
+    }
+
+    static func summarizedBy(_ model: String) -> String {
+        let lower = model.lowercased()
+        if lower.hasPrefix("claude") { return "Summarized by Claude" }
+        if lower.hasPrefix("grok") { return "Summarized by Grok" }
+        if lower == "demo" { return "A demo summary" }
+        return "Summarized by \(model)"
+    }
+
+    // MARK: Loading
+
+    private func load(force: Bool = false) async {
+        if !force, let kept = ArticleCache.articles[item.id] {
+            phase = .loaded(kept)
+            return
+        }
+        phase = .loading
+        do {
+            var article = try await app.readArticle(item)
+            phase = .loaded(article)
+            // The summary or Grok's picture is still being made: ask again
+            // every few seconds (about two minutes at most) while the story is open.
+            var polls = 0
+            while article.pending && polls < 25 {
+                try await Task.sleep(for: .seconds(6))
+                polls += 1
+                if let next = try? await app.readArticle(item) {
+                    article = next
+                    phase = .loaded(article)
+                }
+            }
+            if !article.pending { ArticleCache.articles[item.id] = article }
+        } catch is CancellationError {
+            // The story was closed; nothing to show.
+        } catch {
+            if case .loaded = phase { return } // a poll that failed: what's shown stays
+            phase = .failed(McFlyError.describe(error))
+        }
+    }
+}
+
+/// Articles read this session, so going back to a story doesn't ask again.
+@MainActor
+private enum ArticleCache {
+    static var articles: [UUID: NewsArticle] = [:]
+}
+
+private struct ViewedImage: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+/// The page's blocks in order: paragraphs, headings, quotes, lists, pictures
+/// with their captions, and videos that open where they live.
+private struct ArticleBlocks: View {
+    let blocks: [NewsArticle.Block]
+    @Binding var viewing: ViewedImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .paragraph(let text):
+                    Text(text)
+                        .font(.body)
+                        .foregroundStyle(Theme.text)
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                case .heading(let text):
+                    Text(text)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                        .padding(.top, 6)
+                case .quote(let text, let cite):
+                    HStack(alignment: .top, spacing: 12) {
+                        RoundedRectangle(cornerRadius: 2).fill(Theme.coral).frame(width: 3)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(text)
+                                .font(.body.italic())
+                                .foregroundStyle(Theme.text.opacity(0.9))
+                                .lineSpacing(3)
+                            if let cite { Text(cite).font(.caption).foregroundStyle(Theme.muted) }
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                case .list(let items, let ordered):
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { i, text in
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Text(ordered ? "\(i + 1)." : "•")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(Theme.muted)
+                                Text(text)
+                                    .font(.body)
+                                    .foregroundStyle(Theme.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                case .image(let url, let caption):
+                    ArticleImage(url: url, caption: caption) { viewing = ViewedImage(url: url) }
+                case .video(let video):
+                    VideoCard(video: video)
+                }
+            }
+        }
+    }
+}
+
+/// A picture in the story, its whole width; one that won't load is left out.
+private struct ArticleImage: View {
+    let url: URL
+    let caption: String?
+    let open: () -> Void
+    @State private var failed = false
+
+    var body: some View {
+        if !failed {
+            VStack(alignment: .leading, spacing: 6) {
+                AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.3))) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFit()
+                    case .failure:
+                        Color.clear.frame(height: 0).onAppear { failed = true }
+                    default:
+                        Theme.sunken.frame(height: 200)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+                .contentShape(Rectangle())
+                .onTapGesture(perform: open)
+                if let caption {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+        }
+    }
+}
+
+/// A video as its poster with a play button; it opens where it lives.
+private struct VideoCard: View {
+    let video: NewsArticle.Video
+    var height: CGFloat = 200
+    var showsCaption = true
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            openURL(video.url)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Theme.sunken
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .overlay {
+                        if let poster = video.poster {
+                            AsyncImage(url: poster) { phase in
+                                if let image = phase.image { image.resizable().scaledToFill() }
+                            }
+                        }
+                    }
+                    .overlay(Color.black.opacity(0.18))
+                    .overlay {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: height * 0.12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: height * 0.3, height: height * 0.3)
+                            .background(.black.opacity(0.45), in: Circle())
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        Text(video.label)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.5), in: Capsule())
+                            .padding(10)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+                if showsCaption, let caption = video.caption {
+                    Text(caption).font(.caption).foregroundStyle(Theme.muted).multilineTextAlignment(.leading)
+                }
+            }
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("Play video on \(video.label)")
+    }
+}
+
+/// The article's pictures and videos in a row under the summary.
+private struct MediaStrip: View {
+    let media: [NewsArticle.Block]
+    @Binding var viewing: ViewedImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("IN THE STORY")
+                .font(.caption.weight(.semibold))
+                .tracking(0.8)
+                .foregroundStyle(Theme.muted)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(Array(media.prefix(12).enumerated()), id: \.offset) { _, block in
+                        switch block {
+                        case .image(let url, let caption):
+                            Button {
+                                viewing = ViewedImage(url: url)
+                            } label: {
+                                Theme.sunken
+                                    .frame(width: 168, height: 112)
+                                    .overlay {
+                                        AsyncImage(url: url) { phase in
+                                            if let image = phase.image { image.resizable().scaledToFill() }
+                                        }
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(PressableStyle())
+                            .accessibilityLabel(caption ?? "Picture")
+                        case .video(let video):
+                            VideoCard(video: video, height: 112, showsCaption: false).frame(width: 168)
+                        default:
+                            EmptyView()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One picture, as large as it goes.
+private struct ImageViewer: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFit()
+                } else {
+                    ProgressView().tint(.white)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.white.opacity(0.18), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding()
+            .accessibilityLabel("Close")
+        }
+        #if os(macOS)
+        .frame(minWidth: 640, minHeight: 480)
+        #endif
     }
 }
 

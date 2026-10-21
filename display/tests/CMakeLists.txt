@@ -176,6 +176,32 @@ qt_add_shaders(tst_screens "screens_shaders"
 add_test(NAME tst_screens COMMAND tst_screens)
 set_tests_properties(tst_screens PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# A story's article (ArticleReader): the function's answer shaped for the
+# News screen, asked once per story against a fake Supabase, and the open
+# story at each panel size.
+mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-article
+    Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/ChipRow.qml
+    components/Tag.qml components/Reveal.qml components/FocusFlickable.qml components/QrPanel.qml
+    components/EmptyState.qml components/ScreenHeader.qml components/StoryCard.qml components/MotionClock.qml
+    screens/NewsScreen.qml)
+qt_add_executable(tst_article tst_article.cpp FakeServer.h
+    ../src/models/ArticleReader.h ../src/models/ArticleReader.cpp
+    ../src/models/FeedStore.h     ../src/models/FeedStore.cpp
+)
+target_compile_options(tst_article PRIVATE ${MCFLY_WARNINGS})
+target_compile_definitions(tst_article PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-article")
+target_link_libraries(tst_article PRIVATE mcfly-core mcfly-qr Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_resources(tst_article "demo_data_article"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/resources/demo/feed.json)
+qt_add_shaders(tst_article "article_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
+add_test(NAME tst_article COMMAND tst_article)
+set_tests_properties(tst_article PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # A sky backdrop (Backdrop.qml): what its shader is fed through the dusk,
 # against a stand-in DisplayController.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop

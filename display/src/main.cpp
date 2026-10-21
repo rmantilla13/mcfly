@@ -25,6 +25,7 @@
 #include "hardware/StopSignals.h"
 #include "hardware/SystemController.h"
 #include "models/Assistant.h"
+#include "models/ArticleReader.h"
 #include "models/FeedStore.h"
 #include "models/SettingsBridge.h"
 #include "models/HomeGlance.h"
@@ -137,7 +138,8 @@ int main(int argc, char *argv[])
     QCommandLineOption size("size", "Window size for --windowed, like 800x480 (default 1280x800).", "WxH");
     QCommandLineOption bench("bench", "Measure every screen, drawn every frame, a line each in the log, then quit "
                                       "(MCFLY_BENCH=1 runs it once at start and carries on).");
-    parser.addOptions({windowed, demo, noKeyboard, screen, screenshot, size, bench});
+    QCommandLineOption story("story", "With --screen news: open the lead story once the report is in.");
+    parser.addOptions({windowed, demo, noKeyboard, screen, screenshot, size, bench, story});
     parser.process(app);
 
     // A running process with no screen leaves the text console on HDMI and
@@ -156,6 +158,7 @@ int main(int argc, char *argv[])
     client.setRefreshToken(setting(settings, "MCFLY_DEVICE_REFRESH_TOKEN", "device/refreshToken"));
 
     FeedStore store(&client, parser.isSet(demo));
+    ArticleReader reader(&client, parser.isSet(demo));
 
     // The on-device voice service (wake word, speech in and out) is optional.
     QString voiceUrl = setting(settings, "MCFLY_VOICE_URL", "voice/url");
@@ -182,6 +185,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "AI", &assistant);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", &voice);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", &glance);
+    qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Reader", &reader);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Perf", &perf);
     FourInARowEngine fourInARow; // McFly's look-ahead in the Games tab's Four in a Row
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "FourInARowEngine", &fourInARow);
@@ -199,6 +203,7 @@ int main(int argc, char *argv[])
     engine.addImportPath(QStringLiteral("qrc:/keyboard"));
     engine.rootContext()->setContextProperty("startWindowed", parser.isSet(windowed));
     engine.rootContext()->setContextProperty("startScreen", parser.value(screen));
+    engine.rootContext()->setContextProperty("startStory", parser.isSet(story));
     const QByteArray benchEnv = qgetenv("MCFLY_BENCH").trimmed().toLower();
     const bool benchByEnv = benchEnv == "1" || benchEnv == "on" || benchEnv == "true" || benchEnv == "yes";
     engine.rootContext()->setContextProperty("startBench", parser.isSet(bench) || benchByEnv);

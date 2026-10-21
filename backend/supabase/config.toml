@@ -19,6 +19,9 @@ verify_jwt = false
 [functions.assistant]
 verify_jwt = false
 
+[functions.article]
+verify_jwt = false
+
 [functions.calendar-sync]
 verify_jwt = false
 

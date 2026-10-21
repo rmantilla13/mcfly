@@ -250,6 +250,18 @@ final class AppModel {
         }
     }
 
+    /// A story read in full (`article`). Demo mode makes one from the story itself.
+    var readArticle: ArticleReader {
+        if let client {
+            let articles = client.articles
+            return { item in try await articles.article(for: item.id) }
+        }
+        return { item in
+            try await Task.sleep(for: .milliseconds(700))
+            return NewsArticle.demo(for: item)
+        }
+    }
+
     private static func demoReply(to message: String, mode: AssistantClient.Mode, feeds: FeedStore,
                                   provider: AssistantProvider?) -> String {
         let lower = message.lowercased()

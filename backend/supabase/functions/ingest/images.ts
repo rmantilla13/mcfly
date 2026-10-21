@@ -65,7 +65,7 @@ function decodeEntities(s: string): string {
 }
 
 // Reads at most maxBytes of a response body as text.
-async function readSome(res: Response, maxBytes: number): Promise<string> {
+export async function readSome(res: Response, maxBytes: number): Promise<string> {
   if (!res.body) return "";
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];

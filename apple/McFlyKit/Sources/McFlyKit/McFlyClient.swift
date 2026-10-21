@@ -18,6 +18,7 @@ public final class McFlyClient: Sendable {
     public let admin: SupabaseAdminService
     public let pairing: PairingClient
     public let assistant: AssistantClient
+    public let articles: ArticleClient
     public let authCallbackURL: URL
 
     public init(supabaseURL: URL, anonKey: String, authCallbackURL: URL) {
@@ -31,6 +32,7 @@ public final class McFlyClient: Sendable {
         feeds = SupabaseFeedSource(client: supabase)
         admin = SupabaseAdminService(client: supabase)
         pairing = PairingClient(functions: supabase.functions)
+        articles = ArticleClient(functions: supabase.functions)
         assistant = AssistantClient(supabaseURL: supabaseURL, anonKey: anonKey) {
             // Refreshed if it expired; throws when nobody is signed in.
             try await supabase.auth.session.accessToken

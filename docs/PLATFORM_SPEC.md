@@ -71,10 +71,17 @@ admin RPCs.
 | `symbols` | Every symbol seen: `symbol`, `name`, `sort_order` (1000 for new ones), `hidden`, `updated_at`. The console orders and hides; the display shows `not hidden` in `sort_order, symbol` order |
 | `news_reports` | A Daily Pulse report: `agent_id`, `slug` (unique, normally the date), `report_date`, `display_date` (as the agent wrote it), `hero_item` (an item key), `published_at` |
 | `news_items` | `report_id`, `section_key`, `section_name`, `section_order`, `item_key` (unique per report and section), `position`, `headline` (≤300), `takeaway` (≤2000), `url` (http/https), `image_url`, `source_domain` (host without www) |
+| `news_articles` | The article behind a story, read the first time someone opens it (§2.6) and kept with its item (`item_id`, primary key, cascades): `status` ∈ ready (the page's text) · partial (a preview: a paywall, a video) · unavailable, `title`, `byline`, `site_name`, `published_at`, `lead_image`, `blocks` (below), `word_count`, `summary` (≤2000), `points` (≤8), `summary_model`, `summary_tried_at`, `illustration` (Grok's picture of the story: its path in the private `news-illustrations` bucket), `illustration_model`, `illustration_tried_at`, `fetched_at`. Written only by `store_news_article(item, article jsonb)` (service role), which checks it again |
 | `admin_audit_log` | Every admin change, written by the RPCs and the functions |
 | `calendar_sources` | Calendar subscriptions, read every 15 minutes by `calendar-sync` into `events` under the built-in agent `calendar-subscriptions`: `kind` ∈ ical · google, `name` (unique; the events' calendar), `url` (an iCal link, kind ical; service role only, the console sees its host), `google_account_id` + `google_calendar_id` (kind google), `color`, `enabled`, `last_synced_at`, `last_error`, `event_count` |
 | `google_accounts` | Service role only (RLS on, no policies): a Google account the admin signed in with: `email` (unique), `refresh_token`, `scope`, `connected_by`, `connected_at`, `last_error`. `google_oauth_states` (same) holds a sign-in under way: `state`, `user_id`, `return_to`, ten minutes |
 | `google_watch_channels` | Service role only: one notification channel per watched Google calendar: `source_id`, `channel_id` (unique), `resource_id`, `token` (Google echoes it), `expires_at`. `calendar_sources.watch_error` says why Google refused one |
+
+An article's `blocks`, in page order: `{ type: "p" | "h", text }`,
+`{ type: "quote", text, cite? }`, `{ type: "list", items: [text], ordered? }`,
+`{ type: "image", url, caption? }`, `{ type: "video", url, provider: "youtube" |
+"vimeo" | "file", poster?, caption? }` (a YouTube or Vimeo video's `url` is its
+watch page). Clients leave out a type they don't know.
 
 Retention: `prune_feed()` applies the settings (old briefs, old quote
 history keeping the newest row per symbol, old reports, 90 days of log).
@@ -295,6 +302,44 @@ opened when there is none, renewed with under two days left, the old one
 stopped (`channels.stop`). The console's `/api/google/notify` forwards
 Google's headers to the function for a domain of the console's own.
 
+### 2.6 `article`
+
+A news story read in full, for the story view on the display and in the
+app. `Authorization: Bearer <JWT>` of anyone `can_read()`.
+
+```
+POST { item_id }  → { article: { item_id, status, title, byline, site_name, published_at, lead_image,
+                                 blocks[], word_count, summary, points[], summary_model, illustration_url,
+                                 illustration_model, fetched_at, pending } }
+```
+
+The story is read as the caller (RLS); its own `url` is fetched, never one
+the caller sends, and only a public http(s) address on every redirect hop
+(no local, private or link-local hosts), at most 3 MB of HTML in 8 s. The
+article comes from the page's JSON-LD `articleBody` when that has more of the
+story, else from Readability over the page, keeping its pictures and
+YouTube/Vimeo/video-file embeds as blocks; under 120 words it is `partial`
+with the page's description. A YouTube or Vimeo story is its video. A
+`ready` article of 150 words or more is summarized by the assistant's model
+(`platform_settings.assistant_provider`: Claude with `ASSISTANT_MODEL`, or
+Grok with `GROK_MODEL`), as JSON `{ summary, points }`; a `partial` or
+`unavailable` one (many sites turn servers away) by Grok reading the story
+with its web search (Responses API, `GROK_READ_MODEL`, default
+`grok-4.20-0309-non-reasoning`). A failure leaves `summary` null and is tried
+again after 10 minutes. The answer comes within 11 s with what is ready and
+`pending: true` while a summary or picture is still being made; that work is
+stored when it lands, and clients ask again every 6 s (about two minutes at most). Everything is kept in
+`news_articles`: later opens, from any client, get that copy; an
+`unavailable` page is read again after an hour. While the page is read,
+Grok draws a picture of the story (xAI's `GROK_IMAGE_MODEL`, default
+`grok-imagine-image-2.0`, 4:3 at 1k, from the headline, takeaway and section;
+no words, logos or real people), kept in the `news-illustrations` bucket as
+`<item_id>.jpg` and answered as `illustration_url`, a link signed for 30 days.
+Clients lead the summary with it ("Drawn by Grok"); a failure is tried again
+after 10 minutes. After a new picture, ones whose story is gone are removed
+(`orphaned_illustrations()`, service role). Errors: 400 bad body, 401 no
+session, 403 not a reader, 404 no such story.
+
 ## 3. Pi display
 
 Qt 6 app (`display/`). Settings: `MCFLY_SUPABASE_URL`, `MCFLY_SUPABASE_ANON_KEY`
@@ -307,7 +352,10 @@ of docs/AGENTS.md, shown while part of their agent's newest push), `news_reports
 and its own `devices.settings`, both ways (`SettingsBridge`: the server's copy is applied, a change made on the screen is
 sent with `device_update_settings`; the voice included, which the console and the app follow). Checks
 in (`devices.last_seen_at`) every 5 min. Screens: Home, Briefs, Markets,
-News (story detail with a QR code for the link), Settings; screen savers
+News (a story opens to its summary and key points or the full article,
+from `article` (§2.6), with Grok's picture leading the summary, the page's
+pictures and videos, and a QR code
+for the link, or for a video once one is tapped), Settings; screen savers
 Ambient (the default), Clock and Headlines; the quick-answer card (voice) and the Ask panel.
 Also read (optional, so an older backend doesn't fail the sync): open `todos`,
 shown on Home's timeline; when a reminder's time comes (or came in the last
@@ -335,6 +383,11 @@ person's account (email + password or magic link, supabase-swift) and then:
 - shows agents and their last push (`admin_list_agents`), and can make a
   key (`admin_create_agent`, shown once) so an agent can be set up from the
   phone;
+- opens a news story to its summary and key points or the full article
+  (`article`, §2.6), Grok's picture leading the summary and the page's
+  pictures and videos in place; the choice
+  is remembered, and the takeaway and the link stand in when a page can't
+  be read;
 - makes dashboards (Dashboards → +) and edits made ones, as the console
   does (§1.7): the same templates (McFlyKit `DashboardTemplate`), the parts'
   pickers from `admin_dashboard_sources`, a preview from

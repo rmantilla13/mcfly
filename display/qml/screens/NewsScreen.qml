@@ -5,8 +5,9 @@ import McFly
 import McFly.Core
 
 // News: the day's Daily Pulse report, section by section. A tapped story
-// opens large, with its takeaway, its source and a QR code so the article
-// can be read on a phone. On the 7" panel the page carries no pictures: the
+// opens large: its summary and key points, or the full article, with the
+// page's pictures and videos (Reader), and a QR code so the article can be
+// read on a phone. On the 7" panel the page carries no pictures: the
 // hero is a lead row and the stories are rows with the section's initial.
 // The hero's picture drifts slowly closer and back (Ken Burns); the sections
 // settle in one after another as the page shows.
@@ -28,6 +29,17 @@ Item {
     readonly property int storyCellWidth: Math.max(120, Math.floor((width - 2 * Theme.pageMargin - (Theme.storyColumns - 1) * Theme.spacing) / Theme.storyColumns))
 
     function closeStory() { story = ({}) }
+
+    // --story: the lead story opens once the report is in, the first time.
+    property bool leadPending: typeof startStory !== "undefined" && startStory === true
+    function openLead() {
+        if (leadPending && hero.headline) {
+            leadPending = false
+            story = hero
+        }
+    }
+    onHeroChanged: openLead()
+    Component.onCompleted: openLead()
 
     ColumnLayout {
         anchors.fill: parent
@@ -243,8 +255,27 @@ Item {
 
     // ---- The story, large.
 
-    // The picture, or a tinted field with the section's initial.
+    // The open story's article, from Reader (C++): the assistant's summary
+    // and key points with the page's pictures and videos, or the full story
+    // with them in place. Summary or full story lasts the session. The QR
+    // code opens the article on a phone, or a video once one is tapped.
+    property string readMode: "summary"
+    property string qrUrl: ""
+    readonly property var article: Reader.article
+    readonly property bool fullShown: readMode === "full" && !!article.hasFullStory
+    onStoryChanged: {
+        qrUrl = ""
+        if (story.headline)
+            Reader.open(story)
+        else
+            Reader.close()
+    }
+
+    // The picture, or a tinted field with the section's initial. With the
+    // summary, Grok's picture of the story when there is one.
     component Picture: Rectangle {
+        readonly property bool drawn: !news.fullShown && !!news.article.illustration
+        readonly property string url: drawn ? news.article.illustration : news.article.leadImage || news.story.imageUrl || ""
         radius: Theme.radius
         clip: true
         gradient: Gradient {
@@ -253,7 +284,7 @@ Item {
         }
         Image {
             anchors.fill: parent
-            source: news.story.imageUrl || ""
+            source: parent.url
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
             sourceSize.width: 1200
@@ -261,44 +292,335 @@ Item {
         }
         Label {
             anchors.centerIn: parent
-            visible: !(news.story.imageUrl || "").length
+            visible: !parent.url.length
             text: (news.story.sectionName || "").slice(0, 1)
             color: Qt.rgba(1, 1, 1, 0.5)
             font.pixelSize: Math.min(220, parent.height * 0.6)
             font.weight: Font.Bold
         }
+        Label {
+            anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 14
+            visible: parent.drawn
+            text: news.article.illustrationBy || ""
+            color: "white"
+            font.pixelSize: Theme.fontXs
+            font.weight: Font.DemiBold
+            leftPadding: 12; rightPadding: 12; topPadding: 5; bottomPadding: 5
+            background: Rectangle { radius: height / 2; color: Qt.rgba(0, 0, 0, 0.5) }
+        }
     }
-    // The section, the headline and the takeaway, with the close button.
+    // The section, the close button, the headline and who wrote it.
     component Words: ColumnLayout {
-        spacing: Theme.mini ? 8 : 16
+        spacing: Theme.mini ? 6 : 12
         RowLayout {
             Layout.fillWidth: true
             Tag { text: news.story.sectionName || ""; tint: news.story.sectionColor ? Qt.rgba(0, 0, 0, 0) : Theme.sunken; ink: news.story.sectionColor || Theme.text }
-            Label { visible: Theme.mini; text: news.story.sourceDomain || ""; color: Theme.textMuted; font.pixelSize: Theme.fontXs; elide: Text.ElideRight; Layout.fillWidth: true }
-            Item { Layout.fillWidth: true; visible: !Theme.mini }
+            Label {
+                Layout.fillWidth: true
+                text: news.article.readingTime || ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontXs
+                elide: Text.ElideRight
+            }
             IconButton { icon: "close"; fill: Theme.surface; onClicked: news.closeStory() }
         }
         Label {
             Layout.fillWidth: true
             text: news.story.headline || ""
             color: Theme.text
-            font.pixelSize: Theme.mini ? Theme.fontLg : Theme.compact ? Theme.fontLg + 4 : Theme.fontXl
+            font.pixelSize: Theme.mini ? Theme.fontMd : Theme.compact ? Theme.fontLg + 2 : Theme.fontXl - 4
             font.weight: Font.DemiBold
             wrapMode: Text.WordWrap
-            maximumLineCount: Theme.mini ? 2 : 4
+            maximumLineCount: Theme.mini ? 2 : 3
             elide: Text.ElideRight
             lineHeight: 1.05
         }
         Label {
             Layout.fillWidth: true
             visible: text.length > 0
-            text: news.story.takeaway || ""
-            color: Theme.text
-            font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd
-            wrapMode: Text.WordWrap
-            maximumLineCount: Theme.mini ? 3 : 6
+            text: news.article.byline || news.story.sourceDomain || ""
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontXs
             elide: Text.ElideRight
-            lineHeight: 1.2
+        }
+    }
+    // Summary | Full story, when the page gave its text.
+    component ModeChips: ChipRow {
+        visible: !!news.article.hasFullStory
+        chipHeight: Theme.mini ? 40 : 48
+        model: [{ id: "summary", label: qsTr("Summary") }, { id: "full", label: qsTr("Full story") }]
+        current: news.readMode
+        onPicked: id => news.readMode = id
+    }
+    // The code for the article, or for the video last tapped.
+    component StoryQr: QrPanel {
+        url: news.qrUrl || news.story.url || ""
+        domain: news.qrUrl ? "" : news.story.sourceDomain || ""
+        title: news.qrUrl ? qsTr("Watch it on your phone") : qsTr("Read it on your phone")
+        caption: news.qrUrl ? qsTr("Point the camera at the code to open the video.") : qsTr("Point the camera at the code to open the article.")
+    }
+    // A video: its poster with a play mark. Tapped, it's what the code opens.
+    component VideoTile: Rectangle {
+        property var block: ({})
+        readonly property bool onCode: news.qrUrl.length > 0 && news.qrUrl === block.url
+        radius: Theme.radiusSm
+        clip: true
+        color: Theme.sunken
+        border.width: onCode ? 3 : 0
+        border.color: Theme.accent
+        Image {
+            anchors.fill: parent
+            source: Theme.pictures ? block.poster || "" : ""
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            sourceSize.width: 800
+            visible: status === Image.Ready
+        }
+        Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.22) }
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(76, parent.height * 0.4); height: width; radius: width / 2
+            color: Qt.rgba(0, 0, 0, 0.5)
+            Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: 2; name: "play"; size: parent.width * 0.42; color: "white" }
+        }
+        Label {
+            anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 12
+            text: parent.onCode ? qsTr("On the code") : (parent.block.label || qsTr("Video"))
+            color: "white"
+            font.pixelSize: Theme.fontXs
+            font.weight: Font.DemiBold
+            leftPadding: 10; rightPadding: 10; topPadding: 4; bottomPadding: 4
+            background: Rectangle { radius: height / 2; color: Qt.rgba(0, 0, 0, 0.55) }
+        }
+        TapHandler { onTapped: news.qrUrl = parent.block.url || "" }
+    }
+    // The summary or the full story, scrolling, with the small print last.
+    component ArticleBody: FocusFlickable {
+        id: body
+        // Off where this copy's layout isn't the one showing: no blocks made twice.
+        property bool live: true
+        property bool withQr: false
+        readonly property int textSize: Theme.mini ? Theme.fontSm : Theme.fontMd - 1
+        fadeColor: Theme.background
+        contentHeight: col.implicitHeight
+        Connections {
+            target: news
+            function onStoryChanged() { body.contentY = 0 }
+            function onReadModeChanged() { body.contentY = 0 }
+        }
+        ColumnLayout {
+            id: col
+            width: body.width
+            spacing: Theme.mini ? 10 : 16
+
+            // The summary, or the takeaway until there's one.
+            Label {
+                Layout.fillWidth: true
+                visible: !news.fullShown && text.length > 0
+                text: news.article.summary || news.story.takeaway || ""
+                color: Theme.text
+                font.pixelSize: body.textSize + 1
+                wrapMode: Text.WordWrap
+                lineHeight: 1.25
+            }
+            Label {
+                visible: text.length > 0
+                text: Reader.state === "loading" ? qsTr("Reading the article…") : news.article.working || ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontXs
+                SequentialAnimation on opacity {
+                    running: (Reader.state === "loading" || !!news.article.working) && news.moving
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.4; duration: 700 }
+                    NumberAnimation { to: 1; duration: 700 }
+                }
+            }
+            // The key points.
+            Rectangle {
+                Layout.fillWidth: true
+                visible: !news.fullShown && (news.article.points || []).length > 0
+                implicitHeight: pointsCol.implicitHeight + 32
+                radius: Theme.radiusSm
+                color: Theme.surface
+                ColumnLayout {
+                    id: pointsCol
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                    anchors.margins: 16
+                    spacing: 10
+                    Label { text: qsTr("KEY POINTS"); color: Theme.textMuted; font.pixelSize: Theme.fontXs - 1; font.weight: Font.DemiBold; font.letterSpacing: 1.2 }
+                    Repeater {
+                        model: body.live && !news.fullShown ? news.article.points || [] : []
+                        delegate: RowLayout {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: 12
+                            Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: body.textSize * 0.45; width: 8; height: 8; radius: 4; color: news.story.sectionColor || Theme.accent }
+                            Label { Layout.fillWidth: true; text: modelData; color: Theme.text; font.pixelSize: body.textSize - 1; wrapMode: Text.WordWrap; lineHeight: 1.15 }
+                        }
+                    }
+                }
+            }
+            // The page's pictures and videos, a row of them.
+            GridLayout {
+                Layout.fillWidth: true
+                visible: !news.fullShown && Theme.pictures && (news.article.media || []).length > 0
+                columns: Theme.wide ? 3 : 2
+                columnSpacing: 10
+                rowSpacing: 10
+                Repeater {
+                    model: body.live && !news.fullShown && Theme.pictures ? (news.article.media || []).slice(0, Theme.wide ? 3 : 2) : []
+                    delegate: Loader {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        Layout.preferredHeight: Theme.mini ? 0 : Theme.tall ? 150 : 130
+                        sourceComponent: modelData.type === "video" ? videoThumb : imageThumb
+                        onLoaded: item.block = modelData
+                    }
+                }
+            }
+            // The full story, block by block.
+            Repeater {
+                model: body.live && news.fullShown ? news.article.blocks || [] : []
+                delegate: Loader {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    sourceComponent: modelData.type === "h" ? headingBlock
+                                   : modelData.type === "quote" ? quoteBlock
+                                   : modelData.type === "image" ? (Theme.pictures ? imageBlock : null)
+                                   : modelData.type === "video" ? videoBlock
+                                   : textBlock
+                    onLoaded: item.block = modelData
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: news.article.summaryBy || ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontXs
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: news.article.note || ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontXs + 1
+                wrapMode: Text.WordWrap
+            }
+            StoryQr { Layout.fillWidth: true; visible: body.withQr }
+            Item { implicitHeight: 4 }
+        }
+
+        Component {
+            id: textBlock
+            Label {
+                property var block: ({})
+                text: block.text || ""
+                color: Theme.text
+                font.pixelSize: body.textSize
+                wrapMode: Text.WordWrap
+                lineHeight: 1.3
+                leftPadding: block.type === "list" ? 8 : 0
+            }
+        }
+        Component {
+            id: headingBlock
+            Label {
+                property var block: ({})
+                text: block.text || ""
+                color: Theme.text
+                font.pixelSize: body.textSize + 4
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+                topPadding: 8
+            }
+        }
+        Component {
+            id: quoteBlock
+            Item {
+                property var block: ({})
+                implicitHeight: quoteText.implicitHeight
+                Rectangle { width: 4; height: parent.height; radius: 2; color: news.story.sectionColor || Theme.accent }
+                Label {
+                    id: quoteText
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.leftMargin: 20
+                    text: parent.block.text + (parent.block.cite ? "\n— " + parent.block.cite : "")
+                    color: Theme.text
+                    font.pixelSize: body.textSize
+                    font.italic: true
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.25
+                }
+            }
+        }
+        Component {
+            id: imageBlock
+            ColumnLayout {
+                property var block: ({})
+                spacing: 6
+                visible: picture.status !== Image.Error
+                Image {
+                    id: picture
+                    Layout.fillWidth: true
+                    // As tall as the picture is at this width; nothing until it's in.
+                    Layout.preferredHeight: status === Image.Ready && implicitWidth > 0 ? Math.min(width * implicitHeight / implicitWidth, body.height * 0.8) : 0
+                    source: parent.block.url || ""
+                    fillMode: Image.PreserveAspectFit
+                    horizontalAlignment: Image.AlignLeft
+                    asynchronous: true
+                    sourceSize.width: 1200
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: parent.block.caption || ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontXs
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+        Component {
+            id: videoBlock
+            ColumnLayout {
+                property var block: ({})
+                spacing: 6
+                VideoTile {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.pictures ? Math.min(width * 9 / 16, 340) : 72
+                    block: parent.block
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: parent.block.caption || ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontXs
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+        Component {
+            id: imageThumb
+            Rectangle {
+                property var block: ({})
+                radius: Theme.radiusSm
+                clip: true
+                color: Theme.sunken
+                Image {
+                    anchors.fill: parent
+                    source: parent.block.url || ""
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    sourceSize.width: 600
+                    visible: status === Image.Ready
+                }
+            }
+        }
+        Component {
+            id: videoThumb
+            VideoTile {}
         }
     }
 
@@ -310,39 +632,45 @@ Item {
         color: Theme.background
         MouseArea { anchors.fill: parent } // nothing underneath takes the tap
 
-        // Wide and Compact: the picture beside the words.
+        // Wide and Compact: the picture and the code beside the article.
         RowLayout {
             visible: Theme.paned
             anchors.fill: parent
             anchors.margins: Theme.pageMargin
             spacing: Theme.spacing
-            Picture {
+            ColumnLayout {
                 Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.46
+                Layout.preferredWidth: parent.width * 0.4
+                Layout.maximumWidth: parent.width * 0.4
+                spacing: Theme.spacing
+                Picture { Layout.fillWidth: true; Layout.fillHeight: true }
+                StoryQr { Layout.fillWidth: true }
             }
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 16
+                spacing: 14
                 Words { Layout.fillWidth: true }
-                Item { Layout.fillHeight: true }
-                QrPanel { Layout.fillWidth: true; url: news.story.url || ""; domain: news.story.sourceDomain || "" }
+                ModeChips { Layout.fillWidth: true }
+                ArticleBody { Layout.fillWidth: true; Layout.fillHeight: true; live: Theme.paned }
             }
         }
-        // Tall: the picture on top. Mini: no picture.
+        // Tall: the picture on top, the code below. Mini: no picture, and the
+        // code at the end of the article, where there's room for it.
         ColumnLayout {
             visible: !Theme.paned
             anchors.fill: parent
             anchors.margins: Theme.pageMargin
-            spacing: Theme.mini ? 10 : 16
+            spacing: Theme.mini ? 8 : 14
             Picture {
                 visible: Theme.pictures
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(300, parent.height * 0.3)
+                Layout.preferredHeight: Math.min(260, parent.height * 0.2)
             }
             Words { Layout.fillWidth: true }
-            Item { Layout.fillHeight: true }
-            QrPanel { Layout.fillWidth: true; url: news.story.url || ""; domain: news.story.sourceDomain || "" }
+            ModeChips { Layout.fillWidth: true }
+            ArticleBody { Layout.fillWidth: true; Layout.fillHeight: true; live: !Theme.paned; withQr: Theme.mini }
+            StoryQr { Layout.fillWidth: true; visible: !Theme.mini }
         }
     }
 }
