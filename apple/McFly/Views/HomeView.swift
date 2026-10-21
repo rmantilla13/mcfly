@@ -274,10 +274,8 @@ private struct ClockHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Circle()
-                    .fill(LinearGradient(colors: [Theme.glow[0], Theme.glow[1]], startPoint: .topLeading, endPoint: .bottomTrailing))
+                FluxMark()
                     .frame(width: 30, height: 30)
-                    .overlay(Image(systemName: "bolt.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white))
                 Text(greeting)
                     .font(.system(size: 18))
                     .foregroundStyle(Theme.muted)

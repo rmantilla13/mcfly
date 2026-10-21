@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "cn";
+import { Wordmark } from "@/components/Brand";
 import { SpectrumGlow, type GlowInput } from "./SpectrumGlow";
 import ShinyText from "@/components/reactbits/ShinyText";
 import VoicePill from "@/components/reactbits/VoicePill";
@@ -221,7 +222,7 @@ export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
       <SpectrumGlow input={glow} className="absolute inset-x-0 bottom-0 h-[62%] w-full" />
 
       <header className="relative flex items-center gap-3 px-6 py-5">
-        <span className="text-sm font-semibold tracking-wide text-white/70">McFly</span>
+        <Wordmark className="text-base text-white/70" />
         <span className="flex-1" />
         <button
           type="button"

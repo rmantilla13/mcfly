@@ -16,7 +16,7 @@ apple/
 │   ├── Theme/             mood palettes and Appearance, GradientTile and Backdrop (+ their Metal shaders), glow, cards and pills
 │   ├── Views/             one file per screen, Components.swift for shared pieces
 │   ├── Voice/             VoiceGlow (from Homestead), listener, speaker, session, VoiceModeView
-│   ├── Assets.xcassets    app icon (scripts/render_app_icon.py), launch color
+│   ├── Assets.xcassets    app icon, launch mark and black launch colour (scripts/)
 │   └── McFly-*.entitlements   associated domain; the Mac one adds the sandbox
 └── McFlyKit/              Swift package: models (Models.swift, Productivity.swift), FeedStore, Home's
                            Timeline and the Mood, assistant SSE client, pairing, admin, demo data,
@@ -59,8 +59,11 @@ swift test --package-path McFlyKit   # the kit's unit tests, no Xcode project ne
 Xcode is the only requirement for the app (Xcode 16 or newer; the voice
 screen's `SpeechAnalyzer` path needs the iOS 26 / macOS 26 SDK, so Xcode 26+
 to compile that branch; on older SDKs change nothing, the fallback is the
-whole story). The icon is rendered by `scripts/render_app_icon.py` (pure
-Python) if it ever needs regenerating.
+whole story). The icon and the launch mark are the McFly mark (the flux
+capacitor's Y; `scripts/flux_mark.py` holds its numbers), rendered by
+`scripts/render_app_icon.py` and `scripts/render_launch_mark.py` (pure
+Python) if they ever need regenerating; `FluxMark` draws it in the app. The
+wordmark is Exo 2 Black Italic, bundled from `McFly/Theme/Fonts` (SIL OFL).
 
 **Demo mode.** Without a Supabase project, run with the launch argument
 `-McFlyDemo YES` (scheme → Run → Arguments, or `MCFLY_DEMO=1` in the

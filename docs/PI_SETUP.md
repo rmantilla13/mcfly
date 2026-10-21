@@ -178,7 +178,8 @@ is up but it did not open the HDMI device. The first journal command shows
 `cat /etc/mcfly/kms.json` against `ls -l /dev/dri/by-path/` and re-run
 `./display/deploy/install-pi.sh` so it points Qt at the HDMI port.
 
-The video shipped with McFly is `display/deploy/boot/boot.mp4`. The installer
+The video shipped with McFly is `display/deploy/boot/boot.mp4`: the McFly mark
+on black, its lights running in a 6-second loop. The installer
 copies it to `/usr/local/share/mcfly/boot.mp4`. To play your own file, copy
 it to `/etc/mcfly/boot.mp4` and reboot. That file is kept when you re-run
 the installer. Remove it to go back to the built-in video. 1920×1200 (or

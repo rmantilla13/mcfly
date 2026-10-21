@@ -131,6 +131,8 @@ qt_add_qml_module(mcfly-display
         qml/Glass.qml
         qml/components/Card.qml
         qml/components/NavRail.qml
+        qml/components/FluxMark.qml
+        qml/components/Wordmark.qml
         qml/components/PillButton.qml
         qml/components/Icon.qml
         qml/components/IconButton.qml
@@ -203,6 +205,7 @@ qt_add_qml_module(mcfly-display
         qml/games/scoops.js
     RESOURCES
         resources/demo/feed.json
+        resources/fonts/Exo2-BlackItalic.ttf
         ${mcfly_vendored_games}
         # The on-screen keyboard is optional at run time, so these are not
         # compiled: KeyboardPanel loads them only when the module is there.

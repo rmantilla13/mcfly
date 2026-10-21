@@ -41,6 +41,11 @@ if command -v ffprobe >/dev/null 2>&1; then
     fi
 fi
 
+# The clip is drawn on black (make-boot-video.py), so a panel of another
+# shape is padded with black too, and the app fades in from black.
+grep -q 'pad=.*color=0x000000' "$player" || fail "the player does not pad with the clip's black"
+grep -q '^CANVAS = hex_color("#000000")' "$root/display/deploy/boot/make-boot-video.py" || fail "the clip is not drawn on black"
+
 # Comments stripped so a note mentioning Conflicts= cannot satisfy a check.
 unit_body() { sed -E 's/[[:space:]]+#.*$//; /^[[:space:]]*#/d' "$1"; }
 

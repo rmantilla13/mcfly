@@ -149,14 +149,10 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
-            Rectangle {
+            FluxMark {
                 visible: Theme.navMode === "bar"
-                width: Theme.mini ? 30 : 36; height: width; radius: width / 2
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Theme.glowBlue }
-                    GradientStop { position: 1; color: Theme.glowCoral }
-                }
-                Icon { anchors.centerIn: parent; name: "bolt"; size: parent.width * 0.52; color: "white"; strokeWidth: 2.2 }
+                Layout.preferredWidth: Theme.mini ? 30 : 36
+                Layout.preferredHeight: Layout.preferredWidth
             }
             Label {
                 Layout.fillWidth: true

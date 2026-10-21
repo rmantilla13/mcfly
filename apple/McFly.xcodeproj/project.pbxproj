@@ -51,6 +51,7 @@
 		B98208D60ADD994D190C08DF /* BriefsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A13A583CBDB5AED68797C8 /* BriefsView.swift */; };
 		BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 638567AD540315D470FEDD13 /* VoiceSession.swift */; };
 		BE62EFC4F8499A09F61503A4 /* Backdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11303012ABFF57EB16B68DE /* Backdrop.swift */; };
+		C7BD102FCA1E2589172C464F /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = FD4C0AD666ED0B4CF2BEBF4E /* OFL.txt */; };
 		C7E97B4DB051896D404D5D62 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */; };
 		CAAA01B47BE2782961A8E827 /* McFlyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */; };
 		D5830A84293021B001D6DAC3 /* AmbientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2527F7DF175D3D8B53C1A539 /* AmbientView.swift */; };
@@ -59,8 +60,10 @@
 		DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E80D28AB5C41BE34A0D186E /* DashboardsView.swift */; };
 		E79219A675B9992B901CDD27 /* BuiltInVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C368950BE03E7FDA21BEBCCC /* BuiltInVoice.swift */; };
 		E8E8628F7F744EFA0A22E2EA /* BackButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = F464976B7FC8D128061F1274 /* BackButtons.swift */; };
+		EB7CFCEFE3E9160428C199EC /* FluxMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723B38382E218AAC5DEADF94 /* FluxMark.swift */; };
 		EE568B69399E265371EA67C7 /* McFlyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */; };
 		F16F5D8A995172337B9118C5 /* GamesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A1E14F7EC45D782EC88EB1 /* GamesView.swift */; };
+		F4B6FC65070416AE8E2701A4 /* Exo2-BlackItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DE4E84B00CEB19B890662B22 /* Exo2-BlackItalic.ttf */; };
 		F525524164AEB7667290FB0F /* PenguinArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */; };
 		F6E1122D9AEE36B2F2616485 /* Game2048View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65C28066EAE7E32623A3DD48 /* Game2048View.swift */; };
 		F9F2D7C5D388A3C7E7A28FAA /* GradientTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F02A671863D160CFB9F6500 /* GradientTile.swift */; };
@@ -94,6 +97,7 @@
 		622F972CFB8950E0AADFBB67 /* QRScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScanner.swift; sourceTree = "<group>"; };
 		638567AD540315D470FEDD13 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
 		65C28066EAE7E32623A3DD48 /* Game2048View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Game2048View.swift; sourceTree = "<group>"; };
+		723B38382E218AAC5DEADF94 /* FluxMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluxMark.swift; sourceTree = "<group>"; };
 		78960D5D577AA4A96A01CE87 /* VoiceGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGlow.swift; sourceTree = "<group>"; };
 		7B4DA5C7573FB6B6376939E2 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		7BEA683B475142D05DCA8A58 /* WeatherModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherModel.swift; sourceTree = "<group>"; };
@@ -119,12 +123,14 @@
 		D240D09E7752932E6F0F0B9F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D60CD29D7101DC7226714153 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		DA50FE7B4095029581666475 /* KokoroSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KokoroSpeaker.swift; sourceTree = "<group>"; };
+		DE4E84B00CEB19B890662B22 /* Exo2-BlackItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Exo2-BlackItalic.ttf"; sourceTree = "<group>"; };
 		E28DF0EF62E7B6986374243A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E7D8CDC30E03C6AB224D384F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F43F67BC8172506F846877D4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F464976B7FC8D128061F1274 /* BackButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackButtons.swift; sourceTree = "<group>"; };
 		F7E85288AFB8F48F1EF5A04D /* McFlyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McFlyApp.swift; sourceTree = "<group>"; };
 		F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketsView.swift; sourceTree = "<group>"; };
+		FD4C0AD666ED0B4CF2BEBF4E /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -172,10 +178,12 @@
 				57E7E781AE261C4E38CB13B6 /* AuroraGlow.swift */,
 				4A026F1F0B42DA7FF3B1DBC9 /* Backdrop.metal */,
 				A11303012ABFF57EB16B68DE /* Backdrop.swift */,
+				723B38382E218AAC5DEADF94 /* FluxMark.swift */,
 				4EF7FF78E7284330ACF76157 /* GradientTile.metal */,
 				8F02A671863D160CFB9F6500 /* GradientTile.swift */,
 				E28DF0EF62E7B6986374243A /* Theme.swift */,
 				2467E9D18042438FB3095DB8 /* WeatherLayer.swift */,
+				45FCDE54B6601609B280C9F1 /* Fonts */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -187,6 +195,15 @@
 				CD54E0C04D537395BD4BAE32 /* McFlyVoice */,
 			);
 			name = Packages;
+			sourceTree = "<group>";
+		};
+		45FCDE54B6601609B280C9F1 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				DE4E84B00CEB19B890662B22 /* Exo2-BlackItalic.ttf */,
+				FD4C0AD666ED0B4CF2BEBF4E /* OFL.txt */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		49E5C3BDFCFE7932F8688F3D /* Views */ = {
@@ -349,6 +366,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				7BA38494D5F34C9B13B931FE /* Assets.xcassets in Resources */,
+				F4B6FC65070416AE8E2701A4 /* Exo2-BlackItalic.ttf in Resources */,
+				C7BD102FCA1E2589172C464F /* OFL.txt in Resources */,
 				708B1455CD8F86BAF364E88A /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -377,6 +396,7 @@
 				92FB8C31807C612B3C0CA2EE /* DashboardBuilderView.swift in Sources */,
 				DCA64CF0F20A3FF2C69A365E /* DashboardsView.swift in Sources */,
 				A3CDD2BE82D15F528AAC2112 /* DisplaysView.swift in Sources */,
+				EB7CFCEFE3E9160428C199EC /* FluxMark.swift in Sources */,
 				D5C0E864E105BB5EA4BF321B /* FourInARowView.swift in Sources */,
 				F6E1122D9AEE36B2F2616485 /* Game2048View.swift in Sources */,
 				742949E106ED4D8BFB645F95 /* GameArt.swift in Sources */,

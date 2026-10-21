@@ -292,7 +292,7 @@ try_fbdev() {
     fmt=$(fb_pix_fmt)
     ffmpeg -hide_banner -loglevel error -nostdin \
         -stream_loop -1 -re -i "$video" \
-        -vf "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0xF1EFEB" \
+        -vf "scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x000000" \
         -pix_fmt "$fmt" -f fbdev /dev/fb0 </dev/null &
     player_pid=$!
     supervise

@@ -1,55 +1,20 @@
 #!/usr/bin/env python3
-"""Rasterize the McFly app icon: a lightning bolt on the blue → coral → amber glow.
+"""Rasterize the McFly app icon: the McFly mark (flux_mark.py), the flux
+capacitor's Y on its dark tile, edge to edge.
 
 Writes AppIcon-<size>.png for every size the asset catalog lists. Pure
 Python (zlib + struct), so it runs anywhere without Pillow. iOS masks the
 corners, so the image is a full-bleed square with no alpha.
 """
 
-import math
 import struct
 import zlib
 from pathlib import Path
 
+import flux_mark
+
 SIZE = 1024
 SIZES = (1024, 512, 256, 128, 64, 32, 16)
-STOPS = (
-    (0.0, (0x5B, 0x7C, 0xF5)),
-    (0.55, (0xF0, 0x7F, 0x5A)),
-    (1.0, (0xF6, 0xB9, 0x4A)),
-)
-# A bolt in a 64-unit box, drawn as a polygon.
-BOLT = [(36, 8), (16, 36), (30, 36), (26, 56), (48, 26), (34, 26)]
-
-
-def gradient(x: int, y: int) -> tuple[int, int, int]:
-    t = (x + y) / (2 * (SIZE - 1))
-    for (t0, c0), (t1, c1) in zip(STOPS, STOPS[1:]):
-        if t <= t1:
-            u = 0 if t1 == t0 else (t - t0) / (t1 - t0)
-            return tuple(round(a + (b - a) * u) for a, b in zip(c0, c1))  # type: ignore[return-value]
-    return STOPS[-1][1]
-
-
-def inside(px: float, py: float, poly: list[tuple[float, float]]) -> bool:
-    hit = False
-    j = len(poly) - 1
-    for i in range(len(poly)):
-        xi, yi = poly[i]
-        xj, yj = poly[j]
-        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
-            hit = not hit
-        j = i
-    return hit
-
-
-def seg_dist(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
-    dx, dy = bx - ax, by - ay
-    len2 = dx * dx + dy * dy
-    if len2 == 0:
-        return math.hypot(px - ax, py - ay)
-    u = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / len2))
-    return math.hypot(px - (ax + u * dx), py - (ay + u * dy))
 
 
 def png(rgb: bytes, size: int) -> bytes:
@@ -62,26 +27,9 @@ def png(rgb: bytes, size: int) -> bytes:
 
 
 def render() -> bytearray:
-    scale = SIZE / 64
-    poly = [(x * scale, y * scale) for x, y in BOLT]
-    edges = list(zip(poly, poly[1:] + poly[:1]))
-    soft = 1.5  # anti-aliasing band, in pixels
     buf = bytearray(SIZE * SIZE * 3)
-    for y in range(SIZE):
-        row = y * SIZE * 3
-        for x in range(SIZE):
-            r, g, b = gradient(x, y)
-            px, py = x + 0.5, y + 0.5
-            dist = min(seg_dist(px, py, a[0], a[1], c[0], c[1]) for a, c in edges)
-            if inside(px, py, poly):
-                t = min(1.0, dist / soft)
-            else:
-                t = max(0.0, 1 - dist / soft)
-            if t:
-                r = round(r + (255 - r) * t)
-                g = round(g + (255 - g) * t)
-                b = round(b + (255 - b) * t)
-            buf[row + x * 3:row + x * 3 + 3] = bytes((r, g, b))
+    for y, row in enumerate(flux_mark.render(SIZE, SIZE, tile=False)):
+        buf[y * SIZE * 3:(y + 1) * SIZE * 3] = b"".join(bytes((round(r), round(g), round(b))) for r, g, b, _ in row)
     return buf
 
 

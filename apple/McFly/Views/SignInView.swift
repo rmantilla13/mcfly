@@ -43,8 +43,10 @@ struct SignInView: View {
 
     private var hero: some View {
         VStack(spacing: 10) {
-            Text("McFly")
-                .font(.system(size: 40, weight: .bold, design: .rounded))
+            FluxMark()
+                .frame(width: 72, height: 72)
+                .padding(.bottom, 6)
+            Wordmark(size: 44)
                 .foregroundStyle(Theme.text)
             Text("Your agents' display, on your phone and your Mac.")
                 .font(.subheadline)

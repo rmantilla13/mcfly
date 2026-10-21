@@ -23,6 +23,16 @@ sleep), the same design language (time-of-day palette, gradient tiles, nav
 rail, cards) and the same console and app structure, with the family modules
 replaced by the agent feeds.
 
+**The mark and the wordmark.** The mark is the flux capacitor's Y: three
+tubes in blue, coral and amber (fixed, not the time-of-day palette) running
+in to a white core, on a dark tile. The wordmark is "McFly" in Exo 2 Black
+Italic (SIL OFL, vendored with its licence). Each part draws them from the
+same numbers: `display/qml/components/FluxMark.qml` and `Wordmark.qml`, the
+Pi's boot clip on black (`display/deploy/boot/make-boot-video.py`, where
+only the mark moves), `apple/McFly/Theme/FluxMark.swift` with the app icon
+and launch mark from `apple/scripts/flux_mark.py`, and the console's
+`components/Brand.tsx` and `app/icon.svg`.
+
 ## How it fits together
 
 ```

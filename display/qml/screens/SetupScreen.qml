@@ -143,15 +143,11 @@ Item {
                 spacing: Theme.mini ? 12 : 18
                 RowLayout {
                     spacing: 14
-                    Rectangle {
-                        width: Theme.mini ? 44 : 56; height: width; radius: width / 2
-                        gradient: Gradient {
-                            GradientStop { position: 0; color: Theme.glowBlue }
-                            GradientStop { position: 1; color: Theme.glowCoral }
-                        }
-                        Icon { anchors.centerIn: parent; name: "bolt"; size: parent.width * 0.54; color: "white"; strokeWidth: 2.2 }
+                    FluxMark {
+                        Layout.preferredWidth: Theme.mini ? 44 : 56
+                        Layout.preferredHeight: Layout.preferredWidth
                     }
-                    Label { text: "McFly"; color: field.ink; font.pixelSize: Theme.fontLg; font.weight: Font.Bold }
+                    Wordmark { color: field.ink; font.pixelSize: Math.round(Theme.fontLg * 1.25) }
                 }
                 Label {
                     Layout.fillWidth: true

@@ -49,11 +49,16 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         # Standard HTTPS only, so App Store Connect skips the export question.
         ITSAppUsesNonExemptEncryption: false
-        # The mark, centred at its own size (scripts/render_launch_mark.py).
-        # RootView draws it in the same place until the app knows where to go.
+        # The mark on black, centred at its own size (scripts/render_launch_mark.py),
+        # as the Pi's boot clip. RootView draws it in the same place until the
+        # app knows where to go.
         UILaunchScreen:
           UIColorName: LaunchBackground
           UIImageName: LaunchMark
+        # The wordmark's face (McFly/Theme/Fonts, SIL OFL): iOS reads the
+        # list, macOS the folder (the bundle's Resources).
+        UIAppFonts: [Exo2-BlackItalic.ttf]
+        ATSApplicationFontsPath: "."
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait

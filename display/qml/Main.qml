@@ -639,6 +639,22 @@ ApplicationWindow {
         }
     }
 
+    // The boot clip runs on black (display/deploy/boot), so the kiosk opens
+    // on black and fades in rather than flashing the day canvas. Not for
+    // pictures, benches or a window. Takes no input.
+    Rectangle {
+        anchors.fill: parent
+        z: 100
+        color: "black"
+        visible: opacity > 0
+        opacity: startWindowed || startScreen !== "" || startBench ? 0 : 1
+        SequentialAnimation on opacity {
+            running: !startWindowed && startScreen === "" && !startBench
+            PauseAnimation { duration: 200 }
+            NumberAnimation { to: 0; duration: 700; easing.type: Easing.InOutQuad }
+        }
+    }
+
     // Offline indicator: top right beside the rail, top centre over a bar
     // (so it never sits on a header's second-row controls).
     Rectangle {

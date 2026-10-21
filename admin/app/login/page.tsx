@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BrandMark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { LoginForm } from "@/components/LoginForm";
 import { LoginScene } from "@/components/login/LoginScene";
 import { DemoBanner } from "@/components/Shell";
@@ -45,15 +45,9 @@ export default async function LoginPage({ searchParams }: Props) {
           <Card className="relative w-full border-0 bg-transparent shadow-none ring-0">
             <CardHeader className="gap-1">
               <div className="mb-4 flex items-center gap-3">
-                <span className="relative">
-                  <span
-                    className="absolute inset-0 animate-ping rounded-2xl bg-glow-2/30 [animation-duration:2.8s] motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
-                  <BrandMark className="relative size-11 rounded-2xl" />
-                </span>
+                <BrandMark className="size-11" />
                 <span className="text-lg font-bold tracking-tight">
-                  McFly{" "}
+                  <Wordmark className="text-[21px]" />{" "}
                   <span className="ml-1 font-semibold text-muted-foreground">
                     Console
                   </span>

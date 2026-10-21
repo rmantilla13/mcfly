@@ -70,6 +70,7 @@ private struct LaunchView: View {
             .accessibilityHidden(true)
             .overlay(alignment: .bottom) {
                 ProgressView()
+                    .tint(.white) // on the launch screen's black
                     .offset(y: 56)
                     .opacity(spinner ? 1 : 0)
             }

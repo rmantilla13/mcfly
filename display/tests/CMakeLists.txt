@@ -153,7 +153,7 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     components/Ring.qml components/StatusDot.qml components/MotionClock.qml components/Reveal.qml components/InsightLine.qml
     components/HealthStrip.qml components/SuggestionChips.qml components/FocusFlickable.qml
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
-    components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FormField.qml
+    components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FluxMark.qml components/Wordmark.qml components/FormField.qml
     screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml
     screens/SetupScreen.qml)
 qt_add_executable(tst_screens tst_screens.cpp
