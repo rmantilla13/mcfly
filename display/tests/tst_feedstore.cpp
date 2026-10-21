@@ -480,6 +480,18 @@ private slots:
         QVERIFY(!onyx.value("hasStages").toBool());
         QVERIFY(onyx.value("track").toMap().isEmpty());
         QVERIFY(onyx.value("stageFor").toString().isEmpty());
+        // Grouped for the list: every status, in order, each with its projects.
+        const QVariantList groups = rig->store.projectGroups();
+        QCOMPARE(groups.size(), 5);
+        QStringList labels, counts;
+        for (const QVariant &g : groups) {
+            labels << g.toMap().value("label").toString();
+            counts << QString::number(g.toMap().value("count").toInt());
+        }
+        QCOMPARE(labels.join(QLatin1Char(',')), QStringLiteral("Blocked,Active,Paused,Up next,Done"));
+        QCOMPARE(counts.join(QLatin1Char(',')), QStringLiteral("1,1,0,0,0"));
+        QCOMPARE(groups.at(1).toMap().value("offset").toInt(), 1);
+        QCOMPARE(groups.at(1).toMap().value("projects").toList().at(0).toMap().value("name").toString(), QStringLiteral("McFly"));
 
         // Metrics: in order, grouped, with history; a setting without rows is left out.
         QCOMPARE(rig->store.metrics().size(), 2);
@@ -540,6 +552,25 @@ private slots:
 
     // The console's cases (admin/tests/feed-layout.test.mjs), so the display
     // and the console tell a project's stages the same way.
+    void projectsGroupByStatus()
+    {
+        auto project = [](const char *name, const char *status) { return QVariant(QVariantMap{{"name", name}, {"status", status}}); };
+        // In `projects` order (already ranked); one the display doesn't know joins Active.
+        const QVariantList groups = FeedStore::groupProjects({project("Lace", "blocked"), project("Armra", "active"), project("Odd", "archived"),
+                                                              project("Holiday", "planned"), project("Taxes", "done")});
+        QStringList shape;
+        for (const QVariant &g : groups) {
+            const QVariantMap m = g.toMap();
+            QStringList names;
+            for (const QVariant &p : m.value("projects").toList())
+                names << p.toMap().value("name").toString();
+            shape << QStringLiteral("%1@%2:%3").arg(m.value("label").toString()).arg(m.value("offset").toInt()).arg(names.join(QLatin1Char('+')));
+        }
+        QCOMPARE(shape.join(QLatin1Char(' ')), QStringLiteral("Blocked@0:Lace Active@1:Armra+Odd Paused@3: Up next@3:Holiday Done@4:Taxes"));
+        QCOMPARE(groups.at(3).toMap().value("color").toString(), QStringLiteral("#7C8CF8"));
+        QCOMPARE(groups.at(3).toMap().value("status").toString(), QStringLiteral("planned"));
+    }
+
     void projectStagesFollowTheConsole()
     {
         const QStringList stages{"Plan", "Build", "Review", "Ship"};
@@ -581,6 +612,12 @@ private slots:
         QCOMPARE(fresh.value("position").toString(), QStringLiteral("4 stages"));
         QCOMPARE(FeedStore::stageTrack(stages, "build", "active").value("headline").toString(), QStringLiteral("Not started"));
         QCOMPARE(FeedStore::stageTrack({"Ship"}, QString(), "active").value("position").toString(), QStringLiteral("1 stage"));
+        // Planned: none started, whatever stage it names.
+        const QVariantMap planned = FeedStore::stageTrack(stages, "Plan", "planned");
+        QCOMPARE(states(planned), QStringLiteral("next next next next"));
+        QCOMPARE(planned.value("index").toInt(), -1);
+        QCOMPARE(planned.value("headline").toString(), QStringLiteral("Planned"));
+        QCOMPARE(planned.value("position").toString(), QStringLiteral("4 stages"));
         // No stages, no track.
         QVERIFY(FeedStore::stageTrack({}, QString(), "active").isEmpty());
 

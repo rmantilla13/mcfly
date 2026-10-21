@@ -162,10 +162,13 @@ test("cadence in words", () => {
 
 test("projects in lanes, the one that needs you first", () => {
   const p = (status, name) => ({ status, name });
-  const lanes = projectLanes([p("active", "McFly"), p("blocked", "Onyx"), p("done", "Voice"), p("paused", "Homestead"), p("active", "Two"), p("archived", "Odd")]);
-  assert.deepEqual(lanes.map((l) => l.status), ["blocked", "active", "paused", "done"]);
+  const lanes = projectLanes([p("active", "McFly"), p("blocked", "Onyx"), p("done", "Voice"), p("paused", "Homestead"), p("active", "Two"), p("archived", "Odd"), p("planned", "Next")]);
+  // In flight, then up next, then done.
+  assert.deepEqual(lanes.map((l) => l.status), ["blocked", "active", "paused", "planned", "done"]);
+  assert.deepEqual(lanes.map((l) => l.label), ["Blocked", "Active", "Paused", "Up next", "Done"]);
   assert.deepEqual(lanes[1].projects.map((x) => x.name), ["McFly", "Two", "Odd"]);
-  assert.deepEqual(projectLanes([]).map((l) => l.projects.length), [0, 0, 0, 0]);
+  assert.deepEqual(lanes[3].projects.map((x) => x.name), ["Next"]);
+  assert.deepEqual(projectLanes([]).map((l) => l.projects.length), [0, 0, 0, 0, 0]);
 });
 
 test("a project's stages as steps, in its status", () => {
@@ -188,6 +191,10 @@ test("a project's stages as steps, in its status", () => {
   const fresh = stageTrack({ stages, stage: null, status: "active" });
   assert.deepEqual(states(fresh), ["next", "next", "next", "next"]);
   assert.deepEqual([fresh.index, fresh.headline, fresh.position], [-1, "Not started", "4 stages"]);
+  // Planned: none started, whatever stage it names.
+  const planned = stageTrack({ stages, stage: "Plan", status: "planned" });
+  assert.deepEqual(states(planned), ["next", "next", "next", "next"]);
+  assert.deepEqual([planned.current, planned.index, planned.headline, planned.position], [null, -1, "Planned", "4 stages"]);
   // No stages, no track: the page shows the status alone.
   assert.equal(stageTrack({ stages: [], stage: null, status: "active" }), null);
 });

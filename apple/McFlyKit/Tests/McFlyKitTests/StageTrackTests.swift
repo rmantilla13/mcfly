@@ -39,6 +39,21 @@ final class StageTrackTests: XCTestCase {
         XCTAssertEqual(StageTrack(stages: ["Ship"], stage: nil, status: .done)?.headline, "Done")
     }
 
+    func testAPlannedProjectHasStartedNone() throws {
+        // Whatever stage it names.
+        let planned = try XCTUnwrap(StageTrack(stages: stages, stage: "Plan", status: .planned))
+        XCTAssertEqual(states(planned), [.next, .next, .next, .next])
+        XCTAssertNil(planned.current)
+        XCTAssertEqual(planned.index, -1)
+        XCTAssertEqual(planned.headline, "Planned")
+        XCTAssertEqual(planned.position, "4 stages")
+        XCTAssertEqual(Project.Status.planned.groupLabel, "Up next")
+        XCTAssertFalse(Project.Status.planned.inFlight)
+        XCTAssertTrue(Project.Status.paused.inFlight)
+        XCTAssertLessThan(Project.Status.paused.attention, Project.Status.planned.attention)
+        XCTAssertLessThan(Project.Status.planned.attention, Project.Status.done.attention)
+    }
+
     func testBeforeTheFirstStage() throws {
         let fresh = try XCTUnwrap(StageTrack(stages: stages, stage: nil, status: .active))
         XCTAssertEqual(states(fresh), [.next, .next, .next, .next])

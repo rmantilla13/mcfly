@@ -51,6 +51,7 @@ public enum Timeline {
         switch status {
         case .blocked: return "#F07F5A"
         case .paused: return "#F6B94A"
+        case .planned: return "#7C8CF8"
         case .done: return "#8F95A1"
         case .active: return "#3DB37A"
         }

@@ -648,7 +648,7 @@ export async function updateSettings(patch: SettingsPatch): Promise<void> {
 // (backend/supabase/migrations/20261014000003_productivity.sql)
 
 const PROJECT_KINDS = ["code", "task", "launch", "other"];
-const PROJECT_STATUSES = ["active", "blocked", "paused", "done"];
+const PROJECT_STATUSES = ["planned", "active", "blocked", "paused", "done"];
 
 export async function listProjects(): Promise<ProjectRow[]> {
   const src = await source();

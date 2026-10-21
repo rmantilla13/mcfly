@@ -72,7 +72,8 @@ export function BriefKindBadge({ kind }: { kind: string }) {
   return <Badge variant={BRIEF_KIND_VARIANT[k]}>{k}</Badge>;
 }
 
-const PROJECT_STATUS_VARIANT: Record<ProjectStatus, "success" | "destructive" | "warning" | "secondary"> = {
+const PROJECT_STATUS_VARIANT: Record<ProjectStatus, "success" | "destructive" | "warning" | "secondary" | "outline"> = {
+  planned: "outline",
   active: "success",
   blocked: "destructive",
   paused: "warning",

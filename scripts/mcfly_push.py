@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("key")
     p.add_argument("--name")
     p.add_argument("--kind", choices=["code", "task", "launch", "other"])
-    p.add_argument("--status", choices=["active", "blocked", "paused", "done"])
+    p.add_argument("--status", choices=["planned", "active", "blocked", "paused", "done"])
     p.add_argument("--progress", type=int)
     p.add_argument("--summary")
     p.add_argument("--next", dest="next_step")

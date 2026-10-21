@@ -43,8 +43,9 @@ public struct StageTrack: Hashable, Sendable {
 
     /// The stages as steps: the ones before its stage done, its stage in the
     /// project's status (blocked or paused, else current), the rest next. A
-    /// done project has been through them all. Nil without stages. The stage
-    /// is matched exactly, as the console's indexOf.
+    /// done project has been through them all, a planned one has started
+    /// none. Nil without stages. The stage is matched exactly, as the
+    /// console's indexOf.
     public init?(stages: [String], stage: String?, status: Project.Status) {
         let n = stages.count
         guard n > 0 else { return nil }
@@ -57,6 +58,15 @@ public struct StageTrack: Hashable, Sendable {
             index = n
             headline = n == 1 ? "Done" : "All \(n) stages done"
             position = "\(n) of \(n)"
+            return
+        }
+        // Planned: lined up, none started, whatever stage it names.
+        if status == .planned {
+            self.steps = steps { _ in .next }
+            current = nil
+            index = -1
+            headline = "Planned"
+            position = n == 1 ? "1 stage" : "\(n) stages"
             return
         }
         let index = stage.flatMap { stages.firstIndex(of: $0) } ?? -1

@@ -1727,6 +1727,7 @@ QString statusLabel(const QString &status)
 {
     if (status == QLatin1String("blocked")) return QObject::tr("Blocked");
     if (status == QLatin1String("paused")) return QObject::tr("Paused");
+    if (status == QLatin1String("planned")) return QObject::tr("Planned");
     if (status == QLatin1String("done")) return QObject::tr("Done");
     return QObject::tr("Active");
 }
@@ -1735,16 +1736,21 @@ QString statusColor(const QString &status)
 {
     if (status == QLatin1String("blocked")) return QStringLiteral("#F07F5A");
     if (status == QLatin1String("paused")) return QStringLiteral("#F6B94A");
+    if (status == QLatin1String("planned")) return QStringLiteral("#7C8CF8"); // the console's PLANNED_COLOR
     if (status == QLatin1String("done")) return QStringLiteral("#8F95A1");
     return QStringLiteral("#3DB37A");
 }
 
+// The order the lists go in: what needs you, what's in flight, what's up
+// next, what's done. A status the display doesn't know counts as active, as
+// on the console.
 int statusRank(const QString &status)
 {
     if (status == QLatin1String("blocked")) return 0;
-    if (status == QLatin1String("active")) return 1;
     if (status == QLatin1String("paused")) return 2;
-    return 3;
+    if (status == QLatin1String("planned")) return 3;
+    if (status == QLatin1String("done")) return 4;
+    return 1;
 }
 
 // A project's `stages` as names: the database's jsonb list, which arrives as
@@ -1799,6 +1805,13 @@ QVariantMap FeedStore::stageTrack(const QStringList &stages, const QString &stag
         return {{"steps", steps}, {"current", QString()}, {"index", n},
                 {"headline", n == 1 ? tr("Done") : tr("All %1 stages done").arg(n)}, {"position", tr("%1 of %2").arg(n).arg(n)}};
     }
+    // Planned: lined up, none started, whatever stage it names.
+    if (status == QLatin1String("planned")) {
+        for (int i = 0; i < n; ++i)
+            steps << step(stages.at(i), QStringLiteral("next"), i);
+        return {{"steps", steps}, {"current", QString()}, {"index", -1}, {"headline", tr("Planned")},
+                {"position", n == 1 ? tr("1 stage") : tr("%1 stages").arg(n)}};
+    }
     const int index = stage.isEmpty() ? -1 : int(stages.indexOf(stage));
     const QString here = status == QLatin1String("blocked") ? QStringLiteral("blocked")
                          : status == QLatin1String("paused") ? QStringLiteral("paused")
@@ -1814,6 +1827,32 @@ QVariantMap FeedStore::stageTrack(const QStringList &stages, const QString &stag
                          : here == QLatin1String("paused") ? tr("Paused in %1").arg(name)
                                                            : name},
             {"position", tr("%1 of %2").arg(index + 1).arg(n)}};
+}
+
+QVariantList FeedStore::groupProjects(const QVariantList &projects)
+{
+    static const char *const order[] = {"blocked", "active", "paused", "planned", "done"};
+    QVariantList groups;
+    int offset = 0;
+    for (const char *status : order) {
+        QVariantList members;
+        for (const QVariant &v : projects) {
+            QString s = v.toMap().value("status").toString();
+            if (s != QLatin1String("blocked") && s != QLatin1String("paused") && s != QLatin1String("planned") && s != QLatin1String("done"))
+                s = QStringLiteral("active");
+            if (s == QLatin1String(status))
+                members << v;
+        }
+        const QString key = QString::fromLatin1(status);
+        groups << QVariantMap{{"status", key},
+                              {"label", key == QLatin1String("planned") ? tr("Up next") : statusLabel(key)},
+                              {"color", statusColor(key)},
+                              {"count", members.size()},
+                              {"offset", offset},
+                              {"projects", members}};
+        offset += int(members.size());
+    }
+    return groups;
 }
 
 QString FeedStore::timeInStage(const QDateTime &since, const QDateTime &now)
@@ -1880,6 +1919,7 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
             return ma.value("statusRank").toInt() < mb.value("statusRank").toInt();
         return ma.value("sort_order").toInt() < mb.value("sort_order").toInt();
     });
+    m_projectGroups = groupProjects(m_projects);
 
     // Metrics: the visible ones in order, each with its history, then grouped.
     QHash<QString, QVariantList> rowsByKey;

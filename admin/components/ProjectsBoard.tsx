@@ -6,7 +6,7 @@ import { RingGauge, type StatusState, StatusDot } from "@/components/charts";
 import { AskLink } from "@/components/feed/bits";
 import { CARD, LIFT, rise, STRETCH } from "@/components/feed/styles";
 import { StageBar } from "@/components/StageTrack";
-import { projectLanes, stageTrack } from "@/lib/feed-layout";
+import { PLANNED_COLOR, projectLanes, stageTrack } from "@/lib/feed-layout";
 import { cssColor, plural } from "@/lib/format";
 import type { ProjectRow, ProjectStatus } from "@/lib/types";
 
@@ -17,11 +17,12 @@ import type { ProjectRow, ProjectStatus } from "@/lib/types";
 // The blocked lane's border breathes, slowly, while anything is in it. Cards
 // open the project's history.
 
-const LANE_DOT: Record<ProjectStatus, StatusState> = { blocked: "down", active: "ok", paused: "warn", done: "unknown" };
+const LANE_DOT: Record<ProjectStatus, StatusState> = { blocked: "down", active: "ok", paused: "warn", planned: "unknown", done: "unknown" };
 const EMPTY: Record<ProjectStatus, string> = {
   blocked: "Nothing blocked.",
   active: "Nothing in progress.",
   paused: "Nothing paused.",
+  planned: "Nothing lined up.",
   done: "Nothing finished yet.",
 };
 
@@ -35,7 +36,7 @@ export function ProjectsBoard({ projects }: { projects: ProjectRow[] }) {
   }
   let index = 0;
   return (
-    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
       {projectLanes(projects).map((lane) => {
         const alert = lane.status === "blocked" && lane.projects.length > 0;
         return (
@@ -46,7 +47,7 @@ export function ProjectsBoard({ projects }: { projects: ProjectRow[] }) {
           >
             <header className="flex items-center justify-between gap-2 px-2.5 pt-1.5 pb-0.5">
               <span className="flex items-center gap-2 text-sm font-semibold">
-                <StatusDot state={LANE_DOT[lane.status]} pulse={false} />
+                <StatusDot state={LANE_DOT[lane.status]} color={lane.status === "planned" ? PLANNED_COLOR : undefined} pulse={false} />
                 {lane.label}
               </span>
               <span className="rounded-full bg-foreground/8 px-2 text-xs tabular-nums text-muted-foreground">{lane.projects.length}</span>

@@ -84,7 +84,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     feed: "projects",
     scopes: ["memory:read", "memory:write"],
     schedule: "every 30 minutes",
-    job: "Check my active repositories and tasks; for each project send its status (active, blocked, paused or done), progress, a one-line summary, the next step, and any new updates (commits, PRs, CI, deploys). Keep a note of what you already reported so you only send what's new.",
+    job: "Check my active repositories and tasks; for each project send its status (planned for one not started yet, else active, blocked, paused or done), progress, its stages in order and the one it is in, a one-line summary, the next step, and any new updates (commits, PRs, CI, deploys). Keep a note of what you already reported so you only send what's new.",
   },
   {
     id: "custom",

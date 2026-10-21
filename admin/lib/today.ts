@@ -63,6 +63,7 @@ export const STATUS_COLOR: Record<string, string> = {
   active: "#2E9E6A",
   blocked: "#E2604A",
   paused: "#B08A2E",
+  planned: "#7C8CF8",
   done: "#7A7A85",
 };
 

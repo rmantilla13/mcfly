@@ -116,7 +116,7 @@ offline pill moves to the top centre so it never covers a header's controls.
 | Markets | breadth bar; grid 3 (line, price, low–high bar) \| pane 440 | breadth bar; grid 2, same \| pane 380 | breadth in the subtitle; grid 3 × 112, no low–high bar → push | breadth bar; grid 2 × 150, then the biggest mover large in the room under it (from 300 px) → push |
 | Metrics | grid 4, coloured by good, "usually …" | grid 3, same | grid 2, no "usually" | grid 2 |
 | News | hero 360, its picture drifting (Ken Burns); cards 4 × 280 | hero 300, same; cards 3 × 250 | lead row (no picture); rows 2 × 88 → story without a picture | hero 240, same; cards 2 × 290 → picture on top |
-| Projects | board 3, a progress ring per card \| pane 460: tile with a ring 132, then next and the updates as a thread | board 2 \| pane 400, ring 108 | board 2 × 124, ring 50 → push, ring 84 | board 2 × 170, one line of summary → push |
+| Projects | list: status chips, a group per status (Blocked, Active, Paused, Up next, Done), a row each with its stage bar or progress and what's next \| pane 460: tile with a ring 132, then stages, next and the updates as a thread | list \| pane 400, ring 108 | list → push, ring 84 | list → push |
 | Boards | bento of 6: first metric a 2×2 hero tile, statuses in a row one health strip (up to 6 a row, then it wraps a row taller), charts 4×2, progress a ring | bento of 4, same (4 a row) | bento of 2: no hero, charts 2×2, 3 statuses a row; chips scroll | bento of 2, same |
 | Calendar | 14 days \| agenda \| day tile 420: the day's hours with its events, now gliding down them, then its calendars | 10 days \| agenda \| tile 360, same | 7 days; agenda | 7 days; tile 230 (two rows); agenda |
 | Games | cards 3 a row × 380, scrolling \| open: full screen, over the rail: the game as large as fits (Same Game and Maroon scaled from 320 × 480), X and (i) down the right, how to play over the game | cards 3 × 280, same | cards 3 × 128, no taglines \| open: full screen, over the bar; the name, (i) and X along the top (the games keep the full width); the board left, its controls beside it | cards 2 × 300 \| open: full screen, over the bar; the name, (i) and X along the top, the game under them |
@@ -204,10 +204,9 @@ One grammar for movement, the same on every panel (`Theme.qml` tokens):
   News hero's picture drifts over most of a minute; the Ask button turns a
   ring while an answer is on its way and the panel is shut. Nothing blinks.
 - **Gating.** Loops run only while their screen is shown and the screen is
-  not idle (and News' hero and a blocked card's edge only while on screen),
+  not idle (and News' hero only while on screen),
   and everything (arrivals included) is off with Settings → Animated tiles.
-  Every slow loop (a status's breath, the now dot, a blocked project's edge,
-  News' hero, Setup's drift and its dots waiting for a code) keeps the
+  Every slow loop (a status's breath, the now dot, News' hero, Setup's drift and its dots waiting for a code) keeps the
   ambient clock (`MotionClock`, `Theme.motionFps`): an Animator steps on
   every frame the panel draws, 60 a second for a drift of a pixel a second,
   so a screen nobody is touching would never let the render loop sleep.

@@ -4,15 +4,16 @@ import QtQuick.Layouts
 import McFly
 import McFly.Core
 
-// Projects: what's in flight as the agents report it, blocked ones first;
-// the one picked shows its history of commits, pull requests, CI runs,
-// deploys and notes, beside the board or on a page pushed over it.
+// Projects: everything the agents report, as the console's List view lays
+// it out: a group per status (Blocked, Active, Paused, Up next for the
+// planned ones, Done), chips over them to show one group, and a row per
+// project with its stages as a bar (or its progress), what's next and when
+// it last moved. The one picked shows its history of commits, pull
+// requests, CI runs, deploys and notes, beside the list or on a page pushed
+// over it.
 //
-// A card's progress is a ring that sweeps in as the board settles; a
-// blocked card's outline breathes. A project whose agent lays out stages
-// shows them as the console does: a bar on its card, and a step per stage
-// in its detail. The picked project heads its detail on a gradient tile in
-// its status colour, a big ring beside its name, over its stages and its
+// The picked project heads its detail on a gradient tile in its status
+// colour, a big ring beside its name, over its stages as a step each and its
 // updates as a thread of moments, newest first.
 Item {
     id: projects
@@ -23,13 +24,12 @@ Item {
     property string selected: ""
     readonly property var current: Store.project(selected).id ? Store.project(selected) : (Store.projects[0] || ({}))
     readonly property int blocked: Store.projects.filter(p => p.status === "blocked").length
+    readonly property int inFlight: Store.projects.filter(p => p.status !== "planned" && p.status !== "done").length
+    readonly property int upNext: Store.projects.filter(p => p.status === "planned").length
+    // The chip picked: "all" or a status. One whose group has emptied shows all.
+    property string filter: "all"
+    readonly property string showing: filter === "all" || Store.projectGroups.some(g => g.status === filter && g.count > 0) ? filter : "all"
     function closeDetail() { md.closeDetail() }
-    // Loops run only while someone can see them.
-    readonly property bool moving: shown && !Device.idle && Device.animatedTiles
-    // The blocked cards' breath, on the ambient clock's 30 updates a second
-    // (MotionClock). A card breathes only while it is on screen, so its
-    // edge changes, and a frame is drawn, only where someone can see it.
-    MotionClock { id: breath; playing: projects.moving && projects.blocked > 0 }
 
     Reveal { id: rv; shown: projects.isCurrent }
     // The detail's ring and updates, played again for each project picked.
@@ -252,6 +252,110 @@ Item {
         }
     }
 
+    // A project in the list: its colour down the left, its name and whose it
+    // is, its stages as a bar (or its progress), and what's next (what
+    // happened last once it's done). The picked one is clear glass.
+    component ProjectRow: Item {
+        id: row
+        property var project: ({})
+        property int place: 0
+        property bool last: false
+        readonly property bool chosen: md.paned && project.id === projects.current.id
+        readonly property bool done: project.status === "done"
+        readonly property int pad: Theme.mini ? 12 : 16
+        readonly property string said: !done && project.next_step ? project.next_step : (project.lastUpdate ? project.lastUpdate.text : "")
+        height: Math.max(Theme.touchTarget, body.implicitHeight + 2 * pad)
+        opacity: rv.at(place) * (done ? 0.75 : 1)
+        transform: Translate { y: rv.rise(row.place) }
+        Lens { anchors.fill: parent; anchors.margins: 4; visible: row.chosen; kind: "active"; radius: Theme.radiusSm - 4 }
+        Rectangle {
+            x: 10
+            y: row.pad
+            width: 5
+            height: row.height - 2 * row.pad
+            radius: 2.5
+            color: row.project.color || Theme.accent
+        }
+        ColumnLayout {
+            id: body
+            x: 28
+            width: row.width - x - row.pad - 4
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.mini ? 5 : 7
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Label {
+                        Layout.fillWidth: true
+                        text: row.project.name || ""
+                        color: row.done ? Theme.textMuted : Theme.text
+                        font.pixelSize: Theme.fontMd - 2
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: [row.project.kind, row.project.agentName].filter(s => !!s).join(" · ")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontXs - 1
+                        elide: Text.ElideRight
+                    }
+                }
+                Label {
+                    Layout.alignment: Qt.AlignTop
+                    visible: text.length > 0
+                    text: row.project.updatedLabel || ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontXs - 1
+                }
+            }
+            StageBar {
+                Layout.fillWidth: true
+                visible: !!row.project.hasStages
+                project: row.project
+                shown: rv.at(row.place + 1)
+            }
+            // No stages: its progress, when it has one.
+            RowLayout {
+                Layout.fillWidth: true
+                visible: !row.project.hasStages && !!row.project.hasProgress
+                spacing: 10
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 6
+                    Rectangle { anchors.fill: parent; radius: 3; color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) }
+                    Rectangle {
+                        width: parent.width * Math.max(0, Math.min(1, (row.project.progress || 0) / 100)) * rv.at(row.place + 1)
+                        height: parent.height
+                        radius: 3
+                        color: row.project.color || Theme.accent
+                    }
+                }
+                Label { text: qsTr("%1% done").arg(row.project.progress || 0); color: Theme.textMuted; font.pixelSize: Theme.fontXs - 1; font.features: ({ "tnum": 1 }) }
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: row.said.length > 0
+                text: !row.done && row.project.next_step ? qsTr("Next: %1").arg(row.said) : row.said
+                color: !row.done && row.project.next_step ? Theme.text : Theme.textMuted
+                font.pixelSize: Theme.fontXs
+                elide: Text.ElideRight
+            }
+        }
+        Rectangle {
+            visible: !row.last
+            x: 28
+            width: row.width - x
+            anchors.bottom: parent.bottom
+            height: 1
+            color: Theme.divider
+        }
+        TapHandler { onTapped: projects.pick(row.project.id) }
+    }
+
     MasterDetail {
         id: md
         anchors.fill: parent
@@ -266,145 +370,83 @@ Item {
             ScreenHeader {
                 Layout.fillWidth: true
                 title: qsTr("Projects")
-                subtitle: projects.blocked > 0 ? qsTr("%1 blocked").arg(projects.blocked) : qsTr("%1 in flight").arg(Store.projects.filter(p => p.status !== "done").length)
+                subtitle: [projects.blocked > 0 ? qsTr("%1 blocked").arg(projects.blocked) : qsTr("%1 in flight").arg(projects.inFlight),
+                           projects.upNext > 0 ? qsTr("%1 up next").arg(projects.upNext) : ""].filter(s => !!s).join(" · ")
             }
-            GridView {
-                id: grid
+            // Which groups to show: all of them, or one status's.
+            ChipRow {
+                Layout.fillWidth: true
+                visible: Store.projects.length > 0
+                current: projects.showing
+                model: [{ id: "all", label: qsTr("All  %1").arg(Store.projects.length) }].concat(
+                           Store.projectGroups.filter(g => g.count > 0).map(g => ({ id: g.status, label: g.label + "  " + g.count, color: g.color })))
+                onPicked: id => { projects.filter = id; list.contentY = 0 }
+            }
+            Flickable {
+                id: list
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                visible: Store.projects.length > 0
                 clip: true
-                model: Store.projects
-                cellWidth: Math.floor(width / Theme.projectColumns)
-                cellHeight: Theme.projectCardHeight
+                contentHeight: groupsCol.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
-                delegate: Item {
-                    id: cell
-                    required property var modelData
-                    required property int index
-                    width: grid.cellWidth
-                    height: grid.cellHeight
-                    opacity: rv.at(index)
-                    transform: Translate { y: rv.rise(cell.index) }
-                    Rectangle {
-                        id: card
-                        anchors.fill: parent
-                        anchors.rightMargin: Theme.spacing
-                        anchors.bottomMargin: Theme.spacing
-                        readonly property bool chosen: md.paned && cell.modelData.id === projects.current.id
-                        readonly property bool isBlocked: cell.modelData.status === "blocked"
-                        readonly property int ringSize: Theme.mini ? 50 : Theme.tall ? 62 : Theme.wide ? 76 : 68
-                        radius: Theme.radiusSm
-                        color: chosen ? "transparent" : Theme.surface
-                        border.width: !chosen && isBlocked ? 2 : 0
-                        border.color: Theme.danger
-                        opacity: cell.modelData.status === "done" ? 0.7 : 1
-                        scale: tap.pressed ? 0.97 : 1
-                        Behavior on scale { NumberAnimation { duration: Theme.quick } }
-                        // Chosen: active glass (Lens), as the nav pill is.
-                        Lens { anchors.fill: parent; visible: card.chosen; kind: "active"; radius: card.radius }
-                        // Blocked: a soft second edge inside the first breathes
-                        // in and out, slowly (to 0.4 and back, Theme.breath each
-                        // way, eased in and out), from nothing each time it
-                        // starts. Stopped, or scrolled out of sight, it is
-                        // simply not there.
-                        readonly property bool breathes: isBlocked && !chosen && projects.moving
-                                                         && cell.y + cell.height > grid.contentY && cell.y < grid.contentY + grid.height
-                        property real breathFrom: 0
-                        onBreathesChanged: if (breathes) breathFrom = breath.time
-                        Component.onCompleted: if (breathes) breathFrom = breath.time
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: 2
-                            radius: parent.radius - 2
-                            color: "transparent"
-                            border.width: 4
-                            border.color: Theme.danger
-                            visible: card.breathes
-                            opacity: visible ? 0.2 * (1 - Math.cos(Math.PI * (breath.time - card.breathFrom) * 1000 / Theme.breath)) : 0
-                        }
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.mini ? 14 : 18
-                            spacing: Theme.mini ? 10 : 16
-                            ColumnLayout {
+                ColumnLayout {
+                    id: groupsCol
+                    width: list.width
+                    spacing: Theme.mini ? 16 : 22
+                    Repeater {
+                        model: Store.projectGroups
+                        ColumnLayout {
+                            id: group
+                            required property var modelData
+                            visible: modelData.count > 0 && (projects.showing === "all" || projects.showing === modelData.status)
+                            Layout.fillWidth: true
+                            spacing: Theme.mini ? 8 : 10
+                            RowLayout {
+                                Layout.leftMargin: 4
+                                spacing: 10
+                                Rectangle { width: 10; height: 10; radius: 5; color: group.modelData.color }
+                                Label { text: group.modelData.label; color: Theme.text; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold }
+                                Label { text: group.modelData.count; color: Theme.textMuted; font.pixelSize: Theme.fontXs; font.features: ({ "tnum": 1 }) }
+                            }
+                            // The group's rows on one card; a blocked group's has a coral edge.
+                            Rectangle {
                                 Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                spacing: Theme.mini ? 6 : 8
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 10
-                                    Rectangle { width: 12; height: 12; radius: 6; color: cell.modelData.statusColor }
-                                    Label { text: cell.modelData.name; color: Theme.text; font.pixelSize: Theme.fontMd - 2; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                                }
-                                // With stages, the bar's headline ("Blocked in App
-                                // Review") says it instead, beside the status dot.
-                                Label {
-                                    visible: !cell.modelData.hasStages
-                                    text: (cell.modelData.statusLabel || "").toUpperCase()
-                                    color: cell.modelData.statusColor
-                                    font.pixelSize: 13
-                                    font.weight: Font.DemiBold
-                                    font.letterSpacing: 1
-                                }
-                                Label {
-                                    Layout.fillWidth: true
-                                    // Portrait's cards are shorter: its stages take the summary's place.
-                                    visible: !Theme.mini && !(Theme.tall && cell.modelData.hasStages)
-                                    text: cell.modelData.summary || ""
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.fontXs + 1
-                                    wrapMode: Text.WordWrap
-                                    maximumLineCount: Theme.tall || cell.modelData.hasStages ? 1 : 2
-                                    elide: Text.ElideRight
-                                }
-                                StageBar {
-                                    Layout.fillWidth: true
-                                    visible: !!cell.modelData.hasStages
-                                    project: cell.modelData
-                                    shown: rv.at(cell.index + 1)
-                                }
-                                Item { Layout.fillHeight: true }
-                                Label {
-                                    Layout.fillWidth: true
-                                    visible: !!cell.modelData.lastUpdate
-                                    text: cell.modelData.lastUpdate ? cell.modelData.lastUpdate.text : ""
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fontXs
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            // Progress: a ring that sweeps in with the board.
-                            Ring {
-                                visible: !!cell.modelData.hasProgress
-                                Layout.preferredWidth: card.ringSize
-                                Layout.preferredHeight: card.ringSize
-                                Layout.alignment: Qt.AlignVCenter
-                                value: (cell.modelData.progress || 0) / 100
-                                shown: rv.at(cell.index + 1)
-                                color: cell.modelData.statusColor
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: (cell.modelData.progress || 0) + "%"
-                                    color: Theme.text
-                                    font.pixelSize: Theme.mini ? Theme.fontXs : Theme.fontSm - 1
-                                    font.weight: Font.DemiBold
-                                    font.features: ({ "tnum": 1 })
+                                Layout.preferredHeight: rows.implicitHeight
+                                radius: Theme.radiusSm
+                                color: Theme.surface
+                                border.width: group.modelData.status === "blocked" ? 2 : 0
+                                border.color: Theme.danger
+                                Column {
+                                    id: rows
+                                    width: parent.width
+                                    Repeater {
+                                        model: group.modelData.projects
+                                        ProjectRow {
+                                            required property var modelData
+                                            required property int index
+                                            width: rows.width
+                                            project: modelData
+                                            place: group.modelData.offset + index
+                                            last: index === group.modelData.count - 1
+                                        }
+                                    }
                                 }
                             }
                         }
-                        TapHandler { id: tap; onTapped: projects.pick(cell.modelData.id) }
                     }
                 }
-                EmptyState {
-                    anchors.fill: parent
-                    visible: Store.projects.length === 0
-                    icon: "chores"
-                    text: qsTr("No projects yet")
-                    hint: qsTr("A code or task agent reports what it's working on here.")
-                    url: "https://mcfly.bot/agents"
-                    action: qsTr("Add an agent")
-                    caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
-                }
+            }
+            EmptyState {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: Store.projects.length === 0
+                icon: "chores"
+                text: qsTr("No projects yet")
+                hint: qsTr("A code or task agent reports what it's working on here.")
+                url: "https://mcfly.bot/agents"
+                action: qsTr("Add an agent")
+                caption: qsTr("Scan to open Agents on your phone: pick what it's for and it gives you the prompt to paste.")
             }
         }
 

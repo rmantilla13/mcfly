@@ -418,6 +418,25 @@
       ]
     },
     {
+      "key": "holiday",
+      "name": "Holiday campaign",
+      "kind": "launch",
+      "status": "planned",
+      "sort_order": 5,
+      "agent_id": "a-github",
+      "stages": ["Brief", "Production", "Edit", "Review", "Delivered"],
+      "hoursAgo": 48,
+      "summary": "Gift guide, three short videos and the December newsletter.",
+      "next_step": "Kick-off on Monday",
+      "updates": [
+        {
+          "kind": "note",
+          "text": "Budget approved",
+          "hoursAgo": 48
+        }
+      ]
+    },
+    {
       "key": "taxes",
       "name": "Q3 taxes",
       "kind": "task",

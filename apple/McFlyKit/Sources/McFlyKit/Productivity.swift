@@ -25,7 +25,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     }
 
     public enum Status: String, Codable, CaseIterable, Sendable {
-        case active, blocked, paused, done
+        /// Planned: lined up, not started; listed as "Up next".
+        case planned, active, blocked, paused, done
 
         public init(from decoder: Decoder) throws {
             self = Status(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .active
@@ -33,15 +34,23 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
 
         public var label: String { rawValue.capitalized }
 
-        /// Sort rank by how much a project needs a look: blocked first, done last.
+        /// Sort rank by how much a project needs a look: blocked first, then
+        /// the rest in flight, what's up next, and done last.
         public var attention: Int {
             switch self {
             case .blocked: return 0
             case .active: return 1
             case .paused: return 2
-            case .done: return 3
+            case .planned: return 3
+            case .done: return 4
             }
         }
+
+        /// The list's name for the status's group: "Up next" for planned.
+        public var groupLabel: String { self == .planned ? "Up next" : label }
+
+        /// Blocked, active or paused: started and not finished.
+        public var inFlight: Bool { self != .planned && self != .done }
     }
 
     public let id: UUID

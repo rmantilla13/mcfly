@@ -65,6 +65,9 @@ class FeedStore : public QObject
     Q_PROPERTY(QVariantList newsSources READ newsSources NOTIFY dataChanged) // agents with a report, newest first
     Q_PROPERTY(QString newsSource READ newsSource NOTIFY dataChanged)  // the agent id filtering the reports, or ""
     Q_PROPERTY(QVariantList projects READ projects NOTIFY dataChanged) // blocked first, done last
+    // The projects in a group per status, in the order the list shows them
+    // (groupProjects()).
+    Q_PROPERTY(QVariantList projectGroups READ projectGroups NOTIFY dataChanged)
     Q_PROPERTY(QVariantList metrics READ metrics NOTIFY dataChanged)   // visible metrics in display order, each with history
     Q_PROPERTY(QVariantList metricGroups READ metricGroups NOTIFY dataChanged) // [{ name, metrics: [...] }]
     Q_PROPERTY(QVariantList dashboards READ dashboards NOTIFY dataChanged) // visible, in order, widgets decorated
@@ -123,6 +126,7 @@ public:
     QVariantList newsSources() const { return m_newsSources; }
     QString newsSource() const { return m_newsSourceId; }
     QVariantList projects() const { return m_projects; }
+    QVariantList projectGroups() const { return m_projectGroups; }
     QVariantList metrics() const { return m_metrics; }
     QVariantList metricGroups() const { return m_metricGroups; }
     QVariantList dashboards() const { return m_dashboards; }
@@ -183,6 +187,12 @@ public:
     // How long a project has been in its stage: "under an hour", "5 hr",
     // "3 days", "2 wk", "4 mo"; empty when `since` isn't a time.
     static QString timeInStage(const QDateTime &since, const QDateTime &now);
+    // Decorated projects (in `projects` order) as the Projects list groups
+    // them, as the console's List view does: Blocked, Active, Paused, Up next
+    // (planned), Done, every group present: { status, label, color, count,
+    // offset (its first project's place in the whole list), projects }. A
+    // status the display doesn't know joins Active.
+    static QVariantList groupProjects(const QVariantList &projects);
 
     // Tests: a stand-in for the wall clock (local time). Call before start().
     void setClock(std::function<QDateTime()> now) { m_clock = std::move(now); }
@@ -283,7 +293,7 @@ private:
 
     // Decorated rows for QML.
     QVariantList m_agents, m_briefs, m_quotes, m_newsReports, m_stories, m_newsSources;
-    QVariantList m_projects, m_metrics, m_metricGroups, m_dashboards, m_events, m_eventDays, m_upcoming;
+    QVariantList m_projects, m_projectGroups, m_metrics, m_metricGroups, m_dashboards, m_events, m_eventDays, m_upcoming;
     QVariantList m_timeline, m_tomorrow;
     QVariantMap m_latestBrief, m_news, m_portfolio;
     QVariantList m_highlights;

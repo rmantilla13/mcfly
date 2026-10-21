@@ -564,6 +564,12 @@ export function buildDemoState(now = Date.now()): DemoState {
       updated_at: hours(7), stages: [], stage: null, stage_since: null,
       updates: [update("note", "Home page layout picked", hours(7))],
     },
+    {
+      id: uuid(), agent_id: GITHUB_ID, key: "holiday", name: "Holiday campaign", kind: "launch", status: "planned", progress: null, sort_order: 5,
+      summary: "Gift guide, three short videos and the December newsletter.", next_step: "Kick-off on Monday", link: null, color: null,
+      updated_at: days(2), stages: ["Brief", "Production", "Edit", "Review", "Delivered"], stage: null, stage_since: null,
+      updates: [update("note", "Budget approved", days(2))],
+    },
   ];
 
   // Metrics: today's row plus about thirty days behind it. Yesterday is

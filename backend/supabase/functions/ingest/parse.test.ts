@@ -189,6 +189,8 @@ Deno.test("parseProjects: the list, one project, defaults and normalisations", (
   assertEquals(parseProjects({ project: { id: "p1", progress: 0, updates: [] } }),
     { projects: [{ key: "p1", name: "p1", kind: "other", status: "active", progress: 0 }] });
   assertEquals(parseProjects([{ key: "x", summary: "", next_step: " " }]), { projects: [{ key: "x", name: "x", kind: "other", status: "active" }] });
+  // Planned: lined up, not started.
+  assertEquals(parseProjects({ key: "next", status: "planned" }), { projects: [{ key: "next", name: "next", kind: "other", status: "planned" }] });
 });
 
 Deno.test("parseProjects: stages and the one it's in", () => {
@@ -219,7 +221,7 @@ Deno.test("parseProjects: what it refuses", () => {
   assertEquals(fail(parseProjects({ projects: [{ key: "bad key!" }] })), "project 1: key must be 1 to 120 letters, digits or . _ / -");
   assertEquals(fail(parseProjects({ projects: [{ key: "-x" }] })), "project 1: key must be 1 to 120 letters, digits or . _ / -");
   assertEquals(one({ kind: "repo" }), "project k: kind must be code, task, launch or other");
-  assertEquals(one({ status: "flying" }), "project k: status must be active, blocked, paused or done");
+  assertEquals(one({ status: "flying" }), "project k: status must be planned, active, blocked, paused or done");
   assertEquals(one({ progress: 120 }), "project k: progress must be a number from 0 to 100");
   assertEquals(one({ progress: -1 }), "project k: progress must be a number from 0 to 100");
   assertEquals(one({ progress: "half" }), "project k: progress must be a number from 0 to 100");

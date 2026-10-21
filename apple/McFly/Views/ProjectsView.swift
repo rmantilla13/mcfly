@@ -65,17 +65,19 @@ private struct ProjectLane: Identifiable {
     /// Every lane, the one that needs you first. A status this version doesn't
     /// know has already decoded as active, so it joins Active, as on the console.
     static func lanes(_ projects: [Project]) -> [ProjectLane] {
-        [Project.Status.blocked, .active, .paused, .done].map { status in
+        [Project.Status.blocked, .active, .paused, .planned, .done].map { status in
             ProjectLane(status: status, projects: projects.filter { $0.status == status })
         }
     }
 
-    /// The console's lane dots: coral blocked, green active, amber paused, grey done.
+    /// The console's lane dots: coral blocked, green active, amber paused,
+    /// indigo up next, grey done.
     var color: Color {
         switch status {
         case .blocked: return Theme.down
         case .active: return Theme.up
         case .paused: return Theme.amber
+        case .planned: return Color.planned
         case .done: return Theme.muted
         }
     }
@@ -85,6 +87,7 @@ private struct ProjectLane: Identifiable {
         case .blocked: return "Nothing blocked."
         case .active: return "Nothing in progress."
         case .paused: return "Nothing paused."
+        case .planned: return "Nothing lined up."
         case .done: return "Nothing finished yet."
         }
     }
@@ -121,7 +124,7 @@ private struct ProjectBoard: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 9) {
                             Circle().fill(lane.color).frame(width: 9, height: 9)
-                            Text(lane.status.label)
+                            Text(lane.status.groupLabel)
                                 .font(.title3.weight(.bold))
                                 .foregroundStyle(Theme.text)
                             ProjectCount(count: lane.projects.count)
@@ -142,7 +145,7 @@ private struct ProjectBoard: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Circle().fill(lane.color).frame(width: 9, height: 9)
-                Text(lane.status.label)
+                Text(lane.status.groupLabel)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.text)
                 Spacer(minLength: 6)
@@ -183,13 +186,13 @@ private struct ProjectTally: View {
     let projects: [Project]
 
     var body: some View {
-        let counts = [Project.Status.blocked, .active, .paused, .done]
+        let counts = [Project.Status.blocked, .active, .paused, .planned, .done]
             .map { status in (status: status, count: projects.filter { $0.status == status }.count) }
             .filter { $0.count > 0 }
         HStack(spacing: 6) {
             ForEach(Array(counts.enumerated()), id: \.element.status) { n, part in
                 if n > 0 { Text("·") }
-                Text("\(part.count) \(part.status.label.lowercased())")
+                Text("\(part.count) \(part.status.groupLabel.lowercased())")
                     .fontWeight(part.status == .blocked ? .semibold : nil)
                     .foregroundStyle(part.status == .blocked ? Theme.danger : Theme.muted)
             }
@@ -390,9 +393,13 @@ extension Color {
         case .active: return Theme.accent
         case .blocked: return Theme.down
         case .paused: return Theme.amber
+        case .planned: return .planned
         case .done: return Theme.up
         }
     }
+
+    /// Planned's indigo, the console's PLANNED_COLOR and the display's.
+    static let planned = Color(red: 0x7C / 255, green: 0x8C / 255, blue: 0xF8 / 255)
 }
 
 /// Thin rounded progress bar.
@@ -531,6 +538,7 @@ private struct ProjectHeroTile: View {
         switch project.status {
         case .blocked: return 0xF07F5A
         case .paused: return 0xF6B94A
+        case .planned: return 0x7C8CF8
         case .done: return 0x3DB37A
         case .active:
             if let hex = project.color, !hex.isEmpty { return Color.rgb(hex: hex) }

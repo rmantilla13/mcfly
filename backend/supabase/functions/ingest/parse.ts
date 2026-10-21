@@ -48,7 +48,7 @@ export type Project = {
   key: string;
   name: string;
   kind: "code" | "task" | "launch" | "other";
-  status: "active" | "blocked" | "paused" | "done";
+  status: "planned" | "active" | "blocked" | "paused" | "done";
   progress?: number;
   summary?: string;
   next_step?: string;
@@ -130,7 +130,7 @@ type Fail = { error: string };
 
 const KINDS = new Set(["hourly", "daily", "alert", "update"]);
 const PROJECT_KINDS = new Set(["code", "task", "launch", "other"]);
-const PROJECT_STATUSES = new Set(["active", "blocked", "paused", "done"]);
+const PROJECT_STATUSES = new Set(["planned", "active", "blocked", "paused", "done"]);
 const UPDATE_KINDS = new Set(["note", "commit", "pr", "ci", "deploy", "alert", "done"]);
 const WIDGET_TYPES = new Set(["metric", "status", "progress", "list", "text", "chart"]);
 const STATES = new Set(["ok", "warn", "down", "unknown"]);
@@ -379,7 +379,7 @@ export function parseProjects(body: unknown): { projects: Project[] } | Fail {
     const kind = str(raw.kind, 16) ?? "other";
     if (!PROJECT_KINDS.has(kind)) return { error: `project ${key}: kind must be code, task, launch or other` };
     const status = str(raw.status, 16) ?? "active";
-    if (!PROJECT_STATUSES.has(status)) return { error: `project ${key}: status must be active, blocked, paused or done` };
+    if (!PROJECT_STATUSES.has(status)) return { error: `project ${key}: status must be planned, active, blocked, paused or done` };
     const progress = num(raw.progress);
     if (progress === null || (progress !== undefined && (progress < 0 || progress > 100))) {
       return { error: `project ${key}: progress must be a number from 0 to 100` };

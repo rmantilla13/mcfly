@@ -340,7 +340,7 @@ final class AppModel {
                 return "| **\(s.symbol)** | \(Format.price(q.price, currency: q.currency)) | \(Format.change(q.change, pct: q.changePct)) |"
             }).joined(separator: "\n"))
         }
-        let moving = projects.filter { $0.status != .blocked }.prefix(4)
+        let moving = projects.filter { $0.status != .blocked && $0.status != .planned }.prefix(4)
         if !moving.isEmpty {
             parts.append("### Projects")
             parts.append(moving.map { p in

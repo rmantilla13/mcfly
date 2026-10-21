@@ -150,7 +150,7 @@ export type NewsReportDetail = { report: NewsReport; items: NewsItem[] };
 // ───────────────────────── Productivity feeds ─────────────────────────
 
 export type ProjectKind = "code" | "task" | "launch" | "other";
-export type ProjectStatus = "active" | "blocked" | "paused" | "done";
+export type ProjectStatus = "planned" | "active" | "blocked" | "paused" | "done";
 
 export type ProjectRow = {
   id: string;

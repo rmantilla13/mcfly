@@ -190,11 +190,17 @@ export const LANES: { status: ProjectStatus; label: string }[] = [
   { status: "blocked", label: "Blocked" },
   { status: "active", label: "Active" },
   { status: "paused", label: "Paused" },
+  { status: "planned", label: "Up next" },
   { status: "done", label: "Done" },
 ];
 
-// Every lane, in the order that needs you first, each in the agent's order
-// (the RPC's). A status the console doesn't know joins Active.
+// Planned's colour wherever a status has one: a calm indigo, neither in
+// flight nor finished. The display and the app use the same.
+export const PLANNED_COLOR = "#7C8CF8";
+
+// Every lane, in the order that needs you first (the ones in flight, then
+// what's up next, then what's done), each in the agent's order (the RPC's).
+// A status the console doesn't know joins Active.
 export function projectLanes<P extends Pick<ProjectRow, "status">>(projects: P[]): { status: ProjectStatus; label: string; projects: P[] }[] {
   const known = new Set(LANES.map((l) => l.status));
   return LANES.map((lane) => ({
@@ -219,7 +225,8 @@ export type StageTrack = {
 
 // A project's stages as steps: the ones before its stage done, its stage in
 // the project's status (blocked or paused, else current), the rest next. A
-// done project has been through them all. Null for one without stages.
+// done project has been through them all, and a planned one has started
+// none. Null for one without stages.
 export function stageTrack(p: Pick<ProjectRow, "stages" | "stage" | "status">): StageTrack | null {
   const n = p.stages.length;
   if (!n) return null;
@@ -231,6 +238,9 @@ export function stageTrack(p: Pick<ProjectRow, "stages" | "stage" | "status">): 
       headline: n === 1 ? "Done" : `All ${n} stages done`,
       position: `${n} of ${n}`,
     };
+  }
+  if (p.status === "planned") {
+    return { steps: p.stages.map((name) => ({ name, state: "next" })), current: null, index: -1, headline: "Planned", position: n === 1 ? "1 stage" : `${n} stages` };
   }
   const index = p.stage ? p.stages.indexOf(p.stage) : -1;
   const here: StageState = p.status === "blocked" ? "blocked" : p.status === "paused" ? "paused" : "current";

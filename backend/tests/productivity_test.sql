@@ -42,6 +42,10 @@ select tests.eq((select u.kind from project_updates u join projects p on p.id = 
                 'deploy', 'the newest update');
 select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "bad key!", "name": "x"}]')$$, '%check constraint%', 'bad key');
 select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "status": "flying"}]')$$, '%check constraint%', 'bad status');
+-- Planned (20261021000060): lined up, not started; up next after the ones in flight.
+select tests.eq(ingest_projects(:'ops', '[{"key": "next-thing", "name": "Next thing", "status": "planned"}]'), 1, 'a planned project');
+select tests.eq((select status from projects where key = 'next-thing'), 'planned', 'planned is a status');
+delete from projects where key = 'next-thing';
 select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '[{"key": "k", "name": "x", "progress": 120}]')$$, '%check constraint%', 'progress over 100');
 select tests.throws($$select ingest_projects('00000000-0000-0000-0000-00000000a004', '{"key": "k"}')$$, 'projects must be a list', 'not a list');
 -- A second agent may use the same key: projects are per agent.

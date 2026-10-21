@@ -7,25 +7,28 @@ import { StatusDot, type StatusState } from "@/components/charts";
 import { StageBar } from "@/components/StageTrack";
 import { CARD, rise, STRETCH } from "@/components/feed/styles";
 import { Progress } from "@/components/ui/progress";
-import { projectLanes, stageTrack, timeInStage } from "@/lib/feed-layout";
+import { PLANNED_COLOR, projectLanes, stageTrack, timeInStage } from "@/lib/feed-layout";
 import { cssColor, plural } from "@/lib/format";
 import type { ProjectRow, ProjectStatus } from "@/lib/types";
 
 // The Projects tab as a list: where everything stands at the top (a bar
 // split by status, a count for each that jumps to its group), then a group
-// per status, the one that needs you first, a row per project. Each row is
+// per status, the one that needs you first and what's up next after the
+// ones in flight, a row per project. Each row is
 // the project (its colour down the left, what it is, whose it is), the
 // stage it is in as a bar of stages with how long it has been there, what's
 // next, and its status and newest update. A project without stages shows
 // its progress instead, or nothing. Rows open the project's page.
 
-const DOT: Record<ProjectStatus, StatusState> = { blocked: "down", active: "ok", paused: "warn", done: "unknown" };
+const DOT: Record<ProjectStatus, StatusState> = { blocked: "down", active: "ok", paused: "warn", planned: "unknown", done: "unknown" };
 const SHARE: Record<ProjectStatus, string> = {
   blocked: "bg-destructive",
   active: "bg-success",
   paused: "bg-warning",
+  planned: "bg-[#7C8CF8]",
   done: "bg-muted-foreground/35",
 };
+const dotColor = (status: ProjectStatus) => (status === "planned" ? PLANNED_COLOR : undefined);
 
 export function ProjectsList({ projects, now }: { projects: ProjectRow[]; now: number }) {
   if (projects.length === 0) {
@@ -45,7 +48,7 @@ export function ProjectsList({ projects, now }: { projects: ProjectRow[]; now: n
         .map((lane) => (
           <section key={lane.status} id={`projects-${lane.status}`} aria-labelledby={`projects-${lane.status}-title`} className="scroll-mt-24">
             <h3 id={`projects-${lane.status}-title`} className="mb-2.5 flex items-center gap-2 px-1 text-sm font-semibold">
-              <StatusDot state={DOT[lane.status]} pulse={false} />
+              <StatusDot state={DOT[lane.status]} color={dotColor(lane.status)} pulse={false} />
               {lane.label}
               <span className="rounded-full bg-foreground/8 px-2 text-xs font-normal text-muted-foreground tabular-nums">{lane.projects.length}</span>
             </h3>
@@ -63,7 +66,9 @@ export function ProjectsList({ projects, now }: { projects: ProjectRow[]; now: n
 // One bar for every project, a share per status, and the four counts under
 // it as links to their groups.
 function StatusOverview({ lanes, total }: { lanes: ReturnType<typeof projectLanes<ProjectRow>>; total: number }) {
-  const open = total - (lanes.find((l) => l.status === "done")?.projects.length ?? 0);
+  const count = (status: ProjectStatus) => lanes.find((l) => l.status === status)?.projects.length ?? 0;
+  const inFlight = count("blocked") + count("active") + count("paused");
+  const upNext = count("planned");
   return (
     <section className={cn(CARD, "flex flex-col gap-4 p-5", rise(0).className)} style={rise(0).style} aria-labelledby="projects-status-title">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -71,7 +76,7 @@ function StatusOverview({ lanes, total }: { lanes: ReturnType<typeof projectLane
           Status
         </h3>
         <span className="text-[13px] text-muted-foreground">
-          {plural(total, "project")} · {open} open
+          {plural(total, "project")} · {inFlight} in flight{upNext ? ` · ${upNext} up next` : ""}
         </span>
       </div>
       <div className="flex h-3 gap-[3px] overflow-hidden rounded-full" role="img" aria-label={lanes.map((l) => `${l.projects.length} ${l.label.toLowerCase()}`).join(", ")}>
@@ -85,13 +90,13 @@ function StatusOverview({ lanes, total }: { lanes: ReturnType<typeof projectLane
             />
           ))}
       </div>
-      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {lanes.map((l) => {
           const n = l.projects.length;
           const inner = (
             <>
               <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                <StatusDot state={DOT[l.status]} pulse={l.status === "blocked" && n > 0 ? undefined : false} />
+                <StatusDot state={DOT[l.status]} color={dotColor(l.status)} pulse={l.status === "blocked" && n > 0 ? undefined : false} />
                 {l.label}
               </span>
               <span className={cn("font-heading text-2xl leading-none font-semibold tabular-nums", n === 0 && "text-muted-foreground/60")}>{n}</span>

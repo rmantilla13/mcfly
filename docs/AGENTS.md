@@ -185,7 +185,7 @@ curl -X POST "$MCFLY_URL/functions/v1/ingest/projects" \
 | Field | |
 |---|---|
 | `key` | required; your id for the project (a repo name, a ticket). A push with the same key **updates** the project |
-| `name` (≤120), `kind` (`code`, `task`, `launch`, `other`), `status` (`active`, `blocked`, `paused`, `done`), `progress` (0–100) | |
+| `name` (≤120), `kind` (`code`, `task`, `launch`, `other`), `status` (`planned`, `active`, `blocked`, `paused`, `done`; `planned` is one lined up but not started, listed as Up next), `progress` (0–100) | |
 | `summary` (≤2000), `next_step` (≤500), `link`, `color` (`#rrggbb`), `sort_order`, `data` | optional |
 | `stages`, `stage` | optional. `stages` is the project's steps in order (at most 12 distinct names, ≤40 each); `stage` is the one it is in now, named in any case. Leave either out and the project keeps what it had (a stage the new `stages` no longer list is cleared); `null` or `[]` clears it. The console, the display and the app show a project's stages: the ones before `stage` as done, `stage` in the project's status (blocked, paused), and every one done once `status` is `done` |
 | `updates[]` | `text` (required, ≤2000), `kind` (`note`, `commit`, `pr`, `ci`, `deploy`, `alert`, `done`), `url`, `at`. At most 20 per push; the same line again is not added twice; a project keeps its last 200 |
