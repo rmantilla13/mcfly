@@ -179,14 +179,6 @@ Rectangle {
         anchors.bottomMargin: Theme.compact ? 12 : 24
         spacing: Theme.compact ? 4 : 8
 
-        // The mark.
-        FluxMark {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.bottomMargin: Theme.compact ? 4 : 8
-            Layout.preferredWidth: Theme.compact ? 40 : 52
-            Layout.preferredHeight: Layout.preferredWidth
-        }
-
         Repeater {
             id: railItems
             model: rail.horizontal ? [] : rail.items
