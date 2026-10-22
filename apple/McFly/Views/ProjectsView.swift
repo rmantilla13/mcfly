@@ -1,25 +1,19 @@
 import McFlyKit
 import SwiftUI
 
-/// What the agents say the person is working on, as the console's board
-/// (ProjectsBoard.tsx) and the display's Projects: a lane per status, the one
-/// that needs you first (Blocked, Active, Paused, Done), side by side where
-/// there's room and, on a phone, as sections in that order with their
-/// counts. Each card wears its colour (the project's, else its agent's) down
-/// its edge and as its progress ring, with the summary, the next step and the
-/// newest update. A blocked card's border breathes, and Ask why asks McFly
-/// what would unblock it. The cards settle in once, as the board first shows.
+/// What the agents say the person is working on, as the display's Projects
+/// and the console's List lay it out: over it, where everything stands (a
+/// bar split by status, and chips that show one group), then a group per
+/// status, the one that needs you first (Blocked, Active, Paused, Up next,
+/// Done, which stays folded until opened), a row per project. A row wears
+/// its colour down its edge and says when it last moved, with its stages
+/// as a bar (or its progress) and what's next. A blocked one has Ask why
+/// under it, which asks McFly what would unblock it.
 struct ProjectsView: View {
     @Environment(AppModel.self) private var app
-    /// The content's width; 0 until it's known, and the board waits for it.
-    @State private var width: CGFloat = 0
     @State private var asking: String?
 
     private var feeds: FeedStore { app.feeds }
-
-    /// Lanes side by side from this wide (two by two, four from `fourLanesFrom`); sections under it.
-    static let lanesFrom: CGFloat = 640
-    static let fourLanesFrom: CGFloat = 980
 
     var body: some View {
         ScrollView {
@@ -30,15 +24,12 @@ struct ProjectsView: View {
                 if feeds.projects.isEmpty {
                     EmptyCard(text: feeds.hasLoaded ? "No projects yet. A code or task agent pushes them." : "Loading…",
                               systemImage: "folder")
-                } else if width > 0 {
-                    ProjectBoard(projects: feeds.projects, agents: feeds.agents,
-                                 lanesAcross: width >= Self.fourLanesFrom ? 4 : width >= Self.lanesFrom ? 2 : 0) { asking = $0 }
+                } else {
+                    ProjectList(projects: feeds.projects, agents: feeds.agents) { asking = $0 }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .padding(Theme.page)
-            .frame(maxWidth: 1240)
+            .frame(maxWidth: 760)
             .frame(maxWidth: .infinity)
         }
         .screenBackground()
@@ -56,21 +47,22 @@ struct ProjectsView: View {
     }
 }
 
-/// One lane: a status and its projects, in the agents' order.
+/// One group: a status and its projects, in the agents' order.
 private struct ProjectLane: Identifiable {
     let status: Project.Status
     let projects: [Project]
     var id: Project.Status { status }
 
-    /// Every lane, the one that needs you first. A status this version doesn't
-    /// know has already decoded as active, so it joins Active, as on the console.
+    /// Every group, the one that needs you first. A status this version
+    /// doesn't know has already decoded as active, so it joins Active, as on
+    /// the console.
     static func lanes(_ projects: [Project]) -> [ProjectLane] {
         [Project.Status.blocked, .active, .paused, .planned, .done].map { status in
             ProjectLane(status: status, projects: projects.filter { $0.status == status })
         }
     }
 
-    /// The console's lane dots: coral blocked, green active, amber paused,
+    /// The console's dots: coral blocked, green active, amber paused,
     /// indigo up next, grey done.
     var color: Color {
         switch status {
@@ -81,58 +73,36 @@ private struct ProjectLane: Identifiable {
         case .done: return Theme.muted
         }
     }
-
-    var emptyText: String {
-        switch status {
-        case .blocked: return "Nothing blocked."
-        case .active: return "Nothing in progress."
-        case .paused: return "Nothing paused."
-        case .planned: return "Nothing lined up."
-        case .done: return "Nothing finished yet."
-        }
-    }
 }
 
-/// The lanes (or sections), the tally over them, and the cards' entrance.
-private struct ProjectBoard: View {
+/// The status card, then the groups (just the one picked, when a chip is).
+/// Done stays folded under its header until opened, unless it's the chip.
+private struct ProjectList: View {
     let projects: [Project]
     let agents: [Agent]
-    /// 4 or 2 lanes to a row; 0 for sections, one under the other.
-    let lanesAcross: Int
     let ask: (String) -> Void
+    @State private var filter: Project.Status?
+    @State private var showDone = false
     @State private var revealed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let lanes = ProjectLane.lanes(projects)
-        // Each card's place in the entrance, in reading order.
+        let lanes = ProjectLane.lanes(projects).filter { !$0.projects.isEmpty }
+        // A chip whose group has emptied shows everything again.
+        let showing = filter.flatMap { f in lanes.contains { $0.status == f } ? f : nil }
+        // The agent's name only says something when there's more than one.
+        let manyAgents = Set(projects.map(\.agentId)).count > 1
         let order = Dictionary(lanes.flatMap(\.projects).enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
-        VStack(alignment: .leading, spacing: 18) {
-            ProjectTally(projects: projects)
-            if lanesAcross > 0 {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(Array(stride(from: 0, to: lanes.count, by: lanesAcross)), id: \.self) { start in
-                        HStack(alignment: .top, spacing: 14) {
-                            ForEach(lanes[start..<min(start + lanesAcross, lanes.count)]) { lane in
-                                laneView(lane, order: order)
-                                    .frame(maxWidth: .infinity, alignment: .top)
-                            }
-                        }
-                    }
-                }
-            } else {
-                ForEach(lanes.filter { !$0.projects.isEmpty }) { lane in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 9) {
-                            Circle().fill(lane.color).frame(width: 9, height: 9)
-                            Text(lane.status.groupLabel)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(Theme.text)
-                            ProjectCount(count: lane.projects.count)
-                            Spacer()
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityAddTraits(.isHeader)
-                        cards(lane, order: order)
+        VStack(alignment: .leading, spacing: 22) {
+            ProjectStatusCard(lanes: lanes, total: projects.count, showing: showing) { status in
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { filter = showing == status ? nil : status }
+            }
+            ForEach(lanes.filter { showing == nil || $0.status == showing }) { lane in
+                let open = lane.status != .done || showDone || showing == .done
+                VStack(alignment: .leading, spacing: 10) {
+                    header(lane, open: open, foldable: lane.status == .done && showing != .done)
+                    if open {
+                        group(lane, manyAgents: manyAgents, order: order)
                     }
                 }
             }
@@ -140,72 +110,156 @@ private struct ProjectBoard: View {
         .onAppear { revealed = true }
     }
 
-    private func laneView(_ lane: ProjectLane, order: [UUID: Int]) -> some View {
-        let alert = lane.status == .blocked && !lane.projects.isEmpty
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Circle().fill(lane.color).frame(width: 9, height: 9)
-                Text(lane.status.groupLabel)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.text)
-                Spacer(minLength: 6)
-                ProjectCount(count: lane.projects.count)
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 4)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
-            if lane.projects.isEmpty {
-                Text(lane.emptyText)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.muted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 22)
-                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(Theme.divider, style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
-            } else {
-                cards(lane, order: order)
+    private func header(_ lane: ProjectLane, open: Bool, foldable: Bool) -> some View {
+        HStack(spacing: 9) {
+            Circle().fill(lane.color).frame(width: 9, height: 9)
+            Text(lane.status == .blocked ? "Needs you" : lane.status.groupLabel)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Theme.text)
+            ProjectCount(count: lane.projects.count)
+            Spacer()
+            if foldable {
+                Button(open ? "Hide" : "Show") {
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { showDone.toggle() }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+                .buttonStyle(.plain)
             }
         }
-        .padding(10)
-        .background(alert ? Theme.coral.opacity(Theme.palette.isDark ? 0.12 : 0.08) : Theme.text.opacity(0.035),
-                    in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
-    private func cards(_ lane: ProjectLane, order: [UUID: Int]) -> some View {
-        ForEach(lane.projects) { project in
-            ProjectCardLink(project: project, agent: agents.first { $0.id == project.agentId },
-                            order: order[project.id] ?? 0, revealed: revealed, ask: ask)
+    /// The group's rows on one card, a hairline between them; Needs you's
+    /// card is tinted coral and its edge breathes.
+    private func group(_ lane: ProjectLane, manyAgents: Bool, order: [UUID: Int]) -> some View {
+        let blocked = lane.status == .blocked
+        let shape = RoundedRectangle(cornerRadius: Theme.radiusSm + 4, style: .continuous)
+        return VStack(spacing: 0) {
+            ForEach(Array(lane.projects.enumerated()), id: \.element.id) { index, project in
+                if index > 0 {
+                    Rectangle().fill(Theme.divider).frame(height: 1).padding(.leading, 30)
+                }
+                ProjectRow(project: project, agent: agents.first { $0.id == project.agentId }, showAgent: manyAgents, ask: ask)
+                    .opacity(revealed || reduceMotion ? 1 : 0)
+                    .offset(y: revealed || reduceMotion ? 0 : 10)
+                    .animation(.smooth(duration: 0.38).delay(Double(min(order[project.id] ?? 0, 8)) * 0.035), value: revealed)
+            }
         }
+        .background(blocked ? Theme.coral.opacity(Theme.palette.isDark ? 0.12 : 0.08) : Theme.surface, in: shape)
+        .overlay {
+            if blocked {
+                shape.strokeBorder(Theme.danger.opacity(0.7), lineWidth: 1.5)
+                BoardBreath { phase in
+                    shape.inset(by: 1.5).strokeBorder(Theme.danger.opacity(0.35 * (phase ?? 0)), lineWidth: 4)
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .clipShape(shape)
+        .shadow(color: .black.opacity(0.05), radius: 14, y: 4)
     }
 }
 
-/// "1 blocked · 1 active · 1 paused" over the board: each lane's count, in
-/// the lanes' order, leaving out the empty ones, so it adds up to the board.
-private struct ProjectTally: View {
-    let projects: [Project]
+/// Where everything stands: how many projects and how many need you, and a
+/// bar split by status in the groups' colours, on a card; under it a chip
+/// per status with its count (All first), scrolling to the screen's edge,
+/// that shows just that group, and again shows all.
+private struct ProjectStatusCard: View {
+    let lanes: [ProjectLane]
+    let total: Int
+    let showing: Project.Status?
+    let pick: (Project.Status?) -> Void
 
     var body: some View {
-        let counts = [Project.Status.blocked, .active, .paused, .planned, .done]
-            .map { status in (status: status, count: projects.filter { $0.status == status }.count) }
-            .filter { $0.count > 0 }
-        HStack(spacing: 6) {
-            ForEach(Array(counts.enumerated()), id: \.element.status) { n, part in
-                if n > 0 { Text("·") }
-                Text("\(part.count) \(part.status.groupLabel.lowercased())")
-                    .fontWeight(part.status == .blocked ? .semibold : nil)
-                    .foregroundStyle(part.status == .blocked ? Theme.danger : Theme.muted)
-            }
+        let blocked = lanes.first { $0.status == .blocked }?.projects.count ?? 0
+        let open = lanes.filter { $0.status != .done && $0.status != .planned }.reduce(0) { $0 + $1.projects.count }
+        VStack(alignment: .leading, spacing: 12) {
+            summary(blocked: blocked, open: open)
+            chips
         }
-        .font(.subheadline)
-        .foregroundStyle(Theme.muted)
-        .contentTransition(.numericText())
-        .animation(.smooth, value: projects.map(\.status))
-        .accessibilityElement(children: .combine)
+    }
+
+    private func summary(blocked: Int, open: Int) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(total == 1 ? "1 project" : "\(total) projects")
+                    .font(.headline)
+                    .foregroundStyle(Theme.text)
+                Text("· \(open) in flight")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.muted)
+                Spacer(minLength: 8)
+                if blocked > 0 {
+                    Label(blocked == 1 ? "1 needs you" : "\(blocked) need you", systemImage: "exclamationmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.danger)
+                        .labelStyle(.titleAndIcon)
+                }
+            }
+            .contentTransition(.numericText())
+            .accessibilityElement(children: .combine)
+            GeometryReader { geo in
+                let gaps = CGFloat(max(0, lanes.count - 1)) * 3
+                HStack(spacing: 3) {
+                    ForEach(lanes) { lane in
+                        Capsule()
+                            .fill(lane.color)
+                            .opacity(showing == nil || showing == lane.status ? 1 : 0.3)
+                            .frame(width: max(6, (geo.size.width - gaps) * CGFloat(lane.projects.count) / CGFloat(max(1, total))))
+                    }
+                }
+            }
+            .frame(height: 8)
+            .accessibilityHidden(true)
+        }
+        .card()
+    }
+
+    private var chips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("All", count: total, color: nil, selected: showing == nil) { pick(nil) }
+                ForEach(lanes) { lane in
+                    chip(lane.status.groupLabel, count: lane.projects.count, color: lane.color, selected: showing == lane.status) {
+                        pick(lane.status)
+                    }
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        .scrollClipDisabled()
+    }
+
+    private func chip(_ title: String, count: Int, color: Color?, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                if let color {
+                    Circle().fill(color).frame(width: 8, height: 8)
+                }
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text("\(count)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(selected ? Theme.text : Theme.muted)
+            }
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(selected ? (color ?? Theme.accent).opacity(0.18) : Theme.text.opacity(0.06), in: Capsule())
+            .overlay {
+                if selected { Capsule().strokeBorder((color ?? Theme.accent).opacity(0.8), lineWidth: 1.5) }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("\(title), \(count)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
-/// A lane's count in a small pill.
+/// A group's count in a small pill.
 private struct ProjectCount: View {
     let count: Int
 
@@ -221,50 +275,17 @@ private struct ProjectCount: View {
     }
 }
 
-/// A card that opens its project; a blocked one has Ask why under it, over
-/// the link rather than inside it, so a tap there asks and doesn't open.
-private struct ProjectCardLink: View {
+/// One project in its group, opening its page: its colour down the edge,
+/// the name and when it last moved, whose it is (when there's more than one
+/// agent), its stages as a bar or else its progress, and what's next (what
+/// happened last, once it's done or when nobody said). A blocked one has
+/// Ask why under it, beside the link rather than inside it, so a tap there
+/// asks and doesn't open.
+private struct ProjectRow: View {
     let project: Project
     let agent: Agent?
-    let order: Int
-    let revealed: Bool
+    let showAgent: Bool
     let ask: (String) -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        let blocked = project.status == .blocked
-        let settled = revealed || reduceMotion
-        NavigationLink(value: project) {
-            ProjectCard(project: project, agent: agent, asksWhy: blocked)
-        }
-        .buttonStyle(PressableStyle())
-        .overlay(alignment: .bottomLeading) {
-            if blocked {
-                FeedAskChip(title: "Ask why") { ask(ProjectsView.question(about: project)) }
-                    .padding(.leading, ProjectCard.leadingInset)
-                    .padding(.bottom, ProjectCard.inset)
-            }
-        }
-        .opacity(settled ? 1 : 0)
-        .offset(y: settled ? 0 : 14)
-        .animation(.smooth(duration: 0.4).delay(Double(min(order, 6)) * 0.04), value: revealed)
-    }
-}
-
-/// Name, kind and agent, a progress ring in the project's colour, the
-/// summary, its stages as a bar (when the agent lays them out), the next step
-/// and the newest update, on a card with the colour down its edge. A blocked
-/// card's border breathes.
-struct ProjectCard: View {
-    let project: Project
-    var compact = false
-    /// Whose project it is: its colour stands in when the project has none.
-    var agent: Agent?
-    /// Leaves room at the foot for Ask why, which the list lays over it.
-    var asksWhy = false
-
-    static let inset: CGFloat = 16
-    static let leadingInset: CGFloat = 21
 
     /// The project's colour, else its agent's, else the accent.
     static func color(_ project: Project, agent: Agent?) -> Color {
@@ -276,106 +297,88 @@ struct ProjectCard: View {
     var body: some View {
         let color = Self.color(project, agent: agent)
         let done = project.status == .done
-        let radius = compact ? Theme.radiusSm : Theme.radiusSm + 6
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(project.name)
-                        .font(.headline)
-                        .foregroundStyle(done ? Theme.muted : Theme.text)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    HStack(spacing: 5) {
-                        Image(systemName: project.kind.systemImage)
-                        Text([project.kind.rawValue.capitalized, agent?.name].compactMap { $0 }.joined(separator: " · "))
-                            .lineLimit(1)
+            NavigationLink(value: project) {
+                HStack(alignment: .top, spacing: 12) {
+                    Capsule()
+                        .fill(color)
+                        .frame(width: 4)
+                        .frame(maxHeight: .infinity)
+                        .opacity(done ? 0.5 : 1)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(project.name)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(done ? Theme.muted : Theme.text)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 6)
+                            Text(Format.relative(project.lastUpdate?.happenedAt ?? project.updatedAt))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .fixedSize()
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Theme.muted.opacity(0.6))
+                        }
+                        if showAgent, let agent {
+                            Text(agent.name)
+                                .font(.caption)
+                                .foregroundStyle(Theme.muted)
+                                .padding(.top, -6)
+                        }
+                        if let track = project.stageTrack {
+                            StageBar(track: track, color: color)
+                        } else if let progress = project.progress, !done {
+                            HStack(spacing: 10) {
+                                ProgressBar(value: Double(progress) / 100, color: color)
+                                Text("\(progress)%")
+                                    .font(.caption.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(Theme.muted)
+                            }
+                        }
+                        said(done: done)
                     }
-                    .font(.caption)
-                    .foregroundStyle(Theme.muted)
                 }
-                Spacer(minLength: 0)
-                if let progress = project.progress {
-                    BoardRing(value: Double(progress) / 100, color: done ? Theme.up : color, lineWidth: 5, delay: 0.25) {
-                        Text("\(progress)%")
-                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(Theme.text)
-                            .contentTransition(.numericText(value: Double(progress)))
-                    }
-                    .frame(width: 46, height: 46)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(progress) percent done")
-                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 14)
+                .contentShape(Rectangle())
             }
-            if !compact {
-                if !project.summary.isEmpty {
-                    Text(project.summary)
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.muted)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .padding(.top, 10)
-                }
-            }
-            if let track = project.stageTrack {
-                StageBar(track: track, color: color)
-                    .padding(.top, 12)
-            }
-            if !compact {
-                if let next = project.nextStep, !next.isEmpty, !done {
-                    Text("\(Text("Next:").fontWeight(.semibold)) \(next)")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.text)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .padding(.top, project.stages.isEmpty ? 6 : 10)
-                }
-            }
-            if let update = project.lastUpdate {
-                VStack(alignment: .leading, spacing: 0) {
-                    Rectangle().fill(Theme.divider).frame(height: 1).padding(.bottom, 9)
-                    HStack(spacing: 6) {
-                        Image(systemName: update.kind.systemImage).font(.caption2)
-                        Text(update.text).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(Format.relative(update.happenedAt))
-                    }
-                    .font(.caption)
-                    .foregroundStyle(Theme.muted)
-                }
-                .padding(.top, 12)
-            }
-            if asksWhy {
-                // The list's Ask why sits here, over the card.
-                FeedAskChip(title: "Ask why") {}
-                    .hidden()
-                    .padding(.top, 12)
-                    .accessibilityHidden(true)
-            }
-        }
-        .padding(Self.inset)
-        .padding(.leading, Self.leadingInset - Self.inset)
-        .frame(width: compact ? 220 : nil, alignment: .leading)
-        .frame(maxWidth: compact ? nil : .infinity, alignment: .leading)
-        .background {
-            ZStack(alignment: .leading) {
-                shape.fill(Theme.surface)
-                Rectangle().fill(color).frame(width: 5)
-            }
-            .clipShape(shape)
-        }
-        .overlay {
+            .buttonStyle(PressableStyle())
             if project.status == .blocked {
-                shape.strokeBorder(Theme.danger.opacity(0.8), lineWidth: 1.5)
-                // A soft second edge inside the first, breathing in and out.
-                BoardBreath { phase in
-                    shape.inset(by: 1.5).strokeBorder(Theme.danger.opacity(0.4 * (phase ?? 0)), lineWidth: 4)
-                }
-                .allowsHitTesting(false)
+                FeedAskChip(title: "Ask why") { ask(ProjectsView.question(about: project)) }
+                    .padding(.leading, 30)
+                    .padding(.bottom, 14)
+                    .padding(.top, -4)
             }
         }
-        .shadow(color: .black.opacity(0.05), radius: 14, y: 4)
-        .opacity(done ? 0.82 : 1)
+    }
+
+    /// "Next: …" while it's open; else the newest update, else the summary.
+    @ViewBuilder private func said(done: Bool) -> some View {
+        if !done, let next = project.nextStep, !next.isEmpty {
+            Text("\(Text("Next:").fontWeight(.semibold)) \(next)")
+                .font(.subheadline)
+                .foregroundStyle(Theme.text)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        } else if let update = project.lastUpdate {
+            Label {
+                Text(update.text).lineLimit(2).multilineTextAlignment(.leading)
+            } icon: {
+                Image(systemName: update.kind.systemImage).font(.caption)
+            }
+            .font(.subheadline)
+            .foregroundStyle(Theme.muted)
+        } else if !project.summary.isEmpty {
+            Text(project.summary)
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
     }
 }
 
@@ -444,7 +447,7 @@ struct ProjectDetailView: View {
         // The feed's copy once a refresh has one, so the tile keeps up.
         let project = app.feeds.project(self.project.id) ?? self.project
         let agent = app.feeds.agent(project.agentId)
-        let color = ProjectCard.color(project, agent: agent)
+        let color = ProjectRow.color(project, agent: agent)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ProjectHeroTile(project: project, agent: agent)

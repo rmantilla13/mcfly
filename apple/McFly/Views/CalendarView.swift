@@ -27,13 +27,14 @@ struct CalendarView: View {
                 .card(padding: 12)
                 let day = picked ?? calendar.startOfDay(for: .now)
                 let dayEvents = EventDays.days(feeds.events, from: day, count: 1, calendar: calendar).first?.events ?? []
-                DayTile(day: day, events: dayEvents, showAll: picked == nil ? nil : {
+                let load = DayLoad(events: dayEvents, day: day, calendar: calendar)
+                DayTile(day: day, events: dayEvents, load: load, showAll: picked == nil ? nil : {
                     withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)) { self.picked = nil }
                 })
                 if picked != nil {
                     // The tile names the day and says when there's nothing on it.
                     ForEach(dayEvents) { event in
-                        NavigationLink(value: event) { EventRow(event: event, day: day) }
+                        NavigationLink(value: event) { EventRow(event: event, day: day, kind: load.kind(of: event)) }
                             .buttonStyle(PressableStyle())
                     }
                 } else {
@@ -44,8 +45,9 @@ struct CalendarView: View {
                     }
                     ForEach(agenda, id: \.day) { day in
                         SectionHeader(Format.dayLabel(day.day))
+                        let dayLoad = DayLoad(events: day.events, day: day.day, calendar: calendar)
                         ForEach(day.events) { event in
-                            NavigationLink(value: event) { EventRow(event: event, day: day.day) }
+                            NavigationLink(value: event) { EventRow(event: event, day: day.day, kind: dayLoad.kind(of: event)) }
                                 .buttonStyle(PressableStyle())
                         }
                     }
@@ -64,12 +66,15 @@ struct CalendarView: View {
 
 /// One day on the display's day tile (CalendarScreen.qml's DayTile, as its
 /// portrait layout has it): the glow colours, seed 5.1 and one ring; the
-/// weekday, the date, how many events and the first two, each a tap away.
-/// Show all, while a day is picked, goes back to the agenda.
+/// weekday, the date, how many events and the first two, each a tap away,
+/// the ones that clash or run into the next marked. Show all, while a day
+/// is picked, goes back to the agenda.
 struct DayTile: View {
     let day: Date
     /// The day's events, all-day ones first.
     let events: [CalendarEvent]
+    /// Where they clash, run back to back, and the busiest stretch.
+    let load: DayLoad
     var showAll: (() -> Void)?
 
     var body: some View {
@@ -89,7 +94,7 @@ struct DayTile: View {
                 }
                 .accessibilityElement(children: .combine)
                 if Calendar.current.isDateInToday(day) || events.contains(where: { !$0.allDay }) {
-                    CalendarDayRail(day: day, events: events, tile: tile)
+                    CalendarDayRail(day: day, events: events, load: load, tile: tile)
                         .padding(.top, 14)
                 }
                 if !events.isEmpty {
@@ -130,7 +135,8 @@ struct DayTile: View {
         }
     }
 
-    /// The calendar's dot, when it starts, the title.
+    /// The calendar's dot, when it starts, the title, and a mark when it
+    /// clashes with another or runs straight into one.
     private func row(_ event: CalendarEvent, tile: TileColors) -> some View {
         HStack(spacing: 12) {
             Circle()
@@ -147,6 +153,7 @@ struct DayTile: View {
                 .foregroundStyle(tile.ink)
                 .lineLimit(1)
             Spacer(minLength: 0)
+            LoadMark(kind: load.kind(of: event), compact: true)
         }
         .padding(.vertical, 5)
         .contentShape(Rectangle())
@@ -163,19 +170,65 @@ struct DayTile: View {
 /// where it falls (8 am to 8 pm, or wider for an earlier or later one or,
 /// on today, for the hour it is), the
 /// ones that are over faded, and on today the now line, which glides to each
-/// new minute (the display's day view, in a line).
+/// new minute (the display's day view, in a line). Bars that run straight
+/// into the next are amber, and where two run at once the strip is red.
+/// Under it, a band warms with how booked the hours around each moment are,
+/// and a line says when the day is busiest and what clashes.
 private struct CalendarDayRail: View {
     let day: Date
     let events: [CalendarEvent]
+    let load: DayLoad
     let tile: TileColors
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.everyMinute) { context in
-            rail(now: context.date)
+        VStack(alignment: .leading, spacing: 10) {
+            TimelineView(.everyMinute) { context in
+                rail(now: context.date)
+            }
+            // The tile's rows and the line below say the same in words.
+            .accessibilityHidden(true)
+            summary
         }
-        // The tile's rows say the same in words.
-        .accessibilityHidden(true)
+    }
+
+    /// "Busiest 10 AM – 12:30 PM", then the clashes and back-to-back runs,
+    /// each only when there is one.
+    @ViewBuilder private var summary: some View {
+        let conflicts = load.conflictCount
+        let links = load.backToBackCount
+        if load.busiest != nil || conflicts > 0 || links > 0 {
+            VStack(alignment: .leading, spacing: 5) {
+                if let busiest = load.busiest {
+                    Label {
+                        Text("Busiest \(Format.time(busiest.start)) – \(Format.time(busiest.end))")
+                            .foregroundStyle(tile.ink)
+                    } icon: {
+                        Image(systemName: "flame.fill").foregroundStyle(Theme.warning)
+                    }
+                }
+                if conflicts > 0 || links > 0 {
+                    HStack(spacing: 14) {
+                        if conflicts > 0 {
+                            legend(conflicts == 1 ? "1 conflict" : "\(conflicts) conflicts", color: Theme.danger)
+                        }
+                        if links > 0 {
+                            legend("\(links) back to back", color: Theme.warning)
+                        }
+                    }
+                }
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .labelStyle(TightLabelStyle())
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func legend(_ text: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(text).foregroundStyle(tile.ink)
+        }
     }
 
     private func rail(now: Date) -> some View {
@@ -204,10 +257,19 @@ private struct CalendarDayRail: View {
                     ForEach(timed) { event in
                         let from = x(hour(event.startsAt))
                         Capsule()
-                            .fill(Color(hex: event.color ?? "#5B7CF5"))
+                            .fill(load.kind(of: event) == .backToBack ? Theme.warning : Color(hex: event.color ?? "#5B7CF5"))
                             .frame(width: max(6, x(hour(event.endsAt)) - from), height: 10)
                             .offset(x: from)
                             .opacity(isToday && event.endsAt <= now ? 0.45 : 1)
+                    }
+                    // Where two run at once, on top, a touch taller.
+                    ForEach(Array(load.conflicts.enumerated()), id: \.offset) { _, span in
+                        let from = x(hour(span.start))
+                        Capsule()
+                            .fill(Theme.danger)
+                            .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                            .frame(width: max(6, x(hour(span.end)) - from), height: 14)
+                            .offset(x: from)
                     }
                     if isToday && nowHour >= first && nowHour <= last {
                         VStack(spacing: 0) {
@@ -221,6 +283,11 @@ private struct CalendarDayRail: View {
                 .frame(width: across, height: 22, alignment: .leading)
             }
             .frame(height: 22)
+            // How booked the two hours around each moment are: clear, then
+            // amber, red where it's packed.
+            Capsule()
+                .fill(LinearGradient(stops: heatStops(first: first, last: last), startPoint: .leading, endPoint: .trailing))
+                .frame(height: 5)
             HStack {
                 Text(label(first))
                 Spacer()
@@ -232,10 +299,75 @@ private struct CalendarDayRail: View {
             .foregroundStyle(tile.inkMuted)
         }
     }
+
+    /// A stop per quarter hour from `first` to `last` (hours of the day).
+    private func heatStops(first: Double, last: Double) -> [Gradient.Stop] {
+        let span = max(1, last - first)
+        let from = max(0, Int(first * 4)), to = min(96, Int((last * 4).rounded(.up)))
+        guard from < to else { return [.init(color: .clear, location: 0), .init(color: .clear, location: 1)] }
+        return (from..<to).map { i in
+            let at = (Double(i) + 0.5) / 4
+            return Gradient.Stop(color: Self.heatColor(load.heat[i]), location: min(1, max(0, (at - first) / span)))
+        }
+    }
+
+    /// Nothing for a free stretch, amber deepening as it fills, red once
+    /// three quarters of it is booked.
+    static func heatColor(_ heat: Double) -> Color {
+        if heat <= 0.001 { return .clear }
+        if heat >= 0.75 { return Theme.danger.opacity(0.9) }
+        return Theme.warning.opacity(0.25 + 0.75 * heat / 0.75)
+    }
 }
 
-/// Seven columns of days with a dot per event, colored by its calendar. The
-/// picked day's fill glides from one day to the next; today keeps its soft one.
+/// A Label with its icon close to its text.
+private struct TightLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+            configuration.title
+        }
+    }
+}
+
+/// An event that clashes with another (red) or runs straight into one
+/// (amber): an icon on the day's tile, an icon and the word in a list, its
+/// amber the darker ink that reads on the daytime palette.
+struct LoadMark: View {
+    let kind: DayLoad.Kind
+    var compact = false
+
+    var body: some View {
+        switch kind {
+        case .clear:
+            EmptyView()
+        case .conflict:
+            mark("Conflict", systemImage: "exclamationmark.triangle.fill", color: Theme.danger)
+        case .backToBack:
+            mark("Back to back", systemImage: "arrow.right.to.line", color: compact ? Theme.warning : Theme.warningInk)
+        }
+    }
+
+    private func mark(_ word: String, systemImage: String, color: Color) -> some View {
+        Group {
+            if compact {
+                Image(systemName: systemImage)
+                    .accessibilityLabel(word)
+            } else {
+                HStack(spacing: 4) {
+                    Image(systemName: systemImage)
+                    Text(word)
+                }
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(color)
+    }
+}
+
+/// Seven columns of days with a dot per event, colored by its calendar, and
+/// a red one first on a day where two events clash. The picked day's fill
+/// glides from one day to the next; today keeps its soft one.
 struct MonthGrid: View {
     let month: Date
     @Binding var picked: Date?
@@ -285,7 +417,9 @@ struct MonthGrid: View {
     private func dayCell(_ day: Date) -> some View {
         let isToday = calendar.isDateInToday(day)
         let isPicked = picked.map { calendar.isDate($0, inSameDayAs: day) } ?? false
-        let colors = Array(Set(events.filter { $0.occurs(on: day, calendar: calendar) }.map { $0.color ?? "#5B7CF5" })).sorted().prefix(3)
+        let onDay = events.filter { $0.occurs(on: day, calendar: calendar) }
+        let clash = DayLoad(events: onDay, day: day, calendar: calendar).conflictCount > 0
+        let colors = Array(Set(onDay.map { $0.color ?? "#5B7CF5" })).sorted().prefix(clash ? 2 : 3)
         return Button {
             withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)) {
                 picked = isPicked ? nil : day
@@ -296,6 +430,9 @@ struct MonthGrid: View {
                     .font(.footnote.weight(isToday ? .bold : .regular).monospacedDigit())
                     .foregroundStyle(isPicked ? .white : (isToday ? Theme.accent : Theme.text))
                 HStack(spacing: 2) {
+                    if clash {
+                        Circle().fill(Theme.danger).frame(width: 5, height: 5)
+                    }
                     ForEach(Array(colors), id: \.self) { hex in
                         Circle().fill(Color(hex: hex)).frame(width: 4, height: 4)
                     }
@@ -319,7 +456,7 @@ struct MonthGrid: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(day.formatted(date: .complete, time: .omitted))
+        .accessibilityLabel(day.formatted(date: .complete, time: .omitted) + (clash ? ", events clash" : ""))
     }
 
     struct Cell: Hashable {
@@ -341,10 +478,13 @@ struct MonthGrid: View {
     }
 }
 
-/// Time (or All day), title, place; a bar in the calendar's color.
+/// Time (or All day), title, place; a bar in the calendar's color. One that
+/// clashes with another is outlined in red and says so; one that runs
+/// straight into the next says that, in amber.
 struct EventRow: View {
     let event: CalendarEvent
     var day: Date? = nil
+    var kind: DayLoad.Kind = .clear
 
     var body: some View {
         HStack(spacing: 12) {
@@ -366,6 +506,7 @@ struct EventRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(Theme.muted)
+                LoadMark(kind: kind)
             }
             Spacer(minLength: 0)
             Text(event.calendar)
@@ -373,6 +514,12 @@ struct EventRow: View {
                 .foregroundStyle(Color(hex: event.color ?? "#5B7CF5"))
         }
         .card(padding: 12, radius: Theme.radiusSm)
+        .overlay {
+            if kind == .conflict {
+                RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous)
+                    .strokeBorder(Theme.danger.opacity(0.7), lineWidth: 1.5)
+            }
+        }
     }
 }
 
