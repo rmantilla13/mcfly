@@ -212,7 +212,9 @@ ApplicationWindow {
             window.currentScreen = index
         }
         onSettingsRequested: { window.dismissKeyboard(); settings.open() }
-        onAskRequested: { assistant.open = true; assistant.focusInput() }
+        // The keyboard stays down until the field is tapped: talking and the
+        // suggestions come first (AssistantPanel).
+        onAskRequested: assistant.open = true
     }
 
     // The pages: right of the rail, or above the bar.
@@ -234,13 +236,11 @@ ApplicationWindow {
                 onOpenAssistant: question => {
                     assistant.open = true
                     if (question) AI.ask(question)
-                    else assistant.focusInput()
                 }
                 onPushToTalk: {
                     if (window.talk())
                         return
-                    assistant.open = true // no voice service: type instead
-                    assistant.focusInput()
+                    assistant.open = true // no voice service: the suggestions, or tap to type
                 }
             }
         }

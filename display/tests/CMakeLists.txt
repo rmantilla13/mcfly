@@ -146,7 +146,8 @@ set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscree
 # The screens' motion and layouts (Home, Boards, Briefs) against the real
 # store at a fixed time of day: the reveal, the insight line, Home's
 # countdown and now marker, board tiles from boardLayout, the Briefs outline,
-# the nav's thinking ring, Setup's ambient loops.
+# the nav's thinking ring, Setup's ambient loops, the assistant panel's
+# keyboard.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
     components/SpectrumGlow.qml components/GradientTile.qml components/Sparkline.qml
@@ -155,7 +156,7 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
     components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FluxMark.qml components/Wordmark.qml components/FormField.qml
     screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml
-    screens/SetupScreen.qml
+    screens/SetupScreen.qml screens/AssistantPanel.qml
     screensaver/ScreenSaver.qml screensaver/AmbientSaver.qml screensaver/ClockSaver.qml screensaver/HeadlinesSaver.qml
     components/Backdrop.qml components/AuroraGlow.qml components/Weather.qml)
 qt_add_executable(tst_screens tst_screens.cpp

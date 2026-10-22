@@ -6,6 +6,10 @@ import McFly.Core
 
 // Full-screen conversation with the McFly assistant. Replies stream in word
 // by word; the mic is push-to-talk through the voice service.
+//
+// Voice first: it opens with the keyboard down, the mic as the bar's main
+// button and the suggestions to tap. The keyboard comes up only when the
+// field is tapped, and goes again once a question is sent.
 Rectangle {
     id: panel
     property bool open: false
@@ -15,6 +19,8 @@ Rectangle {
     // The screen it opened over (a Main.qml screen name, or "metrics"): that
     // screen's own question leads the suggestions.
     property string context: ""
+    // A tap on the mic can be answered: the service is up and can transcribe.
+    readonly property bool voiceReady: Voice.available && Voice.canTranscribe
     signal closeRequested()
     signal pushToTalk()
 
@@ -32,8 +38,11 @@ Rectangle {
         if (!text || !text.trim() || AI.busy) return
         AI.ask(text)
         input.text = ""
+        // Sent: the keyboard goes, so the answer has the room. Focus leaves
+        // the field too, or a tap on it wouldn't bring the keyboard back.
+        input.focus = false
+        Qt.inputMethod.hide()
     }
-    function focusInput() { input.forceActiveFocus() }
 
     // Swallow taps so nothing underneath reacts.
     MouseArea { anchors.fill: parent }
@@ -245,6 +254,17 @@ Rectangle {
                     font.weight: Font.Medium
                     wrapMode: Text.WordWrap
                 }
+                // Talking (or a tap on a suggestion) comes before typing.
+                Label {
+                    visible: panel.voiceReady
+                    width: parent.width
+                    topPadding: -10
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Tap the mic and just ask, or pick one below")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSm
+                    wrapMode: Text.WordWrap
+                }
                 // Centred under the heading, row by row.
                 SuggestionChips {
                     width: parent.width
@@ -269,14 +289,16 @@ Rectangle {
 
             TextField {
                 id: input
+                objectName: "askField"
                 anchors.left: parent.left
                 anchors.right: buttons.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 24
                 anchors.rightMargin: 8
-                placeholderText: !panel.listening ? qsTr("Ask McFly anything")
-                               : Voice.state === "listening" ? qsTr("Listening… tap the mic to stop")
-                               : qsTr("Thinking…")
+                placeholderText: panel.listening ? (Voice.state === "listening" ? qsTr("Listening… tap the mic to stop")
+                                                                                : qsTr("Thinking…"))
+                               : activeFocus ? qsTr("Ask McFly anything")
+                               : qsTr("Tap to type a question")
                 font.pixelSize: Theme.fontMd - 2
                 color: Theme.text
                 placeholderTextColor: panel.listening ? Theme.accent : Theme.textMuted
@@ -304,14 +326,22 @@ Rectangle {
                     }
                     IconButton {
                         anchors.fill: parent
+                        // Nothing typed: the mic is the bar's main button, in the
+                        // rail's Ask glass. Lit while it listens.
+                        readonly property bool leading: panel.voiceReady && !panel.listening && input.text.length === 0
                         icon: Voice.available ? "mic" : "mic-off"
-                        fill: panel.listening ? Theme.accent : Theme.surfaceAlt
-                        ink: panel.listening ? Theme.accentInk : Voice.available ? Theme.text : Theme.textMuted
+                        kind: leading ? "active" : "rest"
+                        fill: panel.listening ? Theme.accent : leading ? Theme.accentSoft : Theme.surfaceAlt
+                        ink: panel.listening ? Theme.accentInk : leading ? Glass.ink
+                           : Voice.available ? Theme.text : Theme.textMuted
                         Behavior on fill { ColorAnimation { duration: Theme.quick } }
                         onClicked: panel.pushToTalk()
                     }
                 }
+                // Only once something is typed: until then the mic leads.
                 IconButton {
+                    objectName: "sendButton"
+                    visible: input.text.length > 0
                     width: 60; height: 60
                     icon: "send"
                     fill: Theme.accent
