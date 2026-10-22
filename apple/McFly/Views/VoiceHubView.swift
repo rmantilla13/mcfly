@@ -113,6 +113,15 @@ struct AskView: View {
     @State private var provider: AssistantProvider = .claude
     @FocusState private var focused: Bool
 
+    /// Opening (and New chat) puts the cursor in the field only on the Mac. On
+    /// iPhone and iPad the keyboard would cover the suggestions, so it waits
+    /// for a tap on the field, and sending puts it away again.
+    #if os(macOS)
+    private static let focusOnOpen = true
+    #else
+    private static let focusOnOpen = false
+    #endif
+
     /// Questions that want a full screen (the console's).
     private static let suggestions = [
         "Catch me up on everything today",
@@ -173,7 +182,7 @@ struct AskView: View {
         .screenBackground()
         .macOSFrame(width: 760, height: 840)
         .onAppear {
-            focused = true
+            focused = Self.focusOnOpen
             provider = app.feeds.settings?.assistantProvider ?? .claude
         }
         .onDisappear { replyTask?.cancel() }
@@ -417,7 +426,7 @@ struct AskView: View {
         failure = nil
         copied = nil
         isReplying = false
-        focused = true
+        focused = Self.focusOnOpen
     }
 
     /// Asks the last question again, in its place.

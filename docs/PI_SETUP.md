@@ -240,7 +240,9 @@ Tapping a text field brings up a keyboard laid out like an iPad's in
 landscape: letters with `.?123` and `#+=` pages for numbers and symbols, a
 shift key (tap twice for caps lock) and a key that hides it. It follows the
 gear menu's **Dark mode** and the night colors. Dialogs move up to sit above
-it, and the screen saver still covers it. The keyboard is US English only.
+it, and the screen saver still covers it. The assistant opens with it down
+(the mic and the suggestions come first) and puts it away once a question is
+sent. The keyboard is US English only.
 
 It's the Qt Virtual Keyboard (`QT_IM_MODULE=qtvirtualkeyboard` in
 `display.env`), with its look and keys in the app:
