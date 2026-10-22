@@ -612,6 +612,76 @@ private slots:
         QCOMPARE(groups.at(3).toMap().value("status").toString(), QStringLiteral("planned"));
     }
 
+    // A day's conflicts, back-to-back runs and busiest stretch: the app's
+    // cases (DayLoadTests.swift) and the console's (day-load.test.mjs).
+    void dayLoadFollowsTheApp()
+    {
+        const qint64 day = QDateTime(QDate(2026, 10, 22), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
+        const qint64 next = day + 24 * 3600000LL;
+        auto at = [day](int h, int m = 0) { return day + (h * 60 + m) * 60000LL; };
+        auto ev = [](const QString &id, qint64 start, qint64 end, bool allDay = false) {
+            return QVariant(QVariantMap{{"id", id}, {"startMs", start}, {"endMs", end}, {"all_day", allDay}});
+        };
+        auto kinds = [](const QVariantMap &load, const QStringList &ids) {
+            QStringList out;
+            for (const QString &id : ids)
+                out << (load.value("kinds").toMap().value(id).toString().isEmpty() ? QStringLiteral("clear") : load.value("kinds").toMap().value(id).toString());
+            return out.join(QLatin1Char(' '));
+        };
+        auto spans = [](const QVariantMap &load) {
+            QStringList out;
+            for (const QVariant &v : load.value("conflicts").toList())
+                out << QStringLiteral("%1-%2").arg(v.toMap().value("startMs").toLongLong()).arg(v.toMap().value("endMs").toLongLong());
+            return out.join(QLatin1Char(' '));
+        };
+
+        // Overlaps are conflicts; one inside another too, and overlaps join.
+        QVariantMap load = FeedStore::dayLoad({ev("a", at(9), at(10)), ev("b", at(9, 30), at(10, 30)), ev("c", at(14), at(15))}, day, next);
+        QCOMPARE(kinds(load, {"a", "b", "c"}), QStringLiteral("conflict conflict clear"));
+        QCOMPARE(spans(load), QStringLiteral("%1-%2").arg(at(9, 30)).arg(at(10)));
+        load = FeedStore::dayLoad({ev("late", at(11), at(12, 30)), ev("inside", at(10), at(10, 30)), ev("long", at(9), at(12))}, day, next);
+        QCOMPARE(spans(load), QStringLiteral("%1-%2 %3-%4").arg(at(10)).arg(at(10, 30)).arg(at(11)).arg(at(12)));
+        QCOMPARE(load.value("conflictCount").toInt(), 2);
+
+        // Back to back is five minutes or less; a conflict outranks it.
+        load = FeedStore::dayLoad({ev("a", at(9), at(10)), ev("b", at(10), at(10, 30)), ev("c", at(10, 35), at(11)), ev("d", at(11, 6), at(12))}, day, next);
+        QCOMPARE(kinds(load, {"a", "b", "c", "d"}), QStringLiteral("backToBack backToBack backToBack clear"));
+        QCOMPARE(load.value("backToBackCount").toInt(), 2);
+        load = FeedStore::dayLoad({ev("a", at(9), at(10)), ev("b", at(10), at(11)), ev("c", at(10, 30), at(11, 30))}, day, next);
+        QCOMPARE(kinds(load, {"a", "b", "c"}), QStringLiteral("backToBack conflict conflict"));
+
+        // All-day takes no time; a multi-day event counts only its part of the day.
+        load = FeedStore::dayLoad({ev("holiday", day, next, true), ev("overnight", at(-2), at(1)), ev("early", at(0, 30), at(2))}, day, next);
+        QCOMPARE(kinds(load, {"holiday"}), QStringLiteral("clear"));
+        QCOMPARE(spans(load), QStringLiteral("%1-%2").arg(at(0, 30)).arg(at(1)));
+
+        // The busiest stretch: two events or more and an hour booked.
+        load = FeedStore::dayLoad({ev("s", at(9), at(9, 15)), ev("r", at(10), at(11)), ev("p", at(11), at(11, 30)),
+                                   ev("l", at(11, 45), at(12, 30)), ev("c", at(15), at(15, 30))}, day, next);
+        QCOMPARE(load.value("busiestStartMs").toLongLong(), at(10));
+        QCOMPARE(load.value("busiestEndMs").toLongLong(), at(12, 30));
+        const QVariantList heat = load.value("heat").toList();
+        QCOMPARE(heat.size(), 96);
+        QVERIFY(heat.at(11 * 4).toDouble() > heat.at(15 * 4).toDouble());
+        QCOMPARE(heat.at(3 * 4).toDouble(), 0.0);
+        load = FeedStore::dayLoad({ev("dinner", at(18), at(21)), ev("sync", at(9), at(9, 40)), ev("prep", at(9, 45), at(10, 15))}, day, next);
+        QCOMPARE(load.value("busiestStartMs").toLongLong(), at(9));
+        QCOMPARE(load.value("busiestEndMs").toLongLong(), at(10, 15));
+        QCOMPARE(FeedStore::dayLoad({ev("offsite", at(9), at(17))}, day, next).value("busiestStartMs").toLongLong(), 0);
+        QCOMPARE(FeedStore::dayLoad({ev("a", at(9), at(9, 30)), ev("b", at(14), at(14, 30))}, day, next).value("busiestStartMs").toLongLong(), 0);
+        // Overlaps count once toward busy.
+        load = FeedStore::dayLoad({ev("x", at(9), at(10)), ev("y", at(9), at(10)), ev("z", at(9), at(10))}, day, next);
+        QCOMPARE(load.value("busiestEndMs").toLongLong(), at(10));
+        QCOMPARE(load.value("heat").toList().at(9 * 4 + 2).toDouble(), 0.5);
+
+        // An empty day; the heat's colours.
+        load = FeedStore::dayLoad({}, day, next);
+        QCOMPARE(load.value("conflictCount").toInt() + load.value("backToBackCount").toInt(), 0);
+        QCOMPARE(FeedStore::heatColor(0), QStringLiteral("#00000000"));
+        QVERIFY(FeedStore::heatColor(0.3).endsWith(QStringLiteral("f2a93b")));
+        QVERIFY(FeedStore::heatColor(0.8).endsWith(QStringLiteral("e5604d")));
+    }
+
     void projectStagesFollowTheConsole()
     {
         const QStringList stages{"Plan", "Build", "Review", "Ship"};

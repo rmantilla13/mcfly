@@ -71,8 +71,15 @@ class FeedStore : public QObject
     Q_PROPERTY(QVariantList metrics READ metrics NOTIFY dataChanged)   // visible metrics in display order, each with history
     Q_PROPERTY(QVariantList metricGroups READ metricGroups NOTIFY dataChanged) // [{ name, metrics: [...] }]
     Q_PROPERTY(QVariantList dashboards READ dashboards NOTIFY dataChanged) // visible, in order, widgets decorated
-    Q_PROPERTY(QVariantList events READ events NOTIFY dataChanged)     // from yesterday on, by start
-    Q_PROPERTY(QVariantList eventDays READ eventDays NOTIFY dataChanged) // [{ day, dayLabel, events: [...] }] from today
+    // Events from yesterday on, by start; each carries `clash`: "conflict",
+    // "backToBack" or "" (dayLoad, by the day it starts on).
+    Q_PROPERTY(QVariantList events READ events NOTIFY dataChanged)
+    // From today: [{ day, dayLabel, dateLabel, events: [...], and the day's
+    // load: conflicts [{ startMs, endMs }], conflictCount, conflictLabel
+    // ("1 conflict"), backToBackLabel, busiestLabel ("Busiest 10:00 am –
+    // 12:30 pm"), heatSlots [{ hour, color }] for each booked quarter hour }]
+    // (each label empty when there's nothing to say).
+    Q_PROPERTY(QVariantList eventDays READ eventDays NOTIFY dataChanged)
     Q_PROPERTY(QVariantList upcoming READ upcoming NOTIFY dataChanged) // the next few events from now
     // Today in time order: the Pulse report, briefs, project updates and events,
     // each { kind, startMs, endMs, timeLabel, title, detail, color, target, ... }.
@@ -208,6 +215,21 @@ public:
     // offset (its first project's place in the whole list), projects }. A
     // status the display doesn't know joins Active.
     static QVariantList groupProjects(const QVariantList &projects);
+    // How full one day is, by the app's rules (DayLoad.swift) and the
+    // console's (lib/day-load.ts), from the day's event maps (id, startMs,
+    // endMs, all_day) and its bounds: { conflicts: [{ startMs, endMs }]
+    // (where two or more run at once, joined), kinds: { id: "conflict" or
+    // "backToBack" (the next starts 0 to 5 minutes after the last ends) },
+    // conflictCount, backToBackCount (links: three in a row is two),
+    // busiestStartMs, busiestEndMs (the run of two or more events, 15
+    // minutes or less apart, with the most booked time when that is an hour
+    // or more; 0 when none), heat: [for each quarter hour, the booked share
+    // of the two hours around it, 0 to 1] }. All-day events take no time;
+    // one running past either edge counts only its part of the day.
+    static QVariantMap dayLoad(const QVariantList &events, qint64 dayStartMs, qint64 dayEndMs);
+    // A heat value's colour: transparent when free, amber deepening as it
+    // fills, red from three quarters booked (#AARRGGBB).
+    static QString heatColor(double heat);
 
     // Tests: a stand-in for the wall clock (local time). Call before start().
     void setClock(std::function<QDateTime()> now) { m_clock = std::move(now); }

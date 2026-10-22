@@ -1,17 +1,21 @@
 import { cn } from "cn";
-import { CalendarIcon, ExternalLinkIcon, MapPinIcon, Trash2Icon } from "lucide-react";
+import { ArrowRightToLineIcon, CalendarIcon, ExternalLinkIcon, MapPinIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { ConfirmAction } from "@/components/ConfirmAction";
+import { DayLoadStrip } from "@/components/DayLoadStrip";
 import { EmptyState, Swatch } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { FormAction } from "@/lib/action-result";
+import { dayLoad, type LoadKind, loadKind } from "@/lib/day-load";
 import { formatEventTime, groupEventsByDay } from "@/lib/events";
 import { formatNumber, plural } from "@/lib/format";
 import type { EventRow } from "@/lib/types";
 
 // The calendar tab: every calendar an agent pushes (with a way to drop one
-// whole), then the events by day in the display's time zone.
+// whole), then the events by day in the display's time zone, each day over
+// a strip of its hours (busy stretches warm, back-to-back runs amber, clashes
+// red) and its events marked when they clash or run into the next.
 export function CalendarList({
   events,
   timeZone,
@@ -71,61 +75,91 @@ export function CalendarList({
       </div>
 
       <div className="flex flex-col">
-        {days.map((day, i) => (
-          <div key={day.day}>
-            {i > 0 ? <Separator className="my-3" /> : null}
-            <div className={cn("grid grid-cols-[140px_minmax(0,1fr)] gap-x-4 max-sm:grid-cols-1", day.past && "opacity-60")}>
-              <div className="pt-1">
-                <div className="font-medium">{day.label}</div>
-                <div className="text-xs text-muted-foreground">{day.day}</div>
+        {days.map((day, i) => {
+          const load = dayLoad(day.events, day.day, timeZone);
+          return (
+            <div key={day.day}>
+              {i > 0 ? <Separator className="my-3" /> : null}
+              <div className={cn("grid grid-cols-[140px_minmax(0,1fr)] gap-x-4 max-sm:grid-cols-1", day.past && "opacity-60")}>
+                <div className="pt-1">
+                  <div className="font-medium">{day.label}</div>
+                  <div className="text-xs text-muted-foreground">{day.day}</div>
+                </div>
+                <div className="min-w-0">
+                  <DayLoadStrip events={day.events} load={load} timeZone={timeZone} />
+                  <ul className="flex flex-col">
+                    {day.events.map((e) => (
+                      <EventItem key={e.id} e={e} kind={loadKind(load, e.id)} timeZone={timeZone} deleteEventAction={deleteEventAction} />
+                    ))}
+                  </ul>
+                </div>
               </div>
-              <ul className="flex flex-col">
-                {day.events.map((e) => (
-                  <li key={e.id} className="flex items-start gap-3 border-b border-border py-2 last:border-b-0">
-                    <span className="w-32 shrink-0 pt-0.5 text-sm text-muted-foreground tabular-nums">{formatEventTime(e, timeZone)}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{e.title}</span>
-                        <Badge variant="outline">
-                          <Swatch color={e.color} className="size-2" />
-                          {e.calendar}
-                        </Badge>
-                        {e.url ? (
-                          <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" aria-label={`Open ${e.title}`}>
-                            <ExternalLinkIcon className="size-3.5" />
-                          </a>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-                        {e.location ? (
-                          <span className="inline-flex items-center gap-1">
-                            <MapPinIcon className="size-3" />
-                            {e.location}
-                          </span>
-                        ) : null}
-                        <span>{e.agent_name}</span>
-                      </div>
-                    </div>
-                    <ConfirmAction
-                      action={deleteEventAction}
-                      fields={{ event_id: e.id }}
-                      title={`Delete ${e.title}?`}
-                      description="It leaves every display. The agent's next push for this calendar may bring it back."
-                      confirmLabel="Delete event"
-                      tone="danger"
-                      trigger={
-                        <Button variant="ghost" size="icon-sm" aria-label={`Delete ${e.title}`}>
-                          <Trash2Icon />
-                        </Button>
-                      }
-                    />
-                  </li>
-                ))}
-              </ul>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+// One event: when, what (with a mark when it clashes with another or runs
+// straight into one; a clash is tinted red), where, whose, and Delete.
+function EventItem({ e, kind, timeZone, deleteEventAction }: { e: EventRow; kind: LoadKind; timeZone: string; deleteEventAction: FormAction }) {
+  return (
+    <li
+      className={cn(
+        "flex items-start gap-3 border-b border-border py-2 last:border-b-0",
+        kind === "conflict" && "-mx-2 rounded-lg border-transparent bg-destructive/[0.06] px-2 ring-1 ring-destructive/30 ring-inset",
+      )}
+    >
+      <span className="w-32 shrink-0 pt-0.5 text-sm text-muted-foreground tabular-nums">{formatEventTime(e, timeZone)}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{e.title}</span>
+          <Badge variant="outline">
+            <Swatch color={e.color} className="size-2" />
+            {e.calendar}
+          </Badge>
+          {kind === "conflict" ? (
+            <Badge variant="destructive">
+              <TriangleAlertIcon />
+              Conflict
+            </Badge>
+          ) : kind === "backToBack" ? (
+            <Badge className="border-transparent bg-[#F2A93B]/15 text-warning dark:bg-[#F2A93B]/20">
+              <ArrowRightToLineIcon />
+              Back to back
+            </Badge>
+          ) : null}
+          {e.url ? (
+            <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" aria-label={`Open ${e.title}`}>
+              <ExternalLinkIcon className="size-3.5" />
+            </a>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+          {e.location ? (
+            <span className="inline-flex items-center gap-1">
+              <MapPinIcon className="size-3" />
+              {e.location}
+            </span>
+          ) : null}
+          <span>{e.agent_name}</span>
+        </div>
+      </div>
+      <ConfirmAction
+        action={deleteEventAction}
+        fields={{ event_id: e.id }}
+        title={`Delete ${e.title}?`}
+        description="It leaves every display. The agent's next push for this calendar may bring it back."
+        confirmLabel="Delete event"
+        tone="danger"
+        trigger={
+          <Button variant="ghost" size="icon-sm" aria-label={`Delete ${e.title}`}>
+            <Trash2Icon />
+          </Button>
+        }
+      />
+    </li>
   );
 }

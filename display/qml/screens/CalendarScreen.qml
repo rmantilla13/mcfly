@@ -9,6 +9,13 @@ import McFly.Core
 // large beside the agenda on the wide tiers, over it on Tall; the 7" panel
 // has the strip and the agenda alone. The day view's now line glides down
 // on each minute; the agenda settles in as the page shows.
+//
+// How full a day is shows in colour, as on the phone and the console
+// (FeedStore::dayLoad): events that run straight into the next are edged
+// amber, ones that clash red, with a red bar beside the hours where they
+// overlap; a column beside the hours warms where the day is booked; a line
+// under the date names the busiest stretch and counts the clashes; a day
+// with one gets a red dot first in the week strip.
 Item {
     id: calendar
     property bool shown: true
@@ -19,7 +26,8 @@ Item {
     readonly property bool moving: shown && !Device.idle && Device.animatedTiles
     Reveal { id: rv; shown: calendar.isCurrent }
     property string pickedDay: Store.today
-    readonly property var dayEvents: (Store.eventDays.find(d => d.day === pickedDay) || ({})).events || []
+    readonly property var dayInfo: Store.eventDays.find(d => d.day === pickedDay) || ({})
+    readonly property var dayEvents: dayInfo.events || []
     function closeDetail() { md.closeDetail() }
 
     function addDays(iso, n) {
@@ -28,6 +36,9 @@ Item {
         return Qt.formatDate(d, "yyyy-MM-dd")
     }
     function eventsOn(iso) { return (Store.eventDays.find(d => d.day === iso) || ({})).events || [] }
+    function clashesOn(iso) { return ((Store.eventDays.find(d => d.day === iso) || ({})).conflictCount || 0) > 0 }
+    // An event's edge: red when it clashes, amber when it runs straight into the next.
+    function clashColor(kind) { return kind === "conflict" ? Theme.danger : kind === "backToBack" ? Theme.warning : "transparent" }
     // Anything to show at all: a subscription, or events an agent pushed.
     readonly property bool hasCalendar: Store.calendarSources.length > 0 || Store.events.length > 0
 
@@ -45,6 +56,8 @@ Item {
     component DayGrid: Item {
         id: grid
         property var events: []   // the day's timed events, by start
+        property var conflicts: [] // [{ startMs, endMs }] where two or more run at once
+        property var heat: []      // [{ hour, color }] for each booked quarter hour
         property string day: ""   // yyyy-MM-dd
         property color ink: Theme.text
         property color inkMuted: Theme.textMuted
@@ -145,6 +158,36 @@ Item {
             }
         }
 
+        // How booked the hours around each moment are: a column beside the
+        // hours, clear when free, amber as it fills, red where it's packed.
+        Repeater {
+            model: grid.heat
+            delegate: Rectangle {
+                required property var modelData
+                visible: modelData.hour >= grid.firstHour && modelData.hour < grid.lastHour
+                x: grid.gutter - 9
+                y: grid.yOf(modelData.hour)
+                width: 5
+                height: Math.max(1, grid.perHour / 4 + 0.5)
+                color: modelData.color
+            }
+        }
+
+        // Where two run at once, a red bar beside the heat, where no block
+        // (grown past its time to fit its title) can cover it.
+        Repeater {
+            model: grid.conflicts
+            delegate: Rectangle {
+                required property var modelData
+                x: grid.gutter - 3
+                y: grid.yOf(grid.hourOf(modelData.startMs))
+                width: 3
+                height: Math.max(6, grid.yOf(grid.hourOf(modelData.endMs)) - y)
+                radius: 1.5
+                color: Theme.danger
+            }
+        }
+
         // The events.
         Repeater {
             model: grid.blocks
@@ -159,8 +202,8 @@ Item {
                 height: modelData.height - 3
                 radius: 12
                 color: grid.fill
-                border.width: event.now ? 2 : 1
-                border.color: event.now ? event.color : grid.stroke
+                border.width: event.now || event.clash ? 2 : 1
+                border.color: event.clash ? calendar.clashColor(event.clash) : event.now ? event.color : grid.stroke
                 opacity: event.past ? 0.6 : 1
                 clip: true
                 Rectangle { x: 8; y: 8; width: 4; height: block.height - 16; radius: 2; color: block.event.color }
@@ -235,6 +278,26 @@ Item {
                 color: dayTile.inkMuted
                 font.pixelSize: Theme.fontSm
             }
+            // The busiest stretch and what clashes, each when there is one.
+            Flow {
+                visible: !!(calendar.dayInfo.busiestLabel || calendar.dayInfo.conflictLabel || calendar.dayInfo.backToBackLabel)
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                spacing: 16
+                Repeater {
+                    model: [
+                        { text: calendar.dayInfo.busiestLabel || "", dot: Theme.warning },
+                        { text: calendar.dayInfo.conflictLabel || "", dot: Theme.danger },
+                        { text: calendar.dayInfo.backToBackLabel || "", dot: Theme.warning }
+                    ].filter(p => p.text)
+                    delegate: Row {
+                        required property var modelData
+                        spacing: 7
+                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9; height: 9; radius: 4.5; color: modelData.dot }
+                        Label { text: modelData.text; color: dayTile.ink; font.pixelSize: Theme.fontSm - 1; font.weight: Font.DemiBold }
+                    }
+                }
+            }
             Item { implicitHeight: Theme.tall ? 4 : 8 }
 
             // Tall: time and title on one line.
@@ -247,6 +310,7 @@ Item {
                     Rectangle { width: 10; height: 10; radius: 5; color: modelData.color }
                     Label { text: modelData.startLabel; color: dayTile.inkMuted; font.pixelSize: Theme.fontSm; Layout.preferredWidth: 90 }
                     Label { Layout.fillWidth: true; text: modelData.title; color: dayTile.ink; font.pixelSize: Theme.fontSm; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                    Rectangle { visible: !!modelData.clash; width: 10; height: 10; radius: 5; color: calendar.clashColor(modelData.clash) }
                 }
             }
             Item { visible: !dayTile.roomy; Layout.fillHeight: true }
@@ -274,6 +338,8 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 events: calendar.dayEvents.filter(e => !e.all_day)
+                conflicts: calendar.dayInfo.conflicts || []
+                heat: calendar.dayInfo.heatSlots || []
                 day: calendar.pickedDay
                 ink: dayTile.ink
                 inkMuted: dayTile.inkMuted
@@ -396,8 +462,10 @@ Item {
                             Row {
                                 Layout.alignment: Qt.AlignHCenter
                                 spacing: 3
+                                // A day where events clash: a red dot first.
+                                Rectangle { visible: calendar.clashesOn(dayCell.iso); width: 6; height: 6; radius: 3; color: Theme.danger }
                                 Repeater {
-                                    model: Math.min(dayCell.dotCount, 4)
+                                    model: Math.min(dayCell.dotCount, calendar.clashesOn(dayCell.iso) ? 3 : 4)
                                     delegate: Rectangle {
                                         required property int index
                                         width: 5; height: 5; radius: 2.5
@@ -449,6 +517,8 @@ Item {
                     height: Theme.mini ? 64 : 78
                     radius: Theme.radiusSm
                     color: modelData.now ? Theme.accentSoft : Theme.surface
+                    border.width: modelData.clash === "conflict" ? 2 : 0
+                    border.color: Theme.danger
                     opacity: (modelData.past ? 0.6 : 1) * rv.at(index + 2)
                     transform: Translate { y: rv.rise(agendaRow.index + 2) }
                     RowLayout {
@@ -474,6 +544,14 @@ Item {
                                 font.pixelSize: Theme.fontXs
                                 elide: Text.ElideRight
                             }
+                        }
+                        Label {
+                            visible: !!modelData.clash
+                            text: modelData.clash === "conflict" ? qsTr("CONFLICT") : qsTr("BACK TO BACK")
+                            color: modelData.clash === "conflict" ? Theme.danger : Theme.warningInk
+                            font.pixelSize: Theme.fontXs
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1
                         }
                         Label { visible: modelData.now; text: qsTr("NOW"); color: Theme.accent; font.pixelSize: Theme.fontXs; font.weight: Font.Bold; font.letterSpacing: 1 }
                     }

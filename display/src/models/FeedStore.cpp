@@ -1931,6 +1931,133 @@ void FeedStore::commitDismissal()
     });
 }
 
+QVariantMap FeedStore::dayLoad(const QVariantList &events, qint64 dayStartMs, qint64 dayEndMs)
+{
+    constexpr qint64 minute = 60 * 1000;
+    constexpr qint64 quarter = 15 * minute;
+    constexpr int window = 8; // quarter hours: the two hours heat looks at
+    struct Timed { QString id; qint64 start; qint64 end; };
+    // Each timed event's part of this day, by start then end.
+    std::vector<Timed> timed;
+    for (const QVariant &v : events) {
+        const QVariantMap e = v.toMap();
+        if (e.value("all_day").toBool())
+            continue;
+        const qint64 start = std::max(e.value("startMs").toLongLong(), dayStartMs);
+        const qint64 end = std::min(e.value("endMs").toLongLong(), dayEndMs);
+        if (end > start)
+            timed.push_back({e.value("id").toString(), start, end});
+    }
+    std::stable_sort(timed.begin(), timed.end(), [](const Timed &a, const Timed &b) {
+        return a.start != b.start ? a.start < b.start : a.end < b.end;
+    });
+
+    // Conflicts: walk in start order, keeping the furthest end so far and
+    // who reaches it; anything starting before it overlaps.
+    QVariantMap kinds;
+    std::vector<std::pair<qint64, qint64>> overlaps;
+    std::optional<std::pair<qint64, QString>> reach;
+    for (const Timed &e : timed) {
+        if (reach && e.start < reach->first) {
+            overlaps.emplace_back(e.start, std::min(e.end, reach->first));
+            kinds.insert(e.id, QStringLiteral("conflict"));
+            kinds.insert(reach->second, QStringLiteral("conflict"));
+        }
+        if (!reach || e.end > reach->first)
+            reach = std::make_pair(e.end, e.id);
+    }
+    std::sort(overlaps.begin(), overlaps.end());
+    // Overlaps that touch or cross, joined.
+    QVariantList conflicts;
+    qint64 openStart = -1, openEnd = -1;
+    for (const auto &[s, f] : overlaps) {
+        if (openEnd >= 0 && s <= openEnd) {
+            openEnd = std::max(openEnd, f);
+            continue;
+        }
+        if (openEnd >= 0)
+            conflicts << QVariantMap{{"startMs", openStart}, {"endMs", openEnd}};
+        openStart = s;
+        openEnd = f;
+    }
+    if (openEnd >= 0)
+        conflicts << QVariantMap{{"startMs", openStart}, {"endMs", openEnd}};
+
+    // Back to back: the next starts at, or up to five minutes after, the
+    // latest end so far. A conflict outranks it.
+    int links = 0;
+    reach.reset();
+    for (const Timed &e : timed) {
+        if (reach && e.start >= reach->first && e.start - reach->first <= 5 * minute) {
+            ++links;
+            for (const QString &id : {e.id, reach->second})
+                if (!kinds.contains(id))
+                    kinds.insert(id, QStringLiteral("backToBack"));
+        }
+        if (!reach || e.end > reach->first)
+            reach = std::make_pair(e.end, e.id);
+    }
+
+    // Booked quarter hours (overlaps count once, at the larger share), then
+    // the booked share of the two hours around each.
+    const int quarters = std::max<int>(1, int(std::llround(double(dayEndMs - dayStartMs) / quarter)));
+    std::vector<double> booked(size_t(quarters), 0.0);
+    for (const Timed &e : timed) {
+        const int first = int((e.start - dayStartMs) / quarter);
+        const int last = int((e.end - dayStartMs + quarter - 1) / quarter);
+        for (int i = std::max(0, first); i < std::min(quarters, last); ++i) {
+            const qint64 slotStart = dayStartMs + i * quarter;
+            const qint64 covered = std::min(e.end, slotStart + quarter) - std::max(e.start, slotStart);
+            booked[size_t(i)] = std::max(booked[size_t(i)], double(covered) / quarter);
+        }
+    }
+    QVariantList heat;
+    for (int i = 0; i < quarters; ++i) {
+        double sum = 0;
+        for (int j = std::max(0, i - window / 2); j < std::min(quarters, i + window / 2); ++j)
+            sum += booked[size_t(j)];
+        heat << sum / window;
+    }
+
+    // Stretches: events joined while the next starts within 15 minutes of
+    // the latest end, with their booked time. The busiest is the one of two
+    // or more with the most, the earlier on a tie.
+    struct Stretch { qint64 start; qint64 end; qint64 booked; int count; };
+    std::vector<Stretch> stretches;
+    for (const Timed &e : timed) {
+        if (!stretches.empty() && e.start - stretches.back().end <= 15 * minute) {
+            Stretch &last = stretches.back();
+            last.booked += std::max<qint64>(0, e.end - std::max(e.start, last.end));
+            last.end = std::max(last.end, e.end);
+            ++last.count;
+        } else {
+            stretches.push_back({e.start, e.end, e.end - e.start, 1});
+        }
+    }
+    const Stretch *top = nullptr;
+    for (const Stretch &s : stretches)
+        if (s.count >= 2 && s.booked > (top ? top->booked : 0))
+            top = &s;
+    const bool busy = top && top->booked >= 60 * minute;
+
+    return {{"conflicts", conflicts},
+            {"kinds", kinds},
+            {"conflictCount", int(conflicts.size())},
+            {"backToBackCount", links},
+            {"busiestStartMs", busy ? top->start : qint64(0)},
+            {"busiestEndMs", busy ? top->end : qint64(0)},
+            {"heat", heat}};
+}
+
+QString FeedStore::heatColor(double heat)
+{
+    if (heat <= 0.001)
+        return QStringLiteral("#00000000");
+    QColor c = heat >= 0.75 ? QColor(0xE5, 0x60, 0x4D) : QColor(0xF2, 0xA9, 0x3B);
+    c.setAlphaF(float(heat >= 0.75 ? 0.9 : 0.25 + 0.75 * heat / 0.75));
+    return c.name(QColor::HexArgb);
+}
+
 QVariantList FeedStore::groupProjects(const QVariantList &projects)
 {
     static const char *const order[] = {"blocked", "active", "paused", "planned", "done"};
@@ -2247,6 +2374,49 @@ void FeedStore::rebuildProductivity(const QHash<QString, QVariantMap> &agentById
         m_eventDays[dayIndex.value(day)] = d;
         if (!e.value("past").toBool() && m_upcoming.size() < 4)
             m_upcoming << e;
+    }
+    // Each day's load: what clashes and what runs back to back (marked on
+    // its events, here and in the agenda), the busiest stretch, and the heat
+    // the day view draws beside its hours.
+    QHash<QString, QString> clashById;
+    for (int i = 0; i < m_eventDays.size(); ++i) {
+        QVariantMap d = m_eventDays.at(i).toMap();
+        const QDate date = QDate::fromString(d.value("day").toString(), Qt::ISODate);
+        const QVariantMap load = dayLoad(d.value("events").toList(), date.startOfDay().toMSecsSinceEpoch(),
+                                         date.addDays(1).startOfDay().toMSecsSinceEpoch());
+        const QVariantMap kinds = load.value("kinds").toMap();
+        QVariantList list = d.value("events").toList();
+        for (QVariant &v : list) {
+            QVariantMap e = v.toMap();
+            const QString clash = kinds.value(e.value("id").toString()).toString();
+            e.insert("clash", clash);
+            if (!clash.isEmpty())
+                clashById.insert(e.value("id").toString(), clash);
+            v = e;
+        }
+        d.insert("events", list);
+        d.insert("conflicts", load.value("conflicts"));
+        const int conflicts = load.value("conflictCount").toInt();
+        const int links = load.value("backToBackCount").toInt();
+        d.insert("conflictCount", conflicts);
+        d.insert("conflictLabel", conflicts == 0 ? QString() : conflicts == 1 ? tr("1 conflict") : tr("%1 conflicts").arg(conflicts));
+        d.insert("backToBackLabel", links == 0 ? QString() : tr("%1 back to back").arg(links));
+        const qint64 busyFrom = load.value("busiestStartMs").toLongLong();
+        d.insert("busiestLabel", busyFrom == 0 ? QString()
+                                               : tr("Busiest %1 – %2").arg(timeLabel(QDateTime::fromMSecsSinceEpoch(busyFrom)),
+                                                                           timeLabel(QDateTime::fromMSecsSinceEpoch(load.value("busiestEndMs").toLongLong()))));
+        QVariantList heatSlots;
+        const QVariantList heat = load.value("heat").toList();
+        for (int s = 0; s < heat.size(); ++s)
+            if (heat.at(s).toDouble() > 0.001)
+                heatSlots << QVariantMap{{"hour", s / 4.0}, {"color", heatColor(heat.at(s).toDouble())}};
+        d.insert("heatSlots", heatSlots);
+        m_eventDays[i] = d;
+    }
+    for (QVariant &v : m_events) {
+        QVariantMap e = v.toMap();
+        e.insert("clash", clashById.value(e.value("id").toString()));
+        v = e;
     }
 }
 
