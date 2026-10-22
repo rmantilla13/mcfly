@@ -86,6 +86,7 @@ Item {
     // Software renderer, or a shader that failed to load: a plain two-stop gradient.
     readonly property bool fallback: GraphicsInfo.api === GraphicsInfo.Software
                                      || fx.status === ShaderEffect.Error
+                                     || (scaled.item !== null && scaled.item.status === ScaledShader.Error)
 
     default property alias content: holder.data
 
@@ -310,14 +311,9 @@ Item {
     ShaderEffect {
         id: fx
         anchors.fill: parent
-        visible: !tile.fallback
-        // Run smaller and scaled up when asked (`resolution`): the texture's
-        // pixel ratio is then the shader's, so edges and grain are a texel.
-        // Only then: a layer that changes asks Qt for one more frame after
-        // it, so a tile caching its own 30 updates a second would draw 60.
-        layer.enabled: tile._reduced
-        layer.textureSize: Qt.size(Math.max(1, Math.ceil(width * dpr)), Math.max(1, Math.ceil(height * dpr)))
-        layer.smooth: true
+        // Full size it draws itself; smaller, `scaled` draws its uniforms
+        // and it stays hidden.
+        visible: !tile.fallback && !tile._reduced
         // Uniforms (names match shaders/gradienttile.frag).
         readonly property size size: Qt.size(width, height)
         readonly property real radius: Math.min(tile.radius, width / 2, height / 2)
@@ -340,6 +336,25 @@ Item {
         readonly property vector4d hilite: tile._labv(tile._pal[3])
         readonly property color rimColor: Qt.rgba(1, 1, 1, 0.80 - 0.35 * tile._dk)
         fragmentShader: "qrc:/McFly/shaders/gradienttile.frag.qsb"
+    }
+
+    // Run smaller and scaled up when asked (`resolution`): the texture's
+    // pixel ratio is then the shader's (fx.dpr), so edges and grain are a
+    // texel. A ScaledShader, not a layer: a layer that changes makes Qt draw
+    // one more frame after it, so a tile caching its own 30 updates a second
+    // drew 60.
+    Loader {
+        id: scaled
+        anchors.fill: parent
+        active: tile._reduced && GraphicsInfo.api !== GraphicsInfo.Software
+        visible: !tile.fallback
+        sourceComponent: ScaledShader {
+            uniformSource: fx
+            alphaBlending: true   // the corners
+            fixedColorBufferWidth: Math.max(1, Math.ceil(width * fx.dpr))
+            fixedColorBufferHeight: Math.max(1, Math.ceil(height * fx.dpr))
+            fragmentShader: fx.fragmentShader
+        }
     }
 
     Rectangle {

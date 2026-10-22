@@ -67,7 +67,7 @@ Item {
     readonly property string shader: _looks[style] !== undefined ? style : "arc"
 
     readonly property bool fallback: GraphicsInfo.api === GraphicsInfo.Software
-                                     || fx.status === ShaderEffect.Error
+                                     || fx.status === ScaledShader.Error
     readonly property bool playing: animated && active && visible && (whileIdle ? !Device.screenOff : !Device.idle)
                                     && width > 0 && height > 0 && !fallback && _windowShown
 
@@ -241,22 +241,21 @@ Item {
         _arm(true)
     }
 
-    ShaderEffect {
+    ScaledShader {
         id: fx
         anchors.fill: parent
         visible: !sky.fallback
-        // Rendered smaller and scaled up: the skies have no hard edges.
-        layer.enabled: sky.resolution < 1
-        layer.textureSize: Qt.size(Math.max(1, Math.ceil(width * sky.resolution)),
-                                   Math.max(1, Math.ceil(height * sky.resolution)))
-        layer.smooth: true
+        // Rendered smaller and scaled up: the skies have no hard edges. In
+        // pixels, as a layer's textureSize was; at 1, the item's own.
+        fixedColorBufferWidth: sky.resolution < 1 ? Math.max(1, Math.ceil(width * sky.resolution)) : 0
+        fixedColorBufferHeight: sky.resolution < 1 ? Math.max(1, Math.ceil(height * sky.resolution)) : 0
         // Uniforms (names match shaders/<style>.frag).
         readonly property size size: Qt.size(width, height)
         readonly property real time: sky._time
         readonly property real strength: sky._shownStrength
         readonly property real seed: sky.seed
         // The opacity the picture gets after the shader (the item's, applied
-        // as the layer is drawn): the dither is scaled to it so it stays one
+        // as the picture is drawn): the dither is scaled to it so it stays one
         // step on screen. In steps of 0.05, so a fade re-shades a few times
         // rather than every frame.
         readonly property real dim: Math.max(0.1, Math.round(sky.opacity * 20) / 20)

@@ -8,12 +8,20 @@ import math
 import os
 import re
 import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
+
+from .pcm import SAMPLE_RATE
 
 log = logging.getLogger(__name__)
 
 MODEL_SUFFIXES = (".onnx", ".tflite")
+# openWakeWord keeps the last 10 s of audio in a deque and copies all of it
+# into a list on every 80 ms frame, to read the last 110 ms (the frame and 30
+# ms before it): 1.1 of the 6.9 ms a frame took on a Pi 5. A second is plenty
+# for any frame we send, and the scores come out the same.
+AUDIO_BUFFER_SAMPLES = SAMPLE_RATE
 # McFly's own wake words ("Hey McFly"), shipped with the package. A copy in
 # <data_dir>/wakeword, which --download-models makes, takes precedence.
 BUNDLED_DIR = Path(__file__).parent / "wakewords"
@@ -167,6 +175,7 @@ class WakeWordDetector:
         kwargs = {"melspec_model_path": str(mel), "embedding_model_path": str(emb)}
         self._np = np
         self._model = Model(wakeword_models=[target], inference_framework=framework, **kwargs)
+        trim_audio_buffer(self._model.preprocessor)
         self.source = target
         log.info("wake word model: %s (%s)", target, framework)
 
@@ -176,6 +185,21 @@ class WakeWordDetector:
 
     def reset(self) -> None:
         self._model.reset()
+
+
+def trim_audio_buffer(features: object) -> bool:
+    """Shortens openWakeWord's raw audio buffer (AUDIO_BUFFER_SAMPLES).
+    Returns whether it did; a version that keeps its audio some other way is
+    left as it is."""
+    buffer = getattr(features, "raw_data_buffer", None)
+    if not isinstance(buffer, deque):
+        log.info("openWakeWord keeps its audio in a %s; leaving it as it is",
+                 type(buffer).__name__)
+        return False
+    if buffer.maxlen is not None and buffer.maxlen <= AUDIO_BUFFER_SAMPLES:
+        return False
+    features.raw_data_buffer = deque(buffer, maxlen=AUDIO_BUFFER_SAMPLES)
+    return True
 
 
 def install_bundled(model: str, target: Path) -> list[Path]:

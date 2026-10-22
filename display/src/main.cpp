@@ -19,6 +19,7 @@
 #include "games/FourInARowEngine.h"
 #include "games/ColorByNumber.h"
 #include "games/PenguinWorld.h"
+#include "graphics/ScaledShader.h"
 #include "hardware/DisplayController.h"
 #include "hardware/PanelPower.h"
 #include "hardware/PerfMonitor.h"
@@ -195,6 +196,8 @@ int main(int argc, char *argv[])
     qmlRegisterType<PenguinPicture>("McFly.Core", 1, 0, "PenguinPicture");
     // Color by Number's board and thumbnails (qml/games/ColorByNumber.qml).
     qmlRegisterType<ColorByNumberBoard>("McFly.Core", 1, 0, "ColorByNumberBoard");
+    // A shader drawn small and scaled up (the screen savers' skies).
+    qmlRegisterType<ScaledShader>("McFly.Core", 1, 0, "ScaledShader");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);

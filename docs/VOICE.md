@@ -170,9 +170,10 @@ seconds, so the two can start in any order.
 ## Privacy
 
 - **Nothing is recorded or stored.** Audio exists only in memory: a rolling
-  window of the last few seconds for the wake-word model (openWakeWord keeps
-  up to 10 s), and one question while it's transcribed, which is dropped
-  right after. No audio is written to disk.
+  window for the wake-word model (the last second of audio, and the
+  features openWakeWord works out from it for the last 10 s), and one
+  question while it's transcribed, which is dropped right after. No audio is
+  written to disk.
 - **No audio leaves the Pi.** Wake word, speech to text and text to speech
   all run on the Pi's CPU. The transcribed text goes to the display, which
   sends it to the assistant, like a typed question.

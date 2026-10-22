@@ -135,7 +135,7 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-motion
 qt_add_executable(tst_motion tst_motion.cpp)
 target_compile_options(tst_motion PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_motion PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-motion")
-target_link_libraries(tst_motion PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+target_link_libraries(tst_motion PRIVATE mcfly-graphics Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
 qt_add_shaders(tst_motion "motion_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
@@ -163,7 +163,7 @@ qt_add_executable(tst_screens tst_screens.cpp
 )
 target_compile_options(tst_screens PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_screens PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-screens")
-target_link_libraries(tst_screens PRIVATE mcfly-core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+target_link_libraries(tst_screens PRIVATE mcfly-core mcfly-graphics Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
 qt_add_resources(tst_screens "demo_data_screens"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
@@ -202,6 +202,19 @@ qt_add_shaders(tst_article "article_shaders"
 add_test(NAME tst_article COMMAND tst_article)
 set_tests_properties(tst_article PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
+# ScaledShader (src/graphics): the uniform block it fills from a shader's
+# reflection and the properties of the same names.
+qt_add_executable(tst_scaledshader tst_scaledshader.cpp)
+target_compile_options(tst_scaledshader PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_scaledshader PRIVATE mcfly-graphics Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+qt_add_shaders(tst_scaledshader "scaledshader_shaders"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag
+          ${PROJECT_SOURCE_DIR}/shaders/scaled.vert)
+add_test(NAME tst_scaledshader COMMAND tst_scaledshader)
+set_tests_properties(tst_scaledshader PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # A sky backdrop (Backdrop.qml): what its shader is fed through the dusk,
 # against a stand-in DisplayController.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop
@@ -209,7 +222,7 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop
 qt_add_executable(tst_backdrop tst_backdrop.cpp)
 target_compile_options(tst_backdrop PRIVATE ${MCFLY_WARNINGS})
 target_compile_definitions(tst_backdrop PRIVATE MCFLY_TEST_QML_DIR="${CMAKE_CURRENT_BINARY_DIR}/qml-backdrop")
-target_link_libraries(tst_backdrop PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+target_link_libraries(tst_backdrop PRIVATE mcfly-graphics Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
 qt_add_shaders(tst_backdrop "backdrop_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}

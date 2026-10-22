@@ -7,6 +7,8 @@
 
 #include <cmath>
 
+#include "graphics/ScaledShader.h"
+
 // Stands in for DisplayController: the palette's inputs, and what the
 // backdrop gates its motion on.
 class FakeDevice : public QObject
@@ -106,6 +108,7 @@ private slots:
         QCoreApplication::setOrganizationName("McFly-tests");
         QCoreApplication::setApplicationName("tst_backdrop");
         static FakeDevice *device = &m_device;
+        qmlRegisterType<ScaledShader>("McFly.Core", 1, 0, "ScaledShader");
         qmlRegisterSingletonType<FakeDevice>("McFly.Core", 1, 0, "Device", [](QQmlEngine *, QJSEngine *) -> QObject * {
             QJSEngine::setObjectOwnership(device, QJSEngine::CppOwnership);
             return device;
@@ -175,14 +178,26 @@ private slots:
     }
 
     // The shader is the style's, at the style's resolution; a name this
-    // build doesn't know draws the arc.
+    // build doesn't know draws the arc. It is shaded at that share of the
+    // item's size, in pixels (what a layer's textureSize was), by a
+    // ScaledShader: one frame per update, where a layer drew two.
     void picksItsShaderAndResolution()
     {
+        auto *fx = sky()->findChild<ScaledShader *>();
+        QVERIFY(fx);
+        const auto shaded = [fx]() {
+            return QSize(fx->property("fixedColorBufferWidth").toInt(), fx->property("fixedColorBufferHeight").toInt());
+        };
         QCOMPARE(sky()->property("shader").toString(), QStringLiteral("dawn"));
         QCOMPARE(sky()->property("resolution").toReal(), 0.5);
+        QCOMPARE(fx->fragmentShader(), QUrl(QStringLiteral("qrc:/McFly/shaders/dawn.frag.qsb")));
+        QCOMPARE(fx->status(), ScaledShader::Compiled);
+        QCOMPARE(shaded(), QSize(640, 400));
         sky()->setProperty("style", QStringLiteral("ribbons"));
         QCOMPARE(sky()->property("shader").toString(), QStringLiteral("ribbons"));
         QCOMPARE(sky()->property("resolution").toReal(), 0.4);
+        QCOMPARE(fx->fragmentShader(), QUrl(QStringLiteral("qrc:/McFly/shaders/ribbons.frag.qsb")));
+        QCOMPARE(shaded(), QSize(512, 320));
         sky()->setProperty("style", QStringLiteral("disco"));
         QCOMPARE(sky()->property("shader").toString(), QStringLiteral("arc"));
     }

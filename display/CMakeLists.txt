@@ -4,9 +4,9 @@ project(mcfly-display VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 6.6 for Sparkline's curve renderer (Shape.preferredRendererType); the Pi runs
-# Debian Trixie's 6.8. With an older Qt the QML would build and then not load.
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Network Qml Quick Concurrent WebSockets ShaderTools)
+# 6.7 for ScaledShader (QQuickRhiItem); the Pi runs Debian Trixie's 6.8. With
+# an older Qt the QML would build and then not load.
+find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Network Qml Quick Concurrent WebSockets ShaderTools)
 qt_standard_project_setup()
 # Qt 6.8+ (Raspberry Pi OS / Debian Trixie) warns unless this is set: give each
 # QML subfolder its own qmldir. Qt 6.6 and 6.7 don't know it.
@@ -65,6 +65,25 @@ add_library(mcfly-colors STATIC
 target_include_directories(mcfly-colors PUBLIC src)
 target_compile_options(mcfly-colors PRIVATE ${MCFLY_WARNINGS})
 target_link_libraries(mcfly-colors PUBLIC Qt6::Gui Qt6::Quick)
+
+# ScaledShader: a ShaderEffect shader drawn small and scaled up without a
+# layer's extra frame (the screen savers' skies). A QQuickRhiItem drawing
+# through QRhi, whose headers come with Qt's private ones
+# (qt6-base-private-dev, as for the panel's power below). A library so the
+# QML tests can register it too.
+if(NOT TARGET Qt6::GuiPrivate)
+    set(QT_NO_PRIVATE_MODULE_WARNING ON)
+    find_package(Qt6GuiPrivate QUIET)
+endif()
+if(NOT TARGET Qt6::GuiPrivate)
+    message(FATAL_ERROR "Qt's private headers not found (qt6-base-private-dev): ScaledShader draws through QRhi")
+endif()
+add_library(mcfly-graphics STATIC
+    src/graphics/ScaledShader.h    src/graphics/ScaledShader.cpp
+)
+target_include_directories(mcfly-graphics PUBLIC src)
+target_compile_options(mcfly-graphics PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(mcfly-graphics PUBLIC Qt6::Gui Qt6::GuiPrivate Qt6::Qml Qt6::Quick)
 
 qt_add_executable(mcfly-display
     src/main.cpp
@@ -227,10 +246,12 @@ qt_add_resources(mcfly-display "keyboard_style"
     FILES qml/keyboard/style.qml
 )
 
-# ShaderEffect fragment shaders, baked to .qsb at build time (qrc:/McFly/shaders/).
+# ShaderEffect fragment shaders, baked to .qsb at build time (qrc:/McFly/shaders/),
+# and ScaledShader's vertex stage.
 qt_add_shaders(mcfly-display "shaders"
     PREFIX /McFly
     FILES
+        shaders/scaled.vert
         shaders/gradienttile.frag
         shaders/spectrumglow.frag
         shaders/spectrumglow.vert
@@ -244,7 +265,7 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/pillars.frag
 )
 
-target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr mcfly-penguins mcfly-colors
+target_link_libraries(mcfly-display PRIVATE mcfly-core mcfly-qr mcfly-penguins mcfly-colors mcfly-graphics
     Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::Concurrent Qt6::WebSockets)
 
 install(TARGETS mcfly-display RUNTIME DESTINATION bin)

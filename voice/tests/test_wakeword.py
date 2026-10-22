@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import tomllib
 import types
+from collections import deque
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,38 @@ def test_set_busy_is_idempotent():
     g.set_busy(False)
     clock.now += 0.6
     assert g.allows()
+
+
+def test_trimmed_audio_buffer_reads_the_same_tail():
+    """openWakeWord reads the frame and 480 samples before it from its raw
+    buffer (AudioFeatures._streaming_melspectrogram); a second of it gives
+    the same samples as its own ten, frame after frame and after a reset."""
+    stock = types.SimpleNamespace(raw_data_buffer=deque(maxlen=16000 * 10))
+    trimmed = types.SimpleNamespace(raw_data_buffer=deque(maxlen=16000 * 10))
+    assert wakeword.trim_audio_buffer(trimmed)
+    assert trimmed.raw_data_buffer.maxlen == wakeword.AUDIO_BUFFER_SAMPLES
+    for n in range(300):
+        if n == 200:  # Model.reset() clears it, keeping the deque
+            stock.raw_data_buffer.clear()
+            trimmed.raw_data_buffer.clear()
+        frame = [(n * 7919 + i * 31) % 65536 - 32768 for i in range(1280)]
+        for features in (stock, trimmed):
+            features.raw_data_buffer.extend(frame)
+        tail = 1280 + 480
+        assert len(trimmed.raw_data_buffer) >= min(len(stock.raw_data_buffer), tail)
+        assert list(trimmed.raw_data_buffer)[-tail:] == list(stock.raw_data_buffer)[-tail:]
+
+
+def test_trim_audio_buffer_leaves_other_buffers_alone():
+    assert not wakeword.trim_audio_buffer(types.SimpleNamespace())
+    kept = [0] * 10
+    features = types.SimpleNamespace(raw_data_buffer=kept)
+    assert not wakeword.trim_audio_buffer(features)
+    assert features.raw_data_buffer is kept
+    short = deque(maxlen=4000)
+    features = types.SimpleNamespace(raw_data_buffer=short)
+    assert not wakeword.trim_audio_buffer(features)
+    assert features.raw_data_buffer is short
 
 
 @pytest.mark.parametrize("model, override, expected", [

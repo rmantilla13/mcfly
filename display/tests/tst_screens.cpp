@@ -8,6 +8,7 @@
 #include <QQuickWindow>
 
 #include "backend/SupabaseClient.h"
+#include "graphics/ScaledShader.h"
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
 #include "models/HomeGlance.h"
@@ -179,6 +180,7 @@ private slots:
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &m_device);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "System", &m_system);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", m_glance);
+        qmlRegisterType<ScaledShader>("McFly.Core", 1, 0, "ScaledShader");
         // One engine for them all: an instance singleton belongs to one.
         m_engine = new QQmlEngine(this);
         m_engine->addImportPath(QStringLiteral(MCFLY_TEST_QML_DIR));

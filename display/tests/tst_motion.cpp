@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "graphics/ScaledShader.h"
+
 // Stands in for DisplayController: the palette's inputs, and what the tiles
 // and the voice glow gate their motion on.
 class FakeDevice : public QObject
@@ -207,6 +209,7 @@ private slots:
         // Each test has an engine of its own (so a Theme of its own); they
         // all share the one device.
         static FakeDevice *device = &m_device;
+        qmlRegisterType<ScaledShader>("McFly.Core", 1, 0, "ScaledShader");
         qmlRegisterSingletonType<FakeDevice>("McFly.Core", 1, 0, "Device", [](QQmlEngine *, QJSEngine *) -> QObject * {
             QJSEngine::setObjectOwnership(device, QJSEngine::CppOwnership);
             return device;
