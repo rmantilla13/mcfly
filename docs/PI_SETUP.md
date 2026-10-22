@@ -412,6 +412,15 @@ GPU's jobs a second follow what moves on the screen (see the frame rate
 below), plus one for each cached layer it redraws. From 80 °C the Pi slows
 itself down: the NOW column says HOT.
 
+The fan steps up at 55, 65, 72 and 78 °C, about 5 °C above the firmware's
+own 50, 60, 67.5 and 75 (`display/deploy/fan-steps.sh`, which the installer
+runs on `/boot/firmware/config.txt`). With the screen saver up the Pi sits in
+the mid-60s, where the stock steps put the fan on its third step, about 7,400
+rpm; these keep it a step lower for the same work, a few degrees warmer and
+still under 80. `display/deploy/fan-steps.sh --remove` puts the firmware's
+steps back (the uninstaller does it too). Either takes a reboot. `pi-perf.sh`
+shows the fan's rpm.
+
 ### Performance on the screen itself
 
 On the panel, tap the gear, then the **Admin** tab, and turn on
