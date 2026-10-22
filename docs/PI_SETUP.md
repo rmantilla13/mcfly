@@ -111,9 +111,10 @@ The script takes 20–30 minutes. It:
 - quiets the panel for the next reboot: no rainbow splash, no kernel text,
   no Plymouth splash, and no blinking cursor or screen blanking
   (`/boot/firmware/cmdline.txt` and `config.txt`; the originals are saved
-  as `cmdline.txt.mcfly-backup` and `config.txt.mcfly-backup`), and sends
-  cloud-init's boot notes to its log instead of the screen. A short silent
-  video plays until the app takes the screen. SSH is unchanged
+  as `cmdline.txt.mcfly-backup` and `config.txt.mcfly-backup`). What still
+  prints at boot (the root file system check, cloud-init) goes to `tty3`,
+  which is never on the panel, and cloud-init's boot notes go to its log.
+  A short silent video plays until the app takes the screen. SSH is unchanged
 - sends sound to the screen's speakers at half volume (full volume on this
   panel is mostly hiss; the gear menu turns the speakers off or up, and the
   screen's own buttons still work) and keeps them awake between sounds (the
@@ -134,12 +135,14 @@ Check with `systemctl is-active mcfly-display`. A healthy service prints
 the check that a later power-on brings McFly back by itself.
 
 After the reboot, the panel does not scroll kernel text or sit on a login
-prompt. Cloud-init's line `Completed socket interaction for boot stage final`
-goes to the log instead of the HDMI console. A short silent video plays
-until the app is ready, then McFly fills the screen with sample data. The
-app stops that video before it opens the screen, so the two don't share it.
-McFly does not wait for Wi-Fi before painting (it connects when the network
-is up), and SSH works the whole time. The console login on the panel is
+prompt. The kernel console is `tty3`, so lines such as
+`/dev/mmcblk0p2: clean, …` and cloud-init's
+`Completed socket interaction for boot stage …` stay off the screen
+(`cat /sys/class/tty/console/active` says `ttyAMA10 tty3`). A short silent
+video plays until the app is ready, then McFly fills the screen with sample
+data. The app stops that video before it opens the screen, so the two don't
+share it. McFly does not wait for Wi-Fi before painting (it connects when
+the network is up), and SSH works the whole time. The console login on the panel is
 masked; **Everyday commands** below shows how to get it back.
 
 `journalctl -t mcfly-display -f` only shows logs. It does not start McFly.
@@ -529,7 +532,8 @@ journalctl -u mcfly-display -b --no-pager
 |---|---|
 | A terminal or login prompt is on the screen | `journalctl` will not change the picture. Run `sudo systemctl enable --now mcfly-display`. `systemctl is-active mcfly-display` should print `active`, and `systemctl is-enabled mcfly-display` should print `enabled`. If the unit could not be found, or a login prompt comes back after a reboot, re-run `./display/deploy/install-pi.sh`, then `sudo reboot`. It enables and starts `mcfly-display`, masks `getty@tty1` / `autovt@tty1` (`systemctl is-enabled getty@tty1` should say `masked`), and applies quiet boot. If it stays inactive, `journalctl -u mcfly-display -b --no-pager` shows why, and `journalctl -t mcfly-display -b --no-pager` what the app printed. |
 | The service is `active` but the panel is still a terminal | The app did not open the HDMI device. `journalctl -t mcfly-display -b --no-pager` and `cat /etc/mcfly/kms.json`. The device should be one of `ls -l /dev/dri/by-path/`, and the output name should be `HDMI1` for the HDMI0 port (kernel name `HDMI-A-1`). Re-run `./display/deploy/install-pi.sh`. |
-| Boot text, the rainbow square, or `Completed socket interaction for boot stage final` stays on the screen, or the console shows until Wi-Fi connects | Re-run `./display/deploy/install-pi.sh`, then `sudo reboot`. Quiet boot is in `/boot/firmware/cmdline.txt`, `disable_splash=1` is in `/boot/firmware/config.txt`, cloud-init is sent to the log (`/etc/cloud/cloud.cfg.d/99-mcfly-quiet.cfg`), and the display service no longer waits for the network-online target. The boot video staying up while Wi-Fi joins (at most 30 seconds) is expected. The cloud-init line is a successful boot note, not a hang. |
+| Boot text, the rainbow square, or `Completed socket interaction for boot stage final` stays on the screen, or the console shows until Wi-Fi connects | Re-run `./display/deploy/install-pi.sh`, then `sudo reboot`. Quiet boot is in `/boot/firmware/cmdline.txt` (with `console=tty3`, not `console=tty1`), `disable_splash=1` is in `/boot/firmware/config.txt`, cloud-init is sent to the log (`/etc/cloud/cloud.cfg.d/99-mcfly-quiet.cfg`), and the display service no longer waits for the network-online target. The boot video staying up while Wi-Fi joins (at most 30 seconds) is expected. The cloud-init line is a successful boot note, not a hang. |
+| The panel stays black and McFly never appears, and SSH does not answer either (often after a power cut) | Boot messages, a failed file system check and an emergency shell are on `tty3`, not on the panel. Plug in a USB keyboard and press Ctrl+Alt+F3 to see them (Ctrl+Alt+F1 goes back). Answer the prompt there, or run `fsck -y /dev/mmcblk0p2` from the emergency shell, then `reboot`. |
 | The boot video never appears, or stays up over McFly | `journalctl -u mcfly-bootscreen -b`. The app stops that service before it uses the screen. `sudo systemctl stop mcfly-bootscreen` releases it if you need to. |
 | McFly says **Offline — reconnecting…** after a reboot | Wi-Fi took longer than the boot video waits (30 seconds). McFly connects within a few seconds of the network coming up. `journalctl -b -t mcfly-display -t mcfly-stop-bootscreen \| grep -E 'bootscreen\|failed'` shows how long the boot waited and why the first sync failed. A slow router can be given longer: `MCFLY_BOOT_NETWORK_WAIT=60` in `/etc/mcfly/display.env`. |
 | Boot messages stay on the screen, and the log repeats `No modes available`, `Could not open DRM device` or a crash | The app can't find the screen and retries every second. Check that the cable is in **HDMI0** and the screen is on and set to HDMI. `cat /etc/mcfly/kms.json` should name a device from `ls -l /dev/dri/by-path/`; re-run `./display/deploy/install-pi.sh` to detect it again. |

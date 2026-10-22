@@ -47,7 +47,7 @@ for unit in mcfly-display mcfly-bootscreen mcfly-voice mcfly-preview; do
     sudo systemctl unmask "$unit" 2>/dev/null || true
     sudo rm -f "/etc/systemd/system/$unit.service"
 done
-for unit in cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service; do
+for unit in cloud-init-local.service cloud-init-main.service cloud-init-network.service cloud-init.service cloud-config.service cloud-final.service; do
     sudo rm -f "/etc/systemd/system/${unit}.d/mcfly-quiet.conf"
     sudo rmdir "/etc/systemd/system/${unit}.d" 2>/dev/null || true
 done
@@ -80,7 +80,8 @@ fi
 
 sudo systemctl reload ssh 2>/dev/null || true
 echo
-echo "McFly is removed. The kernel's quiet-boot options stay (they only hide boot text)."
+echo "McFly is removed. The kernel's quiet-boot options stay (they only hide boot text,"
+echo "and send what is left to tty3); /boot/firmware/cmdline.txt.mcfly-backup is the original."
 echo "Install again with:"
 echo "  cd ~ && rm -rf ~/mcfly && git clone https://github.com/rmantilla13/mcfly.git"
 echo "  cd mcfly && ./display/deploy/install-pi.sh --with-voice && sudo reboot"

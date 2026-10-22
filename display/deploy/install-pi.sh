@@ -242,15 +242,17 @@ step "Configuring the console"
 "$repo/display/deploy/quiet-boot.sh"
 
 # cloud-init prints "Completed socket interaction for boot stage final" on
-# the HDMI console after quiet boot. The kernel command line does not stop
-# it: those units use StandardOutput=journal+console. Send that to the
-# journal, and keep cloud-init's own log off the console. A reboot applies it.
+# the console after quiet boot. The kernel command line does not stop it:
+# those units use StandardOutput=journal+console. Send that to the journal,
+# and keep cloud-init's own log off the console. A reboot applies it. Since
+# cloud-init 24, cloud-init.service is cloud-init-network.service, and
+# cloud-init-main.service runs every stage.
 sudo mkdir -p /etc/cloud/cloud.cfg.d
 sudo tee /etc/cloud/cloud.cfg.d/99-mcfly-quiet.cfg >/dev/null <<'EOF'
 # Written by McFly install-pi.sh. Boot-stage text stays in the log.
 output: {all: ">> /var/log/cloud-init-output.log"}
 EOF
-for unit in cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service; do
+for unit in cloud-init-local.service cloud-init-main.service cloud-init-network.service cloud-init.service cloud-config.service cloud-final.service; do
     if [ ! -f "/lib/systemd/system/$unit" ] && [ ! -f "/usr/lib/systemd/system/$unit" ]; then
         continue
     fi

@@ -73,6 +73,15 @@ grep -q 'session[[:space:]]*required[[:space:]]*pam_systemd.so' "$pam" || fail "
 grep -q 'auth[[:space:]]*required[[:space:]]*pam_permit.so' "$pam" || fail "pam stack must not ask for a password"
 
 grep -Fq 'quiet-boot.sh' "$install" || fail "install script does not quiet the boot console"
+# cloud-init's units print to the console (journal+console). Since cloud-init
+# 24 the network stage is cloud-init-network.service: miss it and its line
+# lands on the screen while the boot video starts.
+cloud_loop=$(grep -E '^for unit in cloud-init-local\.service' "$install")
+uncloud_loop=$(grep -E '^for unit in cloud-init-local\.service' "$root/display/deploy/uninstall-pi.sh")
+for cloud_unit in cloud-init-local cloud-init-main cloud-init-network cloud-init cloud-config cloud-final; do
+    printf '%s\n' "$cloud_loop" | grep -Fq " $cloud_unit.service" || fail "install script leaves $cloud_unit.service printing on the console"
+    printf '%s\n' "$uncloud_loop" | grep -Fq " $cloud_unit.service" || fail "uninstall script leaves the $cloud_unit.service drop-in"
+done
 grep -Fq 's/@USER@/$user/g' "$install" || fail "install script dropped user substitution"
 grep -Fq 's/@UID@/$uid/g' "$install" || fail "install script dropped uid substitution"
 grep -q 'mcfly-display.pam' "$install" || fail "install script does not install the pam stack"
@@ -310,8 +319,12 @@ printf '%s\n' "$stock" >"$tmp/cmdline.txt"
 printf '%s\n' '# comments stay' 'disable_splash=0' 'boot_delay=1' >"$tmp/config.txt"
 "$quiet" "$tmp/cmdline.txt" "$tmp/config.txt" >"$tmp/quiet.out"
 got="$(cat "$tmp/cmdline.txt")"
-printf '%s\n' "$got" | grep -q 'console=tty1' || fail "quiet boot moved off tty1, which the kiosk owns"
-printf '%s\n' "$got" | grep -q 'console=serial0,115200' || fail "serial console was dropped"
+# Boot text goes to tty3, in place of tty1. tty1 is the VT the panel shows,
+# and the last console= is /dev/console, so the VT keeps that role.
+printf '%s\n' "$got" | grep -q '^console=serial0,115200 console=tty3 root=' || fail "kernel console did not move to tty3 in place"
+if printf '%s\n' "$got" | grep -Eq '(^| )console=tty1( |$)'; then
+    fail "boot text still lands on tty1, the panel"
+fi
 printf '%s\n' "$got" | grep -q 'root=PARTUUID=abcd-02' || fail "root device was dropped"
 for opt in quiet loglevel=3 logo.nologo systemd.show_status=false plymouth.enable=0 consoleblank=0 vt.global_cursor_default=0; do
     printf '%s\n' "$got" | grep -Fq "$opt" || fail "cmdline missing $opt"
@@ -371,6 +384,18 @@ for key in disable_splash=1 boot_delay=0 boot_delay_ms=0; do
     [ -n "$key_at" ] && [ "$key_at" -lt "$filter_at" ] || fail "$key landed inside a model filter"
 done
 grep -qx '\[all\]' "$tmp/config4.txt" || fail "config.txt filters were dropped"
+
+# No VT console means the kernel default, tty1: add tty3. Several VT consoles
+# become one tty3, where the first was. A serial console is not a VT.
+printf '%s\n' 'root=PARTUUID=abcd-02 rootwait' >"$tmp/cmdline5.txt"
+"$quiet" "$tmp/cmdline5.txt" "$tmp/config4.txt" >/dev/null
+grep -Eq '(^| )console=tty3( |$)' "$tmp/cmdline5.txt" || fail "a cmdline with no console= kept boot text on tty1"
+printf '%s\n' 'console=tty1 console=ttyAMA0,115200 console=tty2 root=PARTUUID=abcd-02' >"$tmp/cmdline6.txt"
+"$quiet" "$tmp/cmdline6.txt" "$tmp/config4.txt" >/dev/null
+got6="$(cat "$tmp/cmdline6.txt")"
+printf '%s\n' "$got6" | grep -q '^console=tty3 console=ttyAMA0,115200 root=' || fail "serial console ttyAMA0 was treated as a VT"
+vt_count="$(printf '%s\n' "$got6" | tr ' ' '\n' | grep -cE '^console=tty[0-9]+$' || true)"
+[ "$vt_count" -eq 1 ] || fail "VT consoles were not folded into one tty3 ($vt_count)"
 
 # No firmware files: the installer still finishes (a container, or not a Pi).
 "$quiet" "$tmp/missing-cmdline.txt" "$tmp/missing-config.txt" >"$tmp/missing.out"

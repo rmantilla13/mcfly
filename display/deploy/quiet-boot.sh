@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Makes a Raspberry Pi boot straight to the McFly panel: no rainbow splash,
-# no kernel log on the console, no Plymouth logo. The kiosk service then
-# paints as soon as the screen and the user session exist. Safe to re-run.
+# no boot text, no Plymouth logo, no cursor. The kiosk service then paints
+# as soon as the screen and the user session exist. Safe to re-run.
 # Originals are kept once, as <file>.mcfly-backup.
 #
 #   quiet-boot.sh [cmdline.txt] [config.txt]
@@ -35,8 +35,16 @@ backup_once() {
     fi
 }
 
-# tty1 stays the kernel console. It is the foreground VT the panel shows,
-# and the kiosk binds that same VT. These options leave it blank.
+# The kernel console (/dev/console) goes to tty3, which is never on the
+# panel. tty1 is the VT the panel shows and the kiosk binds. quiet and
+# loglevel only cover the kernel's own messages: the initramfs prints the
+# root fsck's "clean, N/M files" line on every boot, and cloud-init, rc-local
+# and anything else with StandardOutput=console write to /dev/console
+# directly. An emergency shell opens there too (Ctrl+Alt+F3 with a keyboard).
+# Serial consoles are left alone.
+console_vt=console=tty3
+# The rest keep the kernel's own lines, Plymouth and the cursor off the
+# screen, and stop the console blanking.
 keep_options=(
     quiet
     loglevel=3
@@ -69,6 +77,22 @@ apply_cmdline() {
         done
         [ "$drop" -eq 0 ] && filtered+=("$word")
     done
+    words=("${filtered[@]+"${filtered[@]}"}")
+
+    # Every VT console becomes one tty3, where the first one was. The last
+    # console= is /dev/console, so with serial0 first the VT still gets it.
+    # No VT console at all would mean the kernel default, tty1: add tty3.
+    filtered=()
+    seen=0
+    for word in "${words[@]+"${words[@]}"}"; do
+        if [[ "$word" =~ ^console=tty[0-9]+$ ]]; then
+            [ "$seen" -eq 0 ] && filtered+=("$console_vt")
+            seen=1
+        else
+            filtered+=("$word")
+        fi
+    done
+    [ "$seen" -eq 1 ] || filtered+=("$console_vt")
     words=("${filtered[@]+"${filtered[@]}"}")
 
     for option in "${keep_options[@]}"; do
