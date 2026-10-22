@@ -10,6 +10,8 @@ import McFly.Core
 // cross-fades in.
 Item {
     id: headlines
+    // Updates a second for what moves (ScreenSaver's: it eases off after a while).
+    property int fps: Theme.saverFps
     property int index: 0
     property date now: new Date()
     readonly property var stories: Store.stories
@@ -36,7 +38,10 @@ Item {
             readonly property bool current: headlines.index % 2 === modelData
             // Each slot shows the story it was given when it became current.
             property var shown: ({})
-            onCurrentChanged: if (current) shown = headlines.story
+            onCurrentChanged: if (current) {
+                shown = headlines.story
+                burns.time = 0
+            }
             Component.onCompleted: if (current) shown = headlines.story
             anchors.fill: parent
             opacity: current ? 1 : 0
@@ -46,8 +51,8 @@ Item {
             // The colour field behind a story without a picture; a picture
             // covers it, so then it isn't drawn at all.
             GradientTile {
-                // Full screen: shaded at half its pixels (GradientTile.resolution).
-                resolution: 0.5
+                // Full screen: shaded at the skies' size (Theme.backdropResolution).
+                resolution: Theme.backdropResolution / Math.max(1, Screen.devicePixelRatio)
                 anchors.fill: parent
                 visible: picture.status !== Image.Ready
                 radius: 0
@@ -56,7 +61,7 @@ Item {
                 dark: true
                 seed: modelData * 1.9
                 whileIdle: true
-                maxFps: Theme.saverFps
+                maxFps: headlines.fps
                 period: Theme.saverDrift
             }
             Image {
@@ -72,13 +77,17 @@ Item {
                 sourceSize: Qt.size(Math.max(1, Math.round(width * 1.1)), Math.max(1, Math.round(height * 1.1)))
                 visible: status === Image.Ready
                 transformOrigin: Item.Center
-                scale: 1
                 // Ken Burns: a slow push in while this story is up, and on
                 // through its fade out (12 s up + 1.4 s out), so it never
-                // stops mid-move.
-                SequentialAnimation on scale {
-                    running: (current || slot.opacity > 0) && picture.visible && Device.animatedTiles
-                    NumberAnimation { from: 1.0; to: 1.08; duration: 14000; easing.type: Easing.InOutSine }
+                // stops mid-move. Eased in and out, to 1.08 over 14 s, on the
+                // saver's clock: an animation would redraw the panel every
+                // frame for a push of a pixel a second.
+                scale: 1 + 0.08 * (0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, burns.time / 14)))
+                MotionClock {
+                    id: burns
+                    objectName: "kenBurns"
+                    playing: (slot.current || slot.opacity > 0) && picture.visible && Device.animatedTiles && time < 14
+                    fps: headlines.fps
                 }
             }
             // Shade for the words.

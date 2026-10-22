@@ -198,8 +198,12 @@ private slots:
         QCOMPARE(sky()->property("resolution").toReal(), 0.4);
         QCOMPARE(fx->fragmentShader(), QUrl(QStringLiteral("qrc:/McFly/shaders/ribbons.frag.qsb")));
         QCOMPARE(shaded(), QSize(512, 320));
+        QCOMPARE(fx->vertexShader(), QUrl());
         sky()->setProperty("style", QStringLiteral("disco"));
         QCOMPARE(sky()->property("shader").toString(), QStringLiteral("arc"));
+        // The arc works out what depends on the column alone once a column.
+        QCOMPARE(fx->vertexShader(), QUrl(QStringLiteral("qrc:/McFly/shaders/arc.vert.qsb")));
+        QCOMPARE(fx->status(), ScaledShader::Compiled);
     }
 };
 

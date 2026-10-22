@@ -6,6 +6,9 @@
 #include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QTemporaryDir>
+
+#include <functional>
 
 #include "backend/SupabaseClient.h"
 #include "graphics/ScaledShader.h"
@@ -23,8 +26,21 @@ class FakeDevice : public QObject
     Q_PROPERTY(bool idle READ idle NOTIFY idleChanged)
     Q_PROPERTY(bool screenOff READ screenOff NOTIFY screenOffChanged)
     Q_PROPERTY(bool animatedTiles READ animatedTiles WRITE setAnimatedTiles NOTIFY animatedTilesChanged)
+    // What the screen savers read: the arc sky, no weather, two minutes to idle.
+    Q_PROPERTY(QString backdrop READ backdrop CONSTANT)
+    Q_PROPERTY(QString screensaver READ screensaver CONSTANT)
+    Q_PROPERTY(bool nightMode READ no CONSTANT)
+    Q_PROPERTY(QString weather READ weather CONSTANT)
+    Q_PROPERTY(QString weatherKind READ weather CONSTANT)
+    Q_PROPERTY(int idleTimeoutSec READ idleTimeoutSec CONSTANT)
 public:
     QString mood() const { return QStringLiteral("day"); }
+    QString backdrop() const { return QStringLiteral("arc"); }
+    QString screensaver() const { return QStringLiteral("ambient"); }
+    QString weather() const { return QStringLiteral("off"); }
+    bool no() const { return false; }
+    Q_INVOKABLE int weatherCount(const QString &, qreal, qreal) const { return 0; }
+    int idleTimeoutSec() const { return 120; }
     bool darkMode() const { return false; }
     bool idle() const { return m_idle; }
     bool screenOff() const { return m_screenOff; }
@@ -617,6 +633,91 @@ private slots:
         qobject_cast<QQuickItem *>(m_screen)->setVisible(false);
         for (QObject *clock : {lights, floats, wave})
             QVERIFY(!running(clock));
+    }
+
+    // The screen saver eases off: what moves on it (here the arc's sky)
+    // updates Theme.saverFps times a second, then Theme.saverCalmFps once
+    // the screen has gone untouched for Theme.saverCalmAfter, which is the
+    // saver's own time plus the idle timeout before it came up. Hidden (a
+    // touch, the panel asleep) it starts over.
+    void saverEasesOff()
+    {
+        QVERIFY(show("ScreenSaver {}", 1280, 800, QStringLiteral("wide")));
+        QCOMPARE(m_screen->property("calmAfter").toInt(), (10 * 60 - 120) * 1000);
+        QCOMPARE(m_screen->property("fps").toInt(), 30);
+        QObject *content = m_screen->findChild<QObject *>(QStringLiteral("saverContent"));
+        QVERIFY(content);
+        QTRY_VERIFY(content->property("item").value<QObject *>());
+        QObject *ambient = content->property("item").value<QObject *>();
+        QObject *sky = nullptr;
+        for (QObject *o : ambient->findChildren<QObject *>())
+            if (QByteArray(o->metaObject()->className()).startsWith("Backdrop"))
+                sky = o;
+        QVERIFY(sky);
+        QObject *slide = ambient->findChild<QObject *>(QStringLiteral("slide"));
+        QVERIFY(slide);
+        QCOMPARE(ambient->property("fps").toInt(), 30);
+        QCOMPARE(sky->property("maxFps").toInt(), 30);
+        QCOMPARE(slide->property("fps").toInt(), 30);
+
+        // The minute's slide against burn-in: from where it is, on the saver's
+        // clock, eased to the new spot over 4 s, then the clock stops.
+        QVERIFY(!slide->property("running").toBool());
+        QMetaObject::invokeMethod(ambient, "_slideTo", Q_ARG(QVariant, 12.0), Q_ARG(QVariant, -6.0));
+        QVERIFY(slide->property("running").toBool());
+        QCOMPARE(ambient->property("shiftX").toReal(), 0.0);
+        QTRY_VERIFY(ambient->property("shiftX").toReal() > 0.5);
+        QVERIFY(ambient->property("shiftX").toReal() < 12.0);
+        QTRY_VERIFY_WITH_TIMEOUT(!slide->property("running").toBool(), 6000);
+        QCOMPARE(ambient->property("shiftX").toReal(), 12.0);
+        QCOMPARE(ambient->property("shiftY").toReal(), -6.0);
+
+        m_screen->setProperty("calmAfter", 50);
+        QTRY_COMPARE(m_screen->property("fps").toInt(), 15);
+        QCOMPARE(ambient->property("fps").toInt(), 15);
+        QCOMPARE(sky->property("maxFps").toInt(), 15);
+        QCOMPARE(slide->property("fps").toInt(), 15);
+
+        qobject_cast<QQuickItem *>(m_screen)->setVisible(false);
+        QCOMPARE(m_screen->property("calm").toBool(), false);
+        QCOMPARE(m_screen->property("fps").toInt(), 30);
+    }
+
+    // Headlines pushes into a story's picture, to 1.08 over 14 s, on the
+    // saver's clock rather than every frame, and slower when it eases off.
+    void headlinesPushInOnTheSaverClock()
+    {
+        QTemporaryDir dir;
+        QImage picture(64, 40, QImage::Format_RGB32);
+        picture.fill(Qt::darkCyan);
+        const QString file = dir.filePath(QStringLiteral("story.png"));
+        QVERIFY(picture.save(file));
+
+        QVERIFY(show("HeadlinesSaver {}", 1280, 800, QStringLiteral("wide")));
+        // The current slot's picture (a Repeater's slots hang off the item tree).
+        QQuickItem *image = nullptr;
+        QObject *burns = nullptr;
+        std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+            if (QObject *clock = item->findChild<QObject *>(QStringLiteral("kenBurns"), Qt::FindDirectChildrenOnly);
+                clock && item->parentItem() && item->parentItem()->property("current").toBool()) {
+                image = item;
+                burns = clock;
+            }
+            for (QQuickItem *child : item->childItems())
+                walk(child);
+        };
+        walk(qobject_cast<QQuickItem *>(m_screen));
+        QVERIFY(image && burns);
+        QCOMPARE(burns->property("fps").toInt(), 30);
+        QVERIFY(!burns->property("running").toBool());   // no picture yet
+        image->setProperty("source", QUrl::fromLocalFile(file));
+        QTRY_VERIFY(image->isVisible());
+        QVERIFY(burns->property("running").toBool());
+        QVERIFY(image->scale() >= 1.0 && image->scale() < 1.005);   // from the start (a tick may be in)
+        QTRY_VERIFY(image->scale() > 1.001);
+        QVERIFY(image->scale() < 1.08);
+        m_screen->setProperty("fps", 15);
+        QCOMPARE(burns->property("fps").toInt(), 15);
     }
 
     // Waiting for a code: ten dots round a ring, from the top and clockwise,

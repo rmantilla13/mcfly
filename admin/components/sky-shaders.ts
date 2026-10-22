@@ -7,6 +7,8 @@
 // in where the pixel comes from (gl_FragCoord rather than qt_TexCoord0) and
 // in writing gl_FragColor. tests/sky.test.mjs holds the scene bodies and the
 // shared functions to the .frag files, so a change to a sky lands on both.
+// The arc's column() is its vertex stage's (arc.vert), which the display
+// works out once a pixel column; here it is worked out per pixel.
 // Pure and without imports, so the test can load it.
 //
 // Per pixel: arc 5 simplex noise, ribbons 9, dawn 2, silk none (sines only),
@@ -119,21 +121,21 @@ export const SKY_SCENES: Readonly<Record<SkyStyle, string>> = {
     float X = (uv.x - 0.5) * aspect;
     float Y = uv.y;
     float t = time;
-    // The arc's lower border: a curve, higher in the middle, bending slowly.
-    float yc = 0.42 + 0.10 * cos(X * 0.9) + 0.07 * snoise(vec2(X * 0.6 + seed, t * 0.03));
+    // The border, the warp, the brightness along, the second border.
+    vec4 c = column(X, t);
+    float yc = c.x;
     float d = Y - yc;
     // Bright at the border, a quick fall, then a long faint tail upward.
     float up = max(d, 0.0);
     float body = smoothstep(-0.03, 0.01, d) * (0.45 * exp(-up * 24.0) + 0.55 * exp(-up * 7.5));
     // Rays: a tall noise folded by a slow warp.
-    float warp = snoise(vec2(X * 1.2, t * 0.04 + seed));
+    float warp = c.y;
     float r = snoise(vec2(X * 14.0 + warp * 1.4, Y * 0.5 + t * 0.06));
     float rays = 0.5 + 0.5 * r;
-    // Brightness travelling along the arc.
-    float along = 0.4 + 0.6 * (0.5 + 0.5 * snoise(vec2(X * 1.1 - t * 0.05, 7.0 + seed)));
+    float along = c.z;
     a = body * (0.55 + 0.45 * rays) * along * 1.25;
     // A second, fainter arc behind.
-    float yc2 = yc + 0.24 + 0.05 * snoise(vec2(X * 0.5, t * 0.02 + 11.0));
+    float yc2 = c.w;
     float d2 = Y - yc2;
     a += 0.3 * smoothstep(-0.05, 0.02, d2) * exp(-max(d2, 0.0) * 12.0) * (0.6 + 0.4 * r);
     // The first stop along the border, the others up through the rays.
@@ -245,6 +247,24 @@ const MAIN = `void main()
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
+// What a style works out from the column alone, which its scene() asks
+// column() for: the display does it once a pixel column, in the style's
+// vertex stage (display/shaders/<style>.vert); here, per pixel.
+export const SKY_COLUMNS: Readonly<Partial<Record<SkyStyle, string>>> = {
+  arc: `vec4 column(float X, float t)
+{
+    // The arc's lower border: a curve, higher in the middle, bending slowly.
+    float yc = 0.42 + 0.10 * cos(X * 0.9) + 0.07 * snoise(vec2(X * 0.6 + seed, t * 0.03));
+    // The rays' slow warp.
+    float warp = snoise(vec2(X * 1.2, t * 0.04 + seed));
+    // Brightness travelling along the arc.
+    float along = 0.4 + 0.6 * (0.5 + 0.5 * snoise(vec2(X * 1.1 - t * 0.05, 7.0 + seed)));
+    // A second, fainter arc behind.
+    float yc2 = yc + 0.24 + 0.05 * snoise(vec2(X * 0.5, t * 0.02 + 11.0));
+    return vec4(yc, warp, along, yc2);
+}`,
+};
+
 export function skyFragment(style: SkyStyle): string {
-  return [UNIFORMS, SKY_FUNCTIONS, SKY_SCENES[style], MAIN].join("\n\n");
+  return [UNIFORMS, SKY_FUNCTIONS, SKY_COLUMNS[style], SKY_SCENES[style], MAIN].filter(Boolean).join("\n\n");
 }

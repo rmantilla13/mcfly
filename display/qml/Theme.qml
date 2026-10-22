@@ -119,6 +119,19 @@ Item {
     // drift takes. Slow enough that an update moves things under a pixel.
     readonly property int saverFps: motionFps
     readonly property int saverDrift: 110000
+    // The share of its logical size the mesh shades at where it fills the
+    // screen (the savers, the assistant panel): the skies' 0.5 (Backdrop's
+    // own table, where ribbons take 0.4), 640x400 on the Pi's panel, where a
+    // backdrop is the biggest thing the GPU shades. A GradientTile counts
+    // physical pixels, so give it this over the screen's pixel ratio.
+    readonly property real backdropResolution: 0.5
+    // The one exception to motionFps: once nobody has touched the screen
+    // for saverCalmAfter, the savers' backdrop, weather and pictures ease to
+    // saverCalmFps (ScreenSaver). Nobody is watching closely by then, and the
+    // Pi's GPU does half the work for the hours a saver can stay up. A touch
+    // wakes the screen, and the next saver starts at saverFps again.
+    readonly property int saverCalmFps: 15
+    readonly property int saverCalmAfter: 10 * 60 * 1000
 
     // The voice glow's spectrum (SpectrumGlow): the same in every mood.
     readonly property var spectrum: ["#DB47B3", "#8F57E6", "#4280F5", "#24C2C2", "#4DC266", "#F5A83D", "#F56161"]

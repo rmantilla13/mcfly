@@ -437,7 +437,11 @@ The panel refreshes 60 times a second. Whatever moves (a swipe between
 screens, a sheet opening, the ticker) runs at that rate. The slow ambient
 motion (the gradients, the auroras, the savers' drift and weather, the voice
 glow while it idles) updates 30 times a second, every other frame:
-`Theme.motionFps`, and nothing is slower. Frames drawn aren't how often
+`Theme.motionFps`, and nothing is slower, but for one thing: once nobody has
+touched the screen for ten minutes, the screen saver's backdrop, weather and
+pictures ease to 15 (`Theme.saverCalmFps`), until the next touch. A saver
+can stay up for hours, nobody is watching closely by then, and its GPU time
+halves. Frames drawn aren't how often
 something moves: when the savers' drift updated 10 times a second, the
 saver still drew about 43 frames a second. News and Projects drew every
 frame with nobody touching them: the hero's slow Ken Burns and a blocked
@@ -447,10 +451,13 @@ fraction of its pixels draws one more frame after each update, a cheap one
 that only redraws the cached picture, but a frame of the whole panel all
 the same. The savers' skies and mesh, the aurora and Setup's field are
 shaded small by `ScaledShader` instead, one frame per update: the screen
-saver reads 30 where it read 60. On the arc that took a third off the Pi's
-GPU time (250 ms a second down to 170), on the mesh about a sixth (570 to
-480: the mesh's shader is the heavier part). Setup's voice glow is still a
-layer, so Setup reads 60 for its 30 updates. A screen with nothing
+saver reads 30 where it read 60, and 15 once it has eased off. On the arc
+that took a third off the Pi's GPU time (250 ms a second down to 170). The
+arc also works out what depends on the column alone once a pixel column
+(`shaders/arc.vert`), four of its five noise lookups, for a fifth less again,
+and the mesh behind the savers and the assistant panel shades the skies'
+640x400 (`Theme.backdropResolution`). Setup's voice glow is still a layer,
+so Setup reads 60 for its 30 updates. A screen with nothing
 moving draws next to nothing (its clock ticks once a second), so a low fps
 on the overlay then is fine.
 

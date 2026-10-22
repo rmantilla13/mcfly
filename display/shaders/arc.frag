@@ -14,9 +14,18 @@
 // night. Triangular dither, one step of the final picture. The simplex noise
 // and the OKLab conversion are aurora.frag's.
 //
-// Per pixel: 5 simplex noise, 1 OKLab -> sRGB, 2 hash.
+// Four of the arc's five noise lookups depend on the column alone (X): the
+// border's height, the rays' warp, the brightness along the arc, the second
+// arc's border. arc.vert works them out once a column (column(), drawn by
+// ScaledShader a strip per pixel column) and hands them on as vColumn, the
+// same for every pixel of the column; here column() only reads it back. The
+// console's sky works column() out per pixel, so scene() is the same text
+// in both.
+//
+// Per pixel: 1 simplex noise, 1 OKLab -> sRGB, 2 hash; per column, 4 noise.
 
 layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 1) in vec4 vColumn;   // column(X, time), from arc.vert
 layout(location = 0) out vec4 fragColor;
 
 layout(std140, binding = 0) uniform buf {
@@ -102,6 +111,12 @@ vec3 oklabToSrgb(vec3 c)
     return mix(12.92 * rgb, 1.055 * pow(rgb, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, rgb));
 }
 
+// What depends on the column alone, worked out by arc.vert.
+vec4 column(float X, float t)
+{
+    return vColumn;
+}
+
 // The picture: its colour (OKLab) and how much of it there is, at uv (y up,
 // 0 at the bottom edge).
 void scene(vec2 uv, float aspect, out vec3 lab, out float a)
@@ -109,21 +124,21 @@ void scene(vec2 uv, float aspect, out vec3 lab, out float a)
     float X = (uv.x - 0.5) * aspect;
     float Y = uv.y;
     float t = time;
-    // The arc's lower border: a curve, higher in the middle, bending slowly.
-    float yc = 0.42 + 0.10 * cos(X * 0.9) + 0.07 * snoise(vec2(X * 0.6 + seed, t * 0.03));
+    // The border, the warp, the brightness along, the second border.
+    vec4 c = column(X, t);
+    float yc = c.x;
     float d = Y - yc;
     // Bright at the border, a quick fall, then a long faint tail upward.
     float up = max(d, 0.0);
     float body = smoothstep(-0.03, 0.01, d) * (0.45 * exp(-up * 24.0) + 0.55 * exp(-up * 7.5));
     // Rays: a tall noise folded by a slow warp.
-    float warp = snoise(vec2(X * 1.2, t * 0.04 + seed));
+    float warp = c.y;
     float r = snoise(vec2(X * 14.0 + warp * 1.4, Y * 0.5 + t * 0.06));
     float rays = 0.5 + 0.5 * r;
-    // Brightness travelling along the arc.
-    float along = 0.4 + 0.6 * (0.5 + 0.5 * snoise(vec2(X * 1.1 - t * 0.05, 7.0 + seed)));
+    float along = c.z;
     a = body * (0.55 + 0.45 * rays) * along * 1.25;
     // A second, fainter arc behind.
-    float yc2 = yc + 0.24 + 0.05 * snoise(vec2(X * 0.5, t * 0.02 + 11.0));
+    float yc2 = c.w;
     float d2 = Y - yc2;
     a += 0.3 * smoothstep(-0.05, 0.02, d2) * exp(-max(d2, 0.0) * 12.0) * (0.6 + 0.4 * r);
     // The first stop along the border, the others up through the rays.

@@ -259,6 +259,7 @@ qt_add_shaders(mcfly-display "shaders"
         shaders/glow.frag
         shaders/lens.frag
         shaders/arc.frag
+        shaders/arc.vert
         shaders/ribbons.frag
         shaders/dawn.frag
         shaders/silk.frag

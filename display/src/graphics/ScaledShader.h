@@ -32,8 +32,16 @@ class ScaledShaderRenderer;
 //       fixedColorBufferWidth: Math.ceil(width * 0.5)     // pixels, as layer.textureSize
 //       fixedColorBufferHeight: Math.ceil(height * 0.5)
 //       readonly property real time: clock.time
-//       fragmentShader: "qrc:/McFly/shaders/arc.frag.qsb"
+//       fragmentShader: "qrc:/McFly/shaders/dawn.frag.qsb"
 //   }
+//
+// It draws one triangle over the colour buffer (shaders/scaled.vert). A
+// `vertexShader` of its own is drawn as one strip per pixel column instead,
+// each vertex given its column's centre u at location 2, the same for all
+// of the column's vertices: what a shader works out from the column alone
+// can be worked out there once a column and handed on, exactly, rather than
+// in every pixel of it (shaders/arc.vert). It declares the fragment
+// shader's uniform block.
 //
 // Opaque unless `alphaBlending` is on (a premultiplied picture with
 // transparent parts, like a tile's rounded corners). Needs the RHI: under
@@ -42,13 +50,15 @@ class ScaledShader : public QQuickRhiItem
 {
     Q_OBJECT
     Q_PROPERTY(QUrl fragmentShader READ fragmentShader WRITE setFragmentShader NOTIFY fragmentShaderChanged)
+    // Empty (the default): one triangle. Else drawn a strip per column.
+    Q_PROPERTY(QUrl vertexShader READ vertexShader WRITE setVertexShader NOTIFY vertexShaderChanged)
     // Where the uniforms are read from; null (the default) is this item.
     Q_PROPERTY(QObject *uniformSource READ uniformSource WRITE setUniformSource NOTIFY uniformSourceChanged)
     Q_PROPERTY(Status status READ status NOTIFY statusChanged)
 
 public:
-    // As ShaderEffect's: Error when the shader can't be read or has no
-    // uniform block this item can fill.
+    // As ShaderEffect's: Error when the shader can't be read, has no
+    // uniform block this item can fill, or its vertex stage isn't its match.
     enum Status { Uncompiled, Compiled, Error };
     Q_ENUM(Status)
 
@@ -56,6 +66,8 @@ public:
 
     QUrl fragmentShader() const { return m_url; }
     void setFragmentShader(const QUrl &url);
+    QUrl vertexShader() const { return m_vertexUrl; }
+    void setVertexShader(const QUrl &url);
     QObject *uniformSource() const { return m_source; }
     void setUniformSource(QObject *source);
     Status status() const { return m_status; }
@@ -65,6 +77,7 @@ public:
 
 signals:
     void fragmentShaderChanged();
+    void vertexShaderChanged();
     void uniformSourceChanged();
     void statusChanged();
 
@@ -94,9 +107,11 @@ private:
     void setStatus(Status status);
 
     QUrl m_url;
+    QUrl m_vertexUrl;
     QPointer<QObject> m_source;
     Status m_status = Uncompiled;
     QShader m_shader;
+    QShader m_vertexShader;     // empty: the renderer's triangle
     int m_shaderSerial = 0;     // bumped with each new shader, for the renderer
     QList<Uniform> m_uniforms;
     QByteArray m_block;

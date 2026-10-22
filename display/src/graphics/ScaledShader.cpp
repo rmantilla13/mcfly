@@ -14,6 +14,7 @@
 #include <array>
 #include <cstring>
 #include <memory>
+#include <optional>
 
 namespace {
 
@@ -44,6 +45,15 @@ QVector2D toVec2(const QVariant &v)
     default:
         return v.value<QVector2D>();
     }
+}
+
+// The block at binding 0, where ShaderEffect's shaders keep their uniforms.
+std::optional<QShaderDescription::UniformBlock> blockOf(const QShader &shader)
+{
+    for (const QShaderDescription::UniformBlock &block : shader.description().uniformBlocks())
+        if (block.binding == 0)
+            return block;
+    return std::nullopt;
 }
 
 QVector4D toVec4(const QVariant &v)
@@ -104,8 +114,11 @@ void pack(const QVariant &v, int type, char *dst)
 
 } // namespace
 
-// Lives on the render thread: a triangle over the whole colour buffer, the
-// fragment shader on it, the uniform block uploaded each time it draws (it
+// Lives on the render thread. It draws the fragment shader over the whole
+// colour buffer: one triangle, or, with a vertex stage of the item's own,
+// one strip per pixel column, each vertex told the u of its column's centre
+// (location 2) so the vertex stage can work out once a column what depends
+// on the column alone. The uniform block is uploaded each time it draws (it
 // only draws when the item changed).
 class ScaledShaderRenderer : public QQuickRhiItemRenderer
 {
@@ -119,28 +132,13 @@ public:
             m_vbuf.reset();
             m_rhi = rhi();
         }
-        if (!m_vertex.isValid()) {
-            m_vertex = readShader(kVertexShader);
-            if (!m_vertex.isValid())
+        if (!m_defaultVertex.isValid()) {
+            m_defaultVertex = readShader(kVertexShader);
+            if (!m_defaultVertex.isValid())
                 qWarning("ScaledShader: can't read %s", qPrintable(kVertexShader));
         }
-        if (!m_vbuf) {
-            // qt_TexCoord0 is (0, 0) at the top left, whichever way the
-            // backend's y runs (QQuickRhiItem flips the picture for GL).
-            const float s = m_rhi->isYUpInNDC() ? 1.0f : -1.0f;
-            const float xy[3][2] = {{-1, -1}, {3, -1}, {-1, 3}};
-            for (int i = 0; i < 3; ++i) {
-                m_vertices[i * 4 + 0] = xy[i][0];
-                m_vertices[i * 4 + 1] = xy[i][1];
-                m_vertices[i * 4 + 2] = (xy[i][0] + 1) / 2;
-                m_vertices[i * 4 + 3] = (1 - s * xy[i][1]) / 2;
-            }
-            m_vbuf.reset(m_rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof m_vertices));
-            m_vbuf->create();
-            m_vbufUploaded = false;
-        }
         // A new colour buffer (the item was resized) may come with another
-        // kind of pass.
+        // kind of pass, and needs as many columns as it has pixels across.
         if (m_pipeline && (m_pipeline->sampleCount() != renderTarget()->sampleCount()
                            || !m_pipeline->renderPassDescriptor()->isCompatible(renderTarget()->renderPassDescriptor())))
             m_pipelineDirty = true;
@@ -151,7 +149,9 @@ public:
         auto *shader = static_cast<ScaledShader *>(item);
         if (shader->m_shaderSerial != m_serial) {
             m_serial = shader->m_shaderSerial;
-            m_fragment = shader->m_status == ScaledShader::Compiled ? shader->m_shader : QShader();
+            const bool ok = shader->m_status == ScaledShader::Compiled;
+            m_fragment = ok ? shader->m_shader : QShader();
+            m_vertex = ok ? shader->m_vertexShader : QShader();
             m_pipelineDirty = true;
         }
         m_block = shader->m_block;
@@ -159,12 +159,13 @@ public:
 
     void render(QRhiCommandBuffer *cb) override
     {
+        makeMesh();
         if (m_pipelineDirty)
             build();
         QRhiResourceUpdateBatch *updates = m_rhi->nextResourceUpdateBatch();
         if (m_pipeline) {
             if (!m_vbufUploaded) {
-                updates->uploadStaticBuffer(m_vbuf.get(), m_vertices);
+                updates->uploadStaticBuffer(m_vbuf.get(), m_vertices.constData());
                 m_vbufUploaded = true;
             }
             updates->updateDynamicBuffer(m_ubuf.get(), 0, quint32(m_block.size()), m_block.constData());
@@ -177,18 +178,62 @@ public:
             cb->setShaderResources();
             const QRhiCommandBuffer::VertexInput input(m_vbuf.get(), 0);
             cb->setVertexInput(0, 1, &input);
-            cb->draw(3);
+            cb->draw(quint32(m_vertices.size() / kFloatsPerVertex));
         }
         cb->endPass();
     }
 
 private:
+    static constexpr int kFloatsPerVertex = 5;  // position, qt_TexCoord0, the column's u
+
+    // The triangle, or the strips: one for each pixel column of the colour
+    // buffer, made again when its width changes.
+    void makeMesh()
+    {
+        const int columns = m_vertex.isValid() ? qMax(1, renderTarget()->pixelSize().width()) : 0;
+        if (m_vbuf && columns == m_columns)
+            return;
+        if ((columns == 0) != (m_columns == 0))
+            m_pipelineDirty = true;   // the vertex inputs differ
+        m_columns = columns;
+        // qt_TexCoord0 is (0, 0) at the top left, whichever way the
+        // backend's y runs (QQuickRhiItem flips the picture for GL).
+        const float s = m_rhi->isYUpInNDC() ? 1.0f : -1.0f;
+        m_vertices.clear();
+        const auto vertex = [this, s](float x, float y, float u) {
+            m_vertices.append({x, y, (x + 1) / 2, (1 - s * y) / 2, u});
+        };
+        if (columns == 0) {
+            vertex(-1, -1, 0);
+            vertex(3, -1, 0);
+            vertex(-1, 3, 0);
+        } else {
+            m_vertices.reserve(columns * 6 * kFloatsPerVertex);
+            for (int k = 0; k < columns; ++k) {
+                const float x0 = -1 + 2.0f * float(k) / float(columns);
+                const float x1 = -1 + 2.0f * float(k + 1) / float(columns);
+                const float u = (float(k) + 0.5f) / float(columns);
+                vertex(x0, -1, u);
+                vertex(x1, -1, u);
+                vertex(x0, 1, u);
+                vertex(x1, -1, u);
+                vertex(x1, 1, u);
+                vertex(x0, 1, u);
+            }
+        }
+        m_vbuf.reset(m_rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer,
+                                      quint32(m_vertices.size() * sizeof(float))));
+        m_vbuf->create();
+        m_vbufUploaded = false;
+    }
+
     void build()
     {
         m_pipelineDirty = false;
         m_pipeline.reset();
         m_srb.reset();
-        if (!m_vertex.isValid() || !m_fragment.isValid() || m_block.isEmpty())
+        const QShader &vertex = m_vertex.isValid() ? m_vertex : m_defaultVertex;
+        if (!vertex.isValid() || !m_fragment.isValid() || m_block.isEmpty())
             return;
         if (!m_ubuf || m_ubuf->size() != quint32(m_block.size())) {
             m_ubuf.reset(m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, quint32(m_block.size())));
@@ -196,15 +241,18 @@ private:
         }
         m_srb.reset(m_rhi->newShaderResourceBindings());
         m_srb->setBindings({QRhiShaderResourceBinding::uniformBuffer(
-            0, QRhiShaderResourceBinding::FragmentStage, m_ubuf.get())});
+            0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, m_ubuf.get())});
         m_srb->create();
 
         m_pipeline.reset(m_rhi->newGraphicsPipeline());
-        m_pipeline->setShaderStages({{QRhiShaderStage::Vertex, m_vertex}, {QRhiShaderStage::Fragment, m_fragment}});
+        m_pipeline->setShaderStages({{QRhiShaderStage::Vertex, vertex}, {QRhiShaderStage::Fragment, m_fragment}});
         QRhiVertexInputLayout layout;
-        layout.setBindings({{4 * sizeof(float)}});
-        layout.setAttributes({{0, 0, QRhiVertexInputAttribute::Float2, 0},
-                              {0, 1, QRhiVertexInputAttribute::Float2, 2 * sizeof(float)}});
+        layout.setBindings({{kFloatsPerVertex * sizeof(float)}});
+        QList<QRhiVertexInputAttribute> attributes = {{0, 0, QRhiVertexInputAttribute::Float2, 0},
+                                                      {0, 1, QRhiVertexInputAttribute::Float2, 2 * sizeof(float)}};
+        if (m_columns > 0)
+            attributes.append({0, 2, QRhiVertexInputAttribute::Float, 4 * sizeof(float)});
+        layout.setAttributes(attributes.cbegin(), attributes.cend());
         m_pipeline->setVertexInputLayout(layout);
         m_pipeline->setSampleCount(renderTarget()->sampleCount());
         m_pipeline->setShaderResourceBindings(m_srb.get());
@@ -216,12 +264,14 @@ private:
     }
 
     QRhi *m_rhi = nullptr;
-    QShader m_vertex;
+    QShader m_defaultVertex;    // scaled.vert, for the triangle
+    QShader m_vertex;           // the item's own vertex stage, for the strips
     QShader m_fragment;
     int m_serial = -1;
     QByteArray m_block;
     bool m_pipelineDirty = true;
-    float m_vertices[12] = {};
+    int m_columns = 0;          // strips drawn; 0 for the triangle
+    QList<float> m_vertices;
     bool m_vbufUploaded = false;
     std::unique_ptr<QRhiBuffer> m_vbuf;
     std::unique_ptr<QRhiBuffer> m_ubuf;
@@ -256,6 +306,16 @@ void ScaledShader::setFragmentShader(const QUrl &url)
         return;
     m_url = url;
     emit fragmentShaderChanged();
+    if (isComponentComplete())
+        reload();
+}
+
+void ScaledShader::setVertexShader(const QUrl &url)
+{
+    if (url == m_vertexUrl)
+        return;
+    m_vertexUrl = url;
+    emit vertexShaderChanged();
     if (isComponentComplete())
         reload();
 }
@@ -297,20 +357,33 @@ void ScaledShader::load()
     m_uniforms.clear();
     m_block.clear();
     m_shader = {};
+    m_vertexShader = {};
     ++m_shaderSerial;
     if (m_url.isEmpty()) {
         setStatus(Uncompiled);
         return;
     }
     const QShader shader = readShader(QQmlFile::urlToLocalFileOrQrc(m_url));
-    const QList<QShaderDescription::UniformBlock> blocks = shader.description().uniformBlocks();
-    const auto block = std::find_if(blocks.cbegin(), blocks.cend(),
-                                    [](const QShaderDescription::UniformBlock &b) { return b.binding == 0; });
-    if (!shader.isValid() || block == blocks.cend()) {
+    const auto block = blockOf(shader);
+    if (!shader.isValid() || !block) {
         qWarning("ScaledShader: %s is not a shader with a uniform block at binding 0", qPrintable(m_url.toString()));
         setStatus(Error);
         update();
         return;
+    }
+    // A vertex stage of its own reads the same block, so it must declare
+    // the same one (GL links the two by it).
+    QShader vertex;
+    if (!m_vertexUrl.isEmpty()) {
+        vertex = readShader(QQmlFile::urlToLocalFileOrQrc(m_vertexUrl));
+        const auto vertexBlock = blockOf(vertex);
+        if (!vertex.isValid() || (vertexBlock && vertexBlock->size != block->size)) {
+            qWarning("ScaledShader: %s is not a vertex stage with %s's uniform block",
+                     qPrintable(m_vertexUrl.toString()), qPrintable(m_url.fileName()));
+            setStatus(Error);
+            update();
+            return;
+        }
     }
     m_block = QByteArray(block->size, '\0');
     for (const QShaderDescription::BlockVariable &member : block->members) {
@@ -328,6 +401,7 @@ void ScaledShader::load()
         }
     }
     m_shader = shader;
+    m_vertexShader = vertex;
     setStatus(Compiled);
     update();
 }

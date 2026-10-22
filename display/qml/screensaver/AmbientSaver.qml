@@ -21,6 +21,8 @@ import McFly.Core
 // the aurora rises, together.
 Item {
     id: ambient
+    // Updates a second for what moves (ScreenSaver's: it eases off after a while).
+    property int fps: Theme.saverFps
     property date now: new Date()
     readonly property real minuteMs: Math.floor(now.getTime() / 60000) * 60000
     readonly property bool night: Device.nightMode || Theme.dark
@@ -44,20 +46,39 @@ Item {
                        a.b + (b.b - a.b) * k, a.a + (b.a - a.a) * k)
     }
 
-    property real shiftX: 0
-    property real shiftY: 0
-    Behavior on shiftX { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
-    Behavior on shiftY { NumberAnimation { duration: 4000; easing.type: Easing.InOutSine } }
+    // Against burn-in the composition slides to a new spot every minute,
+    // over 4 s, eased in and out, on the saver's clock: an animation would
+    // draw every one of the panel's frames while it slides.
+    property real _fromX: 0
+    property real _fromY: 0
+    property real _toX: 0
+    property real _toY: 0
+    MotionClock {
+        id: slide
+        objectName: "slide"
+        time: 4
+        playing: time < 4
+        fps: ambient.fps
+    }
+    readonly property real _slid: 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, slide.time / 4))
+    readonly property real shiftX: _fromX + (_toX - _fromX) * _slid
+    readonly property real shiftY: _fromY + (_toY - _fromY) * _slid
+    // From where it is now: the start first, then the clock, then the end.
+    function _slideTo(x, y) {
+        _fromX = shiftX
+        _fromY = shiftY
+        slide.time = 0
+        _toX = x
+        _toY = y
+    }
 
     Timer { interval: 1000; running: true; repeat: true; onTriggered: ambient.now = new Date() }
     Timer {
         interval: 60 * 1000
         running: true
         repeat: true
-        onTriggered: {
-            ambient.shiftX = (Math.random() - 0.5) * (Theme.mini ? 16 : 32)
-            ambient.shiftY = (Math.random() - 0.5) * (Theme.mini ? 10 : 20)
-        }
+        onTriggered: ambient._slideTo((Math.random() - 0.5) * (Theme.mini ? 16 : 32),
+                                      (Math.random() - 0.5) * (Theme.mini ? 10 : 20))
     }
 
     // ---- What to say.
@@ -121,15 +142,15 @@ Item {
             readonly property color ink: tile.ink
             readonly property color inkMuted: tile.inkMuted
             GradientTile {
-                // Full screen: shaded at half its pixels (GradientTile.resolution).
-                resolution: 0.5
+                // Full screen: shaded at the skies' size (Theme.backdropResolution).
+                resolution: Theme.backdropResolution / Math.max(1, Screen.devicePixelRatio)
                 id: tile
                 anchors.fill: parent
                 radius: 0
                 colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
                 darkness: ambient.dusk
                 whileIdle: true
-                maxFps: Theme.saverFps
+                maxFps: ambient.fps
                 period: Theme.saverDrift
                 rings: 2
                 ringScale: 1.3
@@ -143,7 +164,7 @@ Item {
                 opacity: 0.5 * ambient.dusk
                 lightMode: false
                 whileIdle: true
-                maxFps: Theme.saverFps
+                maxFps: ambient.fps
                 speed: 0.35
                 layers: 2
                 hem: 0.36
@@ -158,7 +179,7 @@ Item {
             style: Device.backdrop
             darkness: ambient.dusk
             whileIdle: true
-            maxFps: Theme.saverFps
+            maxFps: ambient.fps
         }
     }
     // Weather over the backdrop and under the words (Settings → Backdrop →
@@ -166,6 +187,7 @@ Item {
     Weather {
         anchors.fill: parent
         darkness: ambient.dusk
+        maxFps: ambient.fps
     }
 
     readonly property color nightFill: Qt.rgba(0.08, 0.08, 0.12, 0.55)

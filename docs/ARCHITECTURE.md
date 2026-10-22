@@ -116,8 +116,9 @@ SystemController ─ Wi-Fi, speakers, restart, reboot (through a root helper)
 
 After two minutes without a touch (`MCFLY_IDLE_SECONDS`) or a tap on the
 moon: **Ambient**, the default (the clock, what's next and what follows
-over the moving gradient, which keeps animating at 30 fps while idle and
-stops when the panel is off, with a rail of cards along the bottom: the
+over the moving gradient, which keeps animating at 30 fps while idle, eases
+to 15 after ten minutes untouched (`Theme.saverCalmFps`) and stops when the
+panel is off, with a rail of cards along the bottom: the
 latest brief, the markets, a blocked project, today's top story, later
 events; the composition drifts every minute against burn-in), **Headlines**
 (today's stories one at a time, over their pictures, with the clock) or

@@ -265,6 +265,9 @@ Item {
         readonly property vector4d s2: sky._stop(2)
         readonly property vector4d s3: sky._stop(3)
         fragmentShader: "qrc:/McFly/shaders/" + sky.shader + ".frag.qsb"
+        // The arc works out what depends on the column alone once a column
+        // (shaders/arc.vert), not in every pixel of it.
+        vertexShader: sky.shader === "arc" ? "qrc:/McFly/shaders/arc.vert.qsb" : ""
     }
 
     // Software rendering: the canvas with a little of the first two stops.

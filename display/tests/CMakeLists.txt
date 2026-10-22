@@ -155,7 +155,9 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
     components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FluxMark.qml components/Wordmark.qml components/FormField.qml
     screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml
-    screens/SetupScreen.qml)
+    screens/SetupScreen.qml
+    screensaver/ScreenSaver.qml screensaver/AmbientSaver.qml screensaver/ClockSaver.qml screensaver/HeadlinesSaver.qml
+    components/Backdrop.qml components/AuroraGlow.qml components/Weather.qml)
 qt_add_executable(tst_screens tst_screens.cpp
     ../src/models/FeedStore.h  ../src/models/FeedStore.cpp
     ../src/models/Assistant.h  ../src/models/Assistant.cpp
@@ -172,7 +174,8 @@ qt_add_shaders(tst_screens "screens_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
     FILES ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.frag ${PROJECT_SOURCE_DIR}/shaders/spectrumglow.vert
-          ${PROJECT_SOURCE_DIR}/shaders/lens.frag)
+          ${PROJECT_SOURCE_DIR}/shaders/lens.frag ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/arc.vert
+          ${PROJECT_SOURCE_DIR}/shaders/aurora.frag)
 add_test(NAME tst_screens COMMAND tst_screens)
 set_tests_properties(tst_screens PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 
@@ -210,8 +213,8 @@ target_link_libraries(tst_scaledshader PRIVATE mcfly-graphics Qt6::Gui Qt6::Qml 
 qt_add_shaders(tst_scaledshader "scaledshader_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag
-          ${PROJECT_SOURCE_DIR}/shaders/scaled.vert)
+    FILES ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/arc.vert
+          ${PROJECT_SOURCE_DIR}/shaders/gradienttile.frag ${PROJECT_SOURCE_DIR}/shaders/scaled.vert)
 add_test(NAME tst_scaledshader COMMAND tst_scaledshader)
 set_tests_properties(tst_scaledshader PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -226,7 +229,7 @@ target_link_libraries(tst_backdrop PRIVATE mcfly-graphics Qt6::Gui Qt6::Qml Qt6:
 qt_add_shaders(tst_backdrop "backdrop_shaders"
     PREFIX /McFly
     BASE ${PROJECT_SOURCE_DIR}
-    FILES ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/ribbons.frag
+    FILES ${PROJECT_SOURCE_DIR}/shaders/arc.frag ${PROJECT_SOURCE_DIR}/shaders/arc.vert ${PROJECT_SOURCE_DIR}/shaders/ribbons.frag
           ${PROJECT_SOURCE_DIR}/shaders/dawn.frag ${PROJECT_SOURCE_DIR}/shaders/silk.frag
           ${PROJECT_SOURCE_DIR}/shaders/pillars.frag)
 add_test(NAME tst_backdrop COMMAND tst_backdrop)

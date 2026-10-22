@@ -50,6 +50,8 @@ Rectangle {
     Component {
         id: meshBackdrop
         GradientTile {
+            // Full screen: shaded at the skies' size (Theme.backdropResolution).
+            resolution: Theme.backdropResolution / Math.max(1, Screen.devicePixelRatio)
             radius: 0
             colors: [Theme.glowBlue, Theme.glowCoral, Theme.glowAmber, Theme.glowCream]
             active: panel.open

@@ -18,7 +18,7 @@ import {
   srgbToOklab,
   unwrapHues,
 } from "../lib/sky.ts";
-import { SKY_FUNCTIONS, SKY_SCENES, skyFragment } from "../components/sky-shaders.ts";
+import { SKY_COLUMNS, SKY_FUNCTIONS, SKY_SCENES, skyFragment } from "../components/sky-shaders.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
@@ -187,6 +187,18 @@ test("the shared functions are the display's, line for line", () => {
       if (!frag.includes(name)) continue; // silk has no noise, only ribbons has tri
       assert.equal(block(SKY_FUNCTIONS, name), block(frag, name), `${style} ${name}`);
     }
+  }
+});
+
+test("a style's column() is its display vertex stage's, line for line", () => {
+  assert.deepEqual(Object.keys(SKY_COLUMNS), ["arc"]);
+  for (const [style, column] of Object.entries(SKY_COLUMNS)) {
+    const vert = read(`../../display/shaders/${style}.vert`);
+    assert.equal(column, block(vert, "vec4 column("), style);
+    for (const name of ["vec3 permute(", "float snoise("])
+      assert.equal(block(SKY_FUNCTIONS, name), block(vert, name), `${style}.vert ${name}`);
+    assert.ok(skyFragment(style).includes(column), `${style} works it out per pixel`);
+    assert.ok(read(`../../display/shaders/${style}.frag`).includes("column(X, t)"), `${style}.frag asks for it`);
   }
 });
 

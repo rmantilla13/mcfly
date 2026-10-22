@@ -202,6 +202,25 @@ private slots:
         QTRY_COMPARE(read<float>(s, qsb, "radius"), 8.0f);
     }
 
+    // A vertex stage of its own (the arc's, drawn a strip per column)
+    // declares the same block; one that doesn't is an error, as is one it
+    // can't read.
+    void takesAVertexStageThatMatches()
+    {
+        ScaledShader *s = shader("sky");
+        s->setVertexShader(QUrl(QStringLiteral("qrc:/McFly/shaders/arc.vert.qsb")));
+        QCOMPARE(s->status(), ScaledShader::Compiled);
+        QCOMPARE(f(s, "time"), 12.5f);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("ScaledShader: .*gradienttile.* not a vertex stage"));
+        s->setVertexShader(QUrl(QStringLiteral("qrc:/McFly/shaders/gradienttile.frag.qsb")));
+        QCOMPARE(s->status(), ScaledShader::Error);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("ScaledShader: .*nope.* not a vertex stage"));
+        s->setVertexShader(QUrl(QStringLiteral("qrc:/McFly/shaders/nope.vert.qsb")));
+        QCOMPARE(s->status(), ScaledShader::Error);
+        s->setVertexShader(QUrl());
+        QCOMPARE(s->status(), ScaledShader::Compiled);
+    }
+
     void aShaderItCantReadIsAnError()
     {
         ScaledShader *s = shader("sky");
