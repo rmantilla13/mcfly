@@ -417,6 +417,62 @@ private slots:
         }
     }
 
+    // A question's card on each panel: its choices whole inside it, each a
+    // full touch target tall, and a tap answers (the undo puts it back).
+    void askCardFitsAndAnswers()
+    {
+        struct Panel
+        {
+            int w, h;
+            const char *tier;
+            int card;
+        };
+        for (const Panel &p : {Panel{800, 480, "mini", 768}, Panel{720, 1280, "tall", 680}, Panel{1280, 800, "compact", 680},
+                               Panel{1920, 1080, "wide", 820}}) {
+            const QString where = QString::fromLatin1(p.tier);
+            QVERIFY(show("AskCard { }", p.w, p.h, where));
+            auto *card = qobject_cast<QQuickItem *>(m_screen);
+            card->setWidth(p.card); // as wide as Main.qml makes it there
+            const QVariantList asks = m_store->asks();
+            QVERIFY(asks.size() >= 2);
+            // Four long choices: the most a question may have.
+            QVariantMap busiest = asks.first().toMap();
+            busiest.insert("choices", QStringList{"Ship it to TestFlight now", "Hold until Monday", "Ask Lina first", "Cancel the release"});
+            m_screen->setProperty("asks", QVariantList{busiest, asks.at(1)});
+            QTRY_VERIFY(find("askQuestion")->isVisible());
+            QTest::qWait(50); // the Flow lays its buttons out on the next polish
+            card->setHeight(card->implicitHeight());
+            QTest::qWait(50);
+            QCOMPARE(find("askHeading")->property("text").toString().endsWith(QStringLiteral("1 MORE")), true);
+            QList<QQuickItem *> buttons;
+            for (int i = 0; i < 4; ++i)
+                collect(qobject_cast<QQuickItem *>(m_screen), QStringLiteral("askChoice%1").arg(i), buttons);
+            QCOMPARE(buttons.size(), 4);
+            for (QQuickItem *b : std::as_const(buttons)) {
+                const QRectF r = b->mapRectToItem(qobject_cast<QQuickItem *>(m_screen), QRectF(QPointF(0, 0), b->size()));
+                QVERIFY2(b->height() >= 64, qPrintable(where));
+                QVERIFY2(r.left() >= 0 && r.right() <= p.card && r.bottom() <= card->height(),
+                         qPrintable(QStringLiteral("%1: a choice at %2,%3 to %4,%5 is outside the card").arg(where).arg(r.left()).arg(r.top()).arg(r.right()).arg(r.bottom())));
+            }
+            shoot(QStringLiteral("ask-%1").arg(where));
+            cleanup();
+        }
+        // The real one: a tap on its second choice answers it.
+        QVERIFY(show("AskCard { }", 1280, 800, QStringLiteral("compact")));
+        const QVariantMap first = m_store->asks().first().toMap();
+        m_screen->setProperty("asks", m_store->asks());
+        QQuickItem *second = nullptr;
+        QList<QQuickItem *> found;
+        collect(qobject_cast<QQuickItem *>(m_screen), QStringLiteral("askChoice1"), found);
+        QTRY_VERIFY(!found.isEmpty() && found.first()->isVisible());
+        second = found.first();
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, second->mapToScene(QPointF(second->width() / 2, second->height() / 2)).toPoint());
+        QTRY_COMPARE(m_store->pendingAnswer().value("id").toString(), first.value("id").toString());
+        QCOMPARE(m_store->pendingAnswer().value("choice").toString(), first.value("choices").toStringList().at(1));
+        m_store->undoAnswer();
+        QCOMPARE(m_store->asks().first().toMap().value("id").toString(), first.value("id").toString());
+    }
+
     void homeFitsTheSmallPanel()
     {
         QVERIFY(show("HomeScreen { }", 800, 404, QStringLiteral("mini")));

@@ -356,12 +356,14 @@ ApplicationWindow {
         }
     }
 
-    // A dismissal's few seconds to change your mind (Store.dismiss): what
-    // went, and Undo. After them it reaches every screen.
+    // A dismissal's or an answer's few seconds to change your mind
+    // (Store.dismiss, Store.answer): what went, and Undo. After them it
+    // reaches every screen, or the agent.
     Item {
         id: undoBar
         z: 3
-        readonly property var pending: Store.pendingDismissal
+        readonly property bool answering: !!Store.pendingAnswer.id
+        readonly property var pending: answering ? Store.pendingAnswer : Store.pendingDismissal
         width: Math.min(undoRow.implicitWidth + 44, window.width - 32)
         height: 72
         x: Math.round((window.width - width) / 2)
@@ -376,7 +378,9 @@ ApplicationWindow {
             spacing: 16
             Label {
                 Layout.maximumWidth: window.width - 240
-                text: undoBar.pending.label ? qsTr("Dismissed %1").arg(undoBar.pending.label) : qsTr("Dismissed")
+                text: undoBar.answering ? (undoBar.pending.agentName ? qsTr("Told %1: %2").arg(undoBar.pending.agentName).arg(undoBar.pending.choice)
+                                                                    : qsTr("Answered: %1").arg(undoBar.pending.choice))
+                      : undoBar.pending.label ? qsTr("Dismissed %1").arg(undoBar.pending.label) : qsTr("Dismissed")
                 color: Theme.background
                 font.pixelSize: Theme.fontMd - 2
                 elide: Text.ElideRight
@@ -399,7 +403,39 @@ ApplicationWindow {
                     font.pixelSize: Theme.fontMd - 2
                     font.weight: Font.DemiBold
                 }
-                TapHandler { onTapped: Store.undoDismiss() }
+                TapHandler { onTapped: undoBar.answering ? Store.undoAnswer() : Store.undoDismiss() }
+            }
+        }
+    }
+
+    // A question an agent is waiting on (Store.asks): a card at the top,
+    // under the screen saver, while nothing else has the screen (setup, the
+    // assistant, a game). Its × puts that one off for half an hour; a new
+    // question shows straight away.
+    property var asksPutOff: ({}) // id → until (ms)
+    property double askClock: Date.now()
+    Timer { interval: 60 * 1000; repeat: true; running: Object.keys(window.asksPutOff).length > 0; onTriggered: window.askClock = Date.now() }
+    Item {
+        id: askLayer
+        z: 3
+        // Over the page, beside the nav rail (a bar takes no width).
+        readonly property int room: window.width - Theme.navWidth
+        x: window.width - room + Math.round((room - width) / 2)
+        y: Theme.mini ? 16 : 32
+        width: Math.min(room - 2 * Theme.pageMargin, Theme.wide ? 820 : 680)
+        height: askCard.implicitHeight
+        visible: askCard.opacity > 0
+        AskCard {
+            id: askCard
+            objectName: "askCard"
+            anchors.fill: parent
+            asks: window.inSetup || assistant.open || (window.currentScreen === 7 && games.openIndex >= 0) ? []
+                  : Store.asks.filter(a => !(window.asksPutOff[a.id] > window.askClock))
+            onLater: id => {
+                const putOff = Object.assign({}, window.asksPutOff)
+                window.askClock = Date.now()
+                putOff[id] = window.askClock + 30 * 60 * 1000
+                window.asksPutOff = putOff
             }
         }
     }

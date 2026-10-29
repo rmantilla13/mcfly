@@ -102,6 +102,14 @@ class FeedStore : public QObject
     Q_PROPERTY(QVariantList needsYou READ needsYou NOTIFY dismissalsChanged)
     // The dismissal waiting out its undo: { id, label }, or empty.
     Q_PROPERTY(QVariantMap pendingDismissal READ pendingDismissal NOTIFY pendingDismissalChanged)
+    // Questions agents asked that are still open (the asks table, oldest
+    // first), less one being answered here: { id, question, detail, choices
+    // (2 to 4 labels, the first the main one), url, agentName, agentColor,
+    // askedLabel ("12 min ago"), expiresLabel ("until 6:00 PM", or "") }.
+    // One that runs out leaves on the minute.
+    Q_PROPERTY(QVariantList asks READ asks NOTIFY asksChanged)
+    // The answer waiting out its undo: { id, choice, agentName }, or empty.
+    Q_PROPERTY(QVariantMap pendingAnswer READ pendingAnswer NOTIFY pendingAnswerChanged)
     // How the quotes moved today: { up, down, flat, total, label }.
     Q_PROPERTY(QVariantMap marketBreadth READ marketBreadth NOTIFY dataChanged)
     // Where now sits on a 24-hour dial: degrees clockwise from midnight at the
@@ -141,6 +149,8 @@ public:
     QVariantList projectGroups() const { return m_projectGroups; }
     QVariantList needsYou() const { return m_needsYou; }
     QVariantMap pendingDismissal() const { return m_pendingDismissal; }
+    QVariantList asks() const { return m_asks; }
+    QVariantMap pendingAnswer() const { return m_pendingAnswer; }
     QVariantList metrics() const { return m_metrics; }
     QVariantList metricGroups() const { return m_metricGroups; }
     QVariantList dashboards() const { return m_dashboards; }
@@ -189,6 +199,12 @@ public:
     Q_INVOKABLE void dismiss(const QString &id, const QString &label = QString());
     Q_INVOKABLE void undoDismiss();
     Q_INVOKABLE bool isDismissed(const QString &id) const;
+    // Answer an ask (an id from `asks`) with one of its choices: it leaves
+    // `asks` at once and reaches the server (answer_ask) after a few seconds
+    // unless undoAnswer() takes it back. Answered on another screen in the
+    // meantime: a note says with what. A second answer sends the first now.
+    Q_INVOKABLE void answer(const QString &id, const QString &choice);
+    Q_INVOKABLE void undoAnswer();
     // Forgets this display's session and shows a new pairing code (Settings → Re-pair).
     Q_INVOKABLE void unpair();
     // The quote for a symbol, decorated like the `quotes` rows, or an empty map.
@@ -248,6 +264,8 @@ signals:
     void highlightsChanged();
     void dismissalsChanged();
     void pendingDismissalChanged();
+    void asksChanged();
+    void pendingAnswerChanged();
     // Once a minute, on the minute (and nothing else changes with it).
     void nowAngleChanged();
     void notify(const QString &message);
@@ -313,6 +331,7 @@ private:
     QTimer m_dayTimer; // fires just after local midnight
     QTimer m_minuteTimer; // fires just after each minute: nowAngle, highlights
     QTimer m_dismissTimer; // a dismissal's undo window
+    QTimer m_answerTimer;  // an answer's undo window
     QTimer m_reminderTimer;     // fires at the next reminder's time
     QSet<QString> m_reminded;   // reminders already announced, by id
 
@@ -336,6 +355,15 @@ private:
     bool m_deviceSettingsSeen = false;
     QVariantList m_rawProjects, m_rawMetrics, m_rawMetricSettings, m_rawDashboards, m_rawEvents;
     QVariantList m_rawTodos; // open todos and reminders (todos)
+    // Open asks as loaded; the ones answered here that a sync still lists
+    // (the server hasn't been told, or its answer is on the way); the answer
+    // waiting out its undo; and what QML shows.
+    QVariantList m_rawAsks;
+    QSet<QString> m_localAnswered;
+    QVariantMap m_pendingAnswer;
+    QVariantList m_asks;
+    void rebuildAsks();
+    void commitAnswer();
     QString m_shownReportId; // "" = the newest
     QString m_newsSourceId;  // "" = every source
     QString m_assistantProvider = QStringLiteral("claude");

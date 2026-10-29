@@ -155,7 +155,7 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
     components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FluxMark.qml components/Wordmark.qml components/FormField.qml
     screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml
-    screens/SetupScreen.qml
+    screens/SetupScreen.qml screens/AskCard.qml
     screensaver/ScreenSaver.qml screensaver/AmbientSaver.qml screensaver/ClockSaver.qml screensaver/HeadlinesSaver.qml
     components/Backdrop.qml components/AuroraGlow.qml components/Weather.qml)
 qt_add_executable(tst_screens tst_screens.cpp

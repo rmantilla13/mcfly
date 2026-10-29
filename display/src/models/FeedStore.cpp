@@ -515,6 +515,9 @@ FeedStore::FeedStore(SupabaseClient *client, bool forceDemo, QObject *parent)
     m_dismissTimer.setSingleShot(true);
     m_dismissTimer.setInterval(6000);
     connect(&m_dismissTimer, &QTimer::timeout, this, &FeedStore::commitDismissal);
+    m_answerTimer.setSingleShot(true);
+    m_answerTimer.setInterval(6000);
+    connect(&m_answerTimer, &QTimer::timeout, this, &FeedStore::commitAnswer);
 
     connect(m_client, &SupabaseClient::sessionChanged, this, [this]() {
         if (m_client->refreshToken().isEmpty())
@@ -687,6 +690,16 @@ void FeedStore::loadDemo()
         if (!t.contains("agent_id"))
             t.insert("agent_id", "a-mcfly");
         m_rawTodos << t.toVariantMap();
+    }
+
+    m_rawAsks.clear();
+    for (const QJsonValue &v : root.value("asks").toArray()) {
+        QJsonObject a = v.toObject();
+        a.insert("created_at", nowDt.addSecs(-qint64(a.value("minutesAgo").toDouble() * 60)).toString(Qt::ISODateWithMs));
+        if (a.contains("expiresInHours"))
+            a.insert("expires_at", nowDt.addSecs(qint64(a.value("expiresInHours").toDouble() * 3600)).toString(Qt::ISODateWithMs));
+        a.insert("id", QStringLiteral("demo-ask-%1").arg(m_rawAsks.size()));
+        m_rawAsks << a.toVariantMap();
     }
 
     // Briefs are stored relative to now so the demo always looks current.
@@ -1027,6 +1040,31 @@ void FeedStore::loadLive()
                 qInfo() << "todos not available:" << error;
             else
                 m_rawTodos = toList(doc);
+            finish();
+        });
+        // Questions the agents are waiting on (newer too): same, optional. An
+        // ask answered here leaves the local list once a sync no longer
+        // lists it as open, wherever it was answered.
+        QUrlQuery asks;
+        asks.addQueryItem("select", "id,agent_id,question,detail,choices,url,expires_at,created_at");
+        asks.addQueryItem("answered_at", "is.null");
+        asks.addQueryItem("withdrawn_at", "is.null");
+        asks.addQueryItem("order", "created_at");
+        asks.addQueryItem("limit", "50");
+        ++sync->pending;
+        m_client->select("asks", asks, [this, generation, finish](const QJsonDocument &doc, const QString &error) {
+            if (generation != m_generation)
+                return;
+            if (!error.isEmpty()) {
+                qInfo() << "asks not available:" << error;
+            } else {
+                m_rawAsks = toList(doc);
+                QSet<QString> open;
+                for (const QVariant &v : std::as_const(m_rawAsks))
+                    open.insert(v.toMap().value("id").toString());
+                const QString pending = m_pendingAnswer.value("id").toString();
+                m_localAnswered.removeIf([&](const QString &id) { return id != pending && !open.contains(id); });
+            }
             finish();
         });
         // What's been dismissed (newer too): same, optional. Once a row is the
@@ -1687,6 +1725,7 @@ void FeedStore::rebuild()
     rebuildProductivity(agentById);
     rebuildTimeline(agentById);
     applyDismissals(); // needsYou, then the highlights
+    rebuildAsks();
     m_calendarSources.clear();
     for (const QVariant &v : std::as_const(m_rawCalendarSources)) {
         QVariantMap c = v.toMap();
@@ -1927,6 +1966,122 @@ void FeedStore::commitDismissal()
             m_localDismissed.remove(key);
             applyDismissals();
             emit notify(tr("Couldn't dismiss that, so it's back"));
+        });
+    });
+}
+
+// ───────────────────────────── Asks ─────────────────────────────
+
+void FeedStore::rebuildAsks()
+{
+    QHash<QString, QVariantMap> agentById;
+    for (const QVariant &v : std::as_const(m_agents)) {
+        const QVariantMap a = v.toMap();
+        agentById.insert(a.value("id").toString(), a);
+    }
+    const QDateTime nowDt = now();
+    const qint64 nowMs = nowDt.toMSecsSinceEpoch();
+    QVariantList out;
+    for (const QVariant &v : std::as_const(m_rawAsks)) {
+        const QVariantMap a = v.toMap();
+        const QString id = a.value("id").toString();
+        if (id.isEmpty() || m_localAnswered.contains(id) || !a.value("answered_at").toString().isEmpty()
+            || !a.value("withdrawn_at").toString().isEmpty())
+            continue;
+        const QDateTime expires = parseTimestamp(a.value("expires_at").toString());
+        if (expires.isValid() && expires <= nowDt)
+            continue;
+        QStringList choices;
+        for (const QVariant &c : a.value("choices").toList()) {
+            const QString label = c.toString().simplified();
+            if (!label.isEmpty())
+                choices << label;
+        }
+        if (choices.size() < 2)
+            continue;
+        const QVariantMap agent = agentById.value(a.value("agent_id").toString());
+        const QDateTime asked = parseTimestamp(a.value("created_at").toString());
+        QString until;
+        if (expires.isValid())
+            until = expires.date() == nowDt.date() ? tr("until %1").arg(timeLabel(expires))
+                                                   : tr("until %1 %2").arg(dayLabel(expires.date()), timeLabel(expires));
+        out << QVariantMap{{"id", id},
+                           {"question", a.value("question").toString().simplified()},
+                           {"detail", a.value("detail").toString().simplified()},
+                           {"choices", choices},
+                           {"url", a.value("url").toString()},
+                           {"agentName", agent.value("name").toString()},
+                           {"agentColor", agent.value("color")},
+                           {"askedLabel", asked.isValid() ? agoLabel(asked.toMSecsSinceEpoch(), nowMs) : QString()},
+                           {"expiresLabel", until}};
+    }
+    if (out == m_asks)
+        return;
+    m_asks = out;
+    emit asksChanged();
+}
+
+void FeedStore::answer(const QString &id, const QString &choice)
+{
+    QVariantMap ask;
+    for (const QVariant &v : std::as_const(m_asks))
+        if (v.toMap().value("id").toString() == id)
+            ask = v.toMap();
+    const QString label = choice.simplified();
+    if (ask.isEmpty() || !ask.value("choices").toStringList().contains(label))
+        return;
+    if (!m_pendingAnswer.isEmpty())
+        commitAnswer();
+    m_localAnswered.insert(id);
+    m_pendingAnswer = QVariantMap{{"id", id}, {"choice", label}, {"agentName", ask.value("agentName")}};
+    m_answerTimer.start();
+    emit pendingAnswerChanged();
+    rebuildAsks();
+}
+
+void FeedStore::undoAnswer()
+{
+    if (m_pendingAnswer.isEmpty())
+        return;
+    m_answerTimer.stop();
+    m_localAnswered.remove(m_pendingAnswer.value("id").toString());
+    m_pendingAnswer.clear();
+    emit pendingAnswerChanged();
+    rebuildAsks();
+}
+
+void FeedStore::commitAnswer()
+{
+    m_answerTimer.stop();
+    const QString id = m_pendingAnswer.value("id").toString();
+    const QString choice = m_pendingAnswer.value("choice").toString();
+    m_pendingAnswer.clear();
+    emit pendingAnswerChanged();
+    if (id.isEmpty() || m_mode != QLatin1String("live"))
+        return; // the demo keeps it answered here until the app restarts
+    withSession([this, id, choice]() {
+        m_client->rpc("answer_ask", QJsonObject{{"ask", id}, {"choice", choice}}, [this, id](const QJsonDocument &, const QString &error) {
+            if (error.isEmpty()) {
+                refresh(); // the agent can read it now; the sync shows it gone
+                return;
+            }
+            // Answered on another screen first, or taken back: it stays gone.
+            static const QRegularExpression taken(QStringLiteral("already answered: (.+) \\(HTTP \\d+\\)$"));
+            const QRegularExpressionMatch m = taken.match(error);
+            if (m.hasMatch()) {
+                emit notify(tr("Already answered on another screen: %1").arg(m.captured(1)));
+                refresh();
+                return;
+            }
+            if (error.contains(QLatin1String("took this question back")) || error.contains(QLatin1String("ran out"))) {
+                emit notify(tr("That question was taken back"));
+                refresh();
+                return;
+            }
+            qWarning() << "answering" << id << "failed:" << error;
+            m_localAnswered.remove(id);
+            rebuildAsks();
+            emit notify(tr("Couldn't send that answer, so the question is back"));
         });
     });
 }
@@ -2777,6 +2932,7 @@ void FeedStore::onMinute()
     // Highlights first, so a listener to both (the assistant's chips) sees
     // the new minute whole on the first signal.
     rebuildHighlights(); // "starts in 12 min", a brief turning an hour old
+    rebuildAsks();       // "12 min ago", one running out
     emit nowAngleChanged();
     m_minuteTimer.start(untilNextMinute(now()));
 }

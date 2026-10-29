@@ -749,6 +749,11 @@
       ]
     }
   ],
+  "asks": [
+    { "agent_id": "a-github", "question": "Ship McFly v2.3 to TestFlight?", "detail": "CI is green on main and the release notes are in the PR.",
+      "choices": ["Ship it", "Hold"], "url": "https://github.com/rmantilla13/mcfly/pull/40", "minutesAgo": 95, "expiresInHours": 6 },
+    { "agent_id": "a-pulse", "question": "Which story leads tomorrow's Pulse?", "choices": ["Chips", "Rates", "Launch"], "minutesAgo": 12 }
+  ],
   "todos": [
     { "kind": "todo", "title": "Renew the passport", "agent_id": "a-grok" },
     { "kind": "todo", "title": "Send the Q4 invoice", "dayOffset": 0, "notes": "Acme, net 30" },

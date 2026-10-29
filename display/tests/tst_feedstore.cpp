@@ -593,6 +593,67 @@ private slots:
         QVERIFY(rig->store.needsYou().isEmpty());
     }
 
+    // Asks (20261029000010): the open ones, shaped; answering hides one at
+    // once, an undo takes it back, and after the undo window it reaches
+    // answer_ask. Answered on another screen first: a note says with what.
+    void askingAndAnswering()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        m_server.route("/rest/v1/asks", [now](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", "ask-1"}, {"agent_id", "a1"}, {"question", "Ship  v2.3?"}, {"detail", "CI is green."},
+                            {"choices", QJsonArray{"Ship it", "Hold"}}, {"url", "https://example.com/pr/4"},
+                            {"expires_at", iso(now.addSecs(3 * 3600))}, {"created_at", iso(now.addSecs(-12 * 60))}},
+                QJsonObject{{"id", "ask-gone"}, {"agent_id", "a1"}, {"question", "Ran out?"}, {"choices", QJsonArray{"Yes", "No"}},
+                            {"expires_at", iso(now.addSecs(-60))}, {"created_at", iso(now.addSecs(-3600))}},
+                QJsonObject{{"id", "ask-2"}, {"agent_id", "a2"}, {"question", "Rebalance?"}, {"choices", QJsonArray{"Yes", "No", "Later"}},
+                            {"expires_at", QJsonValue::Null}, {"created_at", iso(now.addSecs(-5 * 60))}},
+            }));
+        });
+        m_server.route("/rest/v1/rpc/answer_ask", [](const Request &r) {
+            if (r.body.value("ask").toString() == QLatin1String("ask-2"))
+                return json(R"({"code":"P0001","message":"already answered: No"})", 400);
+            return json(R"({"id":"ship","status":"answered","answer":"Hold"})");
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.asks().size(), 2);
+        const QVariantMap first = rig->store.asks().first().toMap();
+        QCOMPARE(first.value("id").toString(), QStringLiteral("ask-1"));
+        QCOMPARE(first.value("question").toString(), QStringLiteral("Ship v2.3?"));
+        QCOMPARE(first.value("choices").toStringList(), (QStringList{"Ship it", "Hold"}));
+        QCOMPARE(first.value("agentName").toString(), QStringLiteral("Grok"));
+        QCOMPARE(first.value("agentColor").toString(), QStringLiteral("#7A64E8"));
+        QCOMPARE(first.value("askedLabel").toString(), QStringLiteral("12 min ago"));
+        QVERIFY(first.value("expiresLabel").toString().startsWith(QStringLiteral("until ")));
+        QCOMPARE(rig->store.asks().at(1).toMap().value("expiresLabel").toString(), QString());
+
+        // Not one of its choices: nothing happens.
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Maybe"));
+        QCOMPARE(rig->store.asks().size(), 2);
+        QVERIFY(rig->store.pendingAnswer().isEmpty());
+        // Answered: gone at once, with an undo; undone, back, and nothing sent.
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral(" Hold "));
+        QCOMPARE(rig->store.asks().size(), 1);
+        QCOMPARE(rig->store.pendingAnswer().value("choice").toString(), QStringLiteral("Hold"));
+        QCOMPARE(rig->store.pendingAnswer().value("agentName").toString(), QStringLiteral("Grok"));
+        rig->store.undoAnswer();
+        QCOMPARE(rig->store.asks().size(), 2);
+        QVERIFY(m_server.requests("POST", "/rest/v1/rpc/answer_ask").isEmpty());
+        // Again, and a second answer sends the first straight away.
+        QSignalSpy notified(&rig->store, &FeedStore::notify);
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
+        rig->store.answer(QStringLiteral("ask-2"), QStringLiteral("Yes"));
+        QTRY_COMPARE(m_server.requests("POST", "/rest/v1/rpc/answer_ask").size(), 1);
+        const QJsonObject sent = m_server.requests("POST", "/rest/v1/rpc/answer_ask").first().body;
+        QCOMPARE(sent.value("ask").toString(), QStringLiteral("ask-1"));
+        QCOMPARE(sent.value("choice").toString(), QStringLiteral("Hold"));
+        // The second waits out its undo, and the server says No got there first.
+        QTRY_COMPARE_WITH_TIMEOUT(m_server.requests("POST", "/rest/v1/rpc/answer_ask").size(), 2, 10000);
+        QTRY_VERIFY(!notified.isEmpty());
+        QCOMPARE(notified.last().first().toString(), QStringLiteral("Already answered on another screen: No"));
+        QVERIFY(rig->store.pendingAnswer().isEmpty());
+    }
+
     void projectsGroupByStatus()
     {
         auto project = [](const char *name, const char *status) { return QVariant(QVariantMap{{"name", name}, {"status", status}}); };
@@ -1151,6 +1212,11 @@ private slots:
         QVERIFY(rig->store.stories().size() == 6);
         QVERIFY(rig->store.projects().size() >= 4);
         QCOMPARE(rig->store.projects().first().toMap().value("status").toString(), QStringLiteral("blocked"));
+        // Two open asks, oldest first, the demo's answers kept here.
+        QCOMPARE(rig->store.asks().size(), 2);
+        QCOMPARE(rig->store.asks().first().toMap().value("choices").toStringList(), (QStringList{"Ship it", "Hold"}));
+        rig->store.answer(rig->store.asks().first().toMap().value("id").toString(), QStringLiteral("Hold"));
+        QCOMPARE(rig->store.asks().size(), 1);
         // The demo's projects have stages, as the console's do, but one.
         {
             const QVariantMap onyx = rig->store.project("demo-project-onyx");

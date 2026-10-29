@@ -201,6 +201,7 @@ qt_add_qml_module(mcfly-display
         qml/screens/AssistantPanel.qml
         qml/screens/QuickAnswer.qml
         qml/screens/ReminderCard.qml
+        qml/screens/AskCard.qml
         qml/screens/SettingsSheet.qml
         qml/screensaver/ScreenSaver.qml
         qml/screensaver/ClockSaver.qml
