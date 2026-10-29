@@ -11,6 +11,7 @@ import {
   MAX_WRITES,
   parseInput,
   parseLocal,
+  saidChoice,
   type Store,
   type TodoItem,
   ToolRunner,
@@ -117,12 +118,16 @@ Deno.test("parseInput: todos and reminders", () => {
     "that time has already passed (it's Thu, Oct 15, 6:10 PM now); use the next time it comes round, or ask");
   assertEquals(err("add_reminder", { title: "x", at: "2026-10-15T18:10" }), "ok");
   assertEquals(err("complete_todo", {}), "id is required: the todo's id from the snapshot");
+  assertEquals(err("answer_ask", { choice: "Hold" }), "id is required: the question's id from the snapshot");
+  assertEquals(err("answer_ask", { id: "a-1" }), "choice is required: one of the question's choices");
 });
 
 class FakeStore implements Store {
   events: EventItem[] = [];
   todos: TodoItem[] = [];
   done: string[] = [];
+  answers: [string, string][] = [];
+  answerError: string | null = null;
   logs: [Changed, boolean][] = [];
   agentCalls = 0;
   failWith: string | null = null;
@@ -145,6 +150,11 @@ class FakeStore implements Store {
     if (this.failWith) return Promise.reject(new Error(this.failWith));
     this.done.push(id);
     return Promise.resolve();
+  }
+  answerAsk(id: string, choice: string) {
+    if (this.answerError) return Promise.reject(new Error(this.answerError));
+    this.answers.push([id, choice]);
+    return Promise.resolve({ answer: choice });
   }
   log(_agent: string, feed: Changed, ok: boolean) {
     this.logs.push([feed, ok]);
@@ -203,8 +213,67 @@ Deno.test("ToolRunner: refuses, repeats once, caps, and reports failures", async
   assertEquals([r2.writes, r2.changed.size], [0, 0]);
 });
 
-Deno.test("definitions: the same four tools for both providers", () => {
-  const names = ["add_event", "add_todo", "add_reminder", "complete_todo"];
+Deno.test("saidChoice: the choice in the person's own words", () => {
+  assertEquals(saidChoice("OK, ship it!", "Ship it"), true);
+  assertEquals(saidChoice("tell Grok to hold", "Hold"), true);
+  assertEquals(saidChoice("ship", "Ship it"), false);
+  assertEquals(saidChoice("householder", "Hold"), false, "a whole word, not part of one");
+  assertEquals(saidChoice("go ahead", "Yes"), true);
+  assertEquals(saidChoice("Nope, don’t renew it", "No"), true);
+  assertEquals(saidChoice("go ahead", "Ship it"), false, "yes-words only stand in for Yes");
+  assertEquals(saidChoice("what does Grok want?", "Yes"), false);
+  assertEquals(saidChoice("B", "b"), true);
+});
+
+const ASKS = [
+  { id: "a-1", question: "Ship v2.3 to TestFlight?", choices: ["Ship it", "Hold"], agent: "Grok" },
+  { id: "a-2", question: "Renew the domain?", choices: ["Yes", "No"], agent: "Ops" },
+];
+
+Deno.test("ToolRunner: answers an ask only with the choice the person said", async () => {
+  const store = new FakeStore();
+  const runner = new ToolRunner(store, CHI, [], () => NOW).offerAsks(ASKS, "Tell Grok to ship it");
+  assertEquals(await runner.run("answer_ask", { id: "a-1", choice: "ship IT" }), {
+    content: 'Answered Grok\'s question "Ship v2.3 to TestFlight?": Ship it. Grok will read it when it next checks.',
+    isError: false,
+  });
+  assertEquals(store.answers, [["a-1", "Ship it"]], "the agent's own label");
+  assertEquals([...runner.changed], ["asks"]);
+  assertEquals((await runner.run("answer_ask", { id: "a-1", choice: "Ship it" })).content, "Already saved in this answer; nothing more to do.");
+  // The person said nothing about the domain: a pick the model made up (or
+  // was talked into by something in the snapshot) is refused.
+  assertEquals(await runner.run("answer_ask", { id: "a-2", choice: "Yes" }), {
+    content: 'Not answered: they didn\'t say "Yes" themselves. Ask them to say "Yes" or "No".',
+    isError: true,
+  });
+  assertEquals((await runner.run("answer_ask", { id: "a-1x", choice: "Hold" })).content,
+    'Not answered: no open question has that id. Use an id from the snapshot\'s "Waiting on them" list.');
+  assertEquals(store.answers.length, 1);
+
+  const other = new ToolRunner(store, CHI, [], () => NOW).offerAsks(ASKS, "maybe later");
+  assertEquals((await other.run("answer_ask", { id: "a-1", choice: "Later" })).content, 'Not answered: the choices are "Ship it" or "Hold".');
+  assertEquals((await new ToolRunner(store, CHI, [], () => NOW).run("answer_ask", { id: "a-1", choice: "Hold" })).isError, true,
+    "nothing offered, nothing answered");
+});
+
+Deno.test("ToolRunner: an ask answered elsewhere, taken back or broken", async () => {
+  const store = new FakeStore();
+  const said = (s: string) => new ToolRunner(store, CHI, [], () => NOW).offerAsks(ASKS, s);
+  store.answerError = "already answered: Hold";
+  assertEquals((await said("ship it").run("answer_ask", { id: "a-1", choice: "Ship it" })).content,
+    'Not answered: it was already answered "Hold", on another screen.');
+  store.answerError = "the agent took this question back";
+  assertEquals((await said("ship it").run("answer_ask", { id: "a-1", choice: "Ship it" })).content,
+    "Not answered: the agent took this question back.");
+  store.answerError = "connection reset";
+  const broken = said("yes");
+  assertEquals((await broken.run("answer_ask", { id: "a-2", choice: "Yes" })).content,
+    "Not answered: it couldn't be saved just now. Say so, and that they can try again in a moment.");
+  assertEquals([broken.writes, broken.changed.size], [0, 0]);
+});
+
+Deno.test("definitions: the same five tools for both providers", () => {
+  const names = ["add_event", "add_todo", "add_reminder", "complete_todo", "answer_ask"];
   assertEquals(CLAUDE_TOOLS.map((t) => t.name), names);
   assertEquals(GROK_TOOLS.map((t) => t.function.name), names);
   for (const t of CLAUDE_TOOLS) assertEquals((t.input_schema as unknown as { additionalProperties: boolean }).additionalProperties, false);

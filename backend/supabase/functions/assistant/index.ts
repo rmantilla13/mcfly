@@ -45,6 +45,7 @@ import {
   ToolRunner,
 } from "./tools.ts";
 import {
+  type AskRow,
   type AssistantRequest,
   chooseProvider,
   conversation,
@@ -59,6 +60,7 @@ import {
   type Mode,
   modelName,
   oneLine,
+  openAsks,
   parseRequest,
   ReplyBuilder,
   SNAPSHOT,
@@ -132,7 +134,7 @@ function modelOutcome(err: unknown): "busy" | "unavailable" | null {
 async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
   const now = new Date().toISOString();
   const weekAhead = new Date(Date.now() + SNAPSHOT.eventDays * 86_400_000).toISOString();
-  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories, todos] = await Promise.all([
+  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories, todos, asks] = await Promise.all([
     db.from("platform_settings").select("display_name, timezone, assistant_provider").maybeSingle(),
     db.from("briefs").select("title, kind, published_at, body")
       .or(`expires_at.is.null,expires_at.gt.${now}`)
@@ -163,6 +165,10 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     db.from("todos").select("id, kind, title, due_at, all_day").is("done_at", null)
       .or(`kind.eq.todo,due_at.gte.${new Date(Date.now() - 86_400_000).toISOString()}`)
       .order("due_at", { ascending: true, nullsFirst: false }).order("created_at").limit(SNAPSHOT.todos),
+    // Questions agents asked that are still waiting, oldest first.
+    db.from("asks").select("id, question, detail, choices, created_at, expires_at, agents(name)")
+      .is("answered_at", null).is("withdrawn_at", null).or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order("created_at").limit(SNAPSHOT.asks),
   ]);
   const failed = (what: string, r: { error: { message: string } | null }) => {
     if (r.error) console.error(`snapshot ${what} failed:`, r.error.message);
@@ -181,6 +187,7 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     reports: failed("report", reports) ? null : reports.data ?? [],
     memories: failed("notes", memories) ? null : memories.data ?? [],
     todos: failed("todos", todos) ? null : todos.data ?? [],
+    asks: failed("asks", asks) ? null : (asks.data ?? []) as AskRow[],
   };
 }
 
@@ -207,6 +214,12 @@ const store: Store = {
   async setDone(id: string) {
     const { error } = await service.rpc("set_todo_done", { todo: id, done: true });
     if (error) throw new Error(error.message);
+  },
+  async answerAsk(id: string, choice: string) {
+    // The service role: answer_ask records it as McFly's (answered_via assistant).
+    const { data, error } = await service.rpc("answer_ask", { ask: id, choice });
+    if (error) throw new Error(error.message);
+    return { answer: String((data as { answer?: unknown } | null)?.answer ?? choice) };
   },
   async log(agent: string, feed: Changed, ok: boolean, message?: string) {
     const { error } = await service.rpc("record_ingest", { agent, feed, count: 1, status: ok ? "ok" : "error", message: message ?? null });
@@ -454,7 +467,7 @@ async function answer(db: SupabaseClient, req: AssistantRequest): Promise<Respon
     mode: req.mode,
     snapshot: snapshot.text,
     messages: conversation(req.history, req.message),
-    tools: new ToolRunner(store, snapshot.timezone, open),
+    tools: new ToolRunner(store, snapshot.timezone, open).offerAsks(openAsks(rows.asks), req.message),
   };
 
   // The provider is picked after the snapshot read: the setting rides in it.
