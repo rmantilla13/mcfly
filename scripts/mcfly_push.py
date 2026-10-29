@@ -12,11 +12,17 @@
     mcfly_push.py metric sales.today 4280 --unit USD --pct 12.5 --group Store
     mcfly_push.py event "Standup" 2026-10-15T09:30 --end 2026-10-15T09:45 --calendar Work
     mcfly_push.py dashboard ops.json                # { key, title, widgets: [...] }
+    mcfly_push.py ask ship-2.3 "Ship v2.3 to TestFlight?" --choices "Ship it, Hold" --wait 3600
+    mcfly_push.py answers ship-2.3                  # your asks and their answers (--open: still waiting)
+    mcfly_push.py withdraw ship-2.3                 # take a question back
     mcfly_push.py raw briefs payload.json           # any feed, any JSON body
     mcfly_push.py whoami
 
-Every command prints the server's answer. --dry-run prints the request
-instead of sending it. See docs/AGENTS.md for the payloads.
+Every command prints the server's answer. `ask --wait` instead waits for the
+person and prints only the choice they picked (exit 0), or exits 3 if the
+wait ran out with the question still open and 4 if it was withdrawn or ran
+out itself. --dry-run prints the request instead of sending it. See
+docs/AGENTS.md for the payloads.
 """
 
 from __future__ import annotations
@@ -25,10 +31,12 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
-FEEDS = ("briefs", "quotes", "news", "projects", "metrics", "dashboards", "events")
+FEEDS = ("briefs", "quotes", "news", "projects", "metrics", "dashboards", "events", "todos", "asks")
 
 
 def settings() -> tuple[str, str]:
@@ -39,27 +47,56 @@ def settings() -> tuple[str, str]:
     return url, key
 
 
-def send(feed: str, body: dict | list | None, dry_run: bool, method: str = "POST") -> int:
+def call(feed: str, body: dict | list | None, method: str = "POST", query: str = "") -> tuple[bool, str]:
+    """The server's answer as (ok, text); text is the error sentence when not ok."""
     url, key = settings()
-    endpoint = f"{url}/functions/v1/ingest" + (f"/{feed}" if feed else "")
+    endpoint = f"{url}/functions/v1/ingest" + (f"/{feed}" if feed else "") + query
     data = None if body is None else json.dumps(body).encode()
-    if dry_run:
-        print(f"{method} {endpoint}")
-        if body is not None:
-            print(json.dumps(body, indent=2))
-        return 0
     request = urllib.request.Request(endpoint, data=data, method=method,
                                      headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            print(response.read().decode())
-            return 0
+            return True, response.read().decode()
     except urllib.error.HTTPError as error:
-        print(error.read().decode() or f"HTTP {error.code}", file=sys.stderr)
-        return 1
+        return False, error.read().decode() or f"HTTP {error.code}"
     except urllib.error.URLError as error:
-        print(f"could not reach McFly: {error.reason}", file=sys.stderr)
-        return 1
+        return False, f"could not reach McFly: {error.reason}"
+
+
+def send(feed: str, body: dict | list | None, dry_run: bool, method: str = "POST", query: str = "") -> int:
+    if dry_run:
+        url, _ = settings()
+        print(f"{method} {url}/functions/v1/ingest" + (f"/{feed}" if feed else "") + query)
+        if body is not None:
+            print(json.dumps(body, indent=2))
+        return 0
+    ok, text = call(feed, body, method, query)
+    print(text, file=sys.stdout if ok else sys.stderr)
+    return 0 if ok else 1
+
+
+def wait_for_answer(ask_id: str, seconds: float, every: float = 5.0) -> int:
+    """Polls GET /ingest/asks until the person answers; prints the choice."""
+    deadline = time.monotonic() + seconds
+    query = "?" + urllib.parse.urlencode({"id": ask_id})
+    while True:
+        ok, text = call("asks", None, "GET", query)
+        if ok:
+            asks = json.loads(text).get("asks") or []
+            ask = next((a for a in asks if a.get("id") == ask_id), None)
+            status = ask.get("status") if ask else "missing"
+            if status == "answered":
+                print(ask["answer"])
+                return 0
+            if status != "open":
+                print(f"{ask_id} is {status}, not answered", file=sys.stderr)
+                return 4
+        else:
+            print(text, file=sys.stderr)
+        if time.monotonic() + every > deadline:
+            print(f"no answer to {ask_id} yet; it stays open", file=sys.stderr)
+            return 3
+        time.sleep(every)
 
 
 def read_json(path: str):
@@ -135,6 +172,22 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("dashboard", help="a dashboard JSON file ({ key, title, widgets })")
     p.add_argument("file")
 
+    p = sub.add_parser("ask", help="a question for the person, with 2 to 4 choices (Yes and No by default)")
+    p.add_argument("id", help="your own id: read the answer back by it, and a re-push with it changes the question")
+    p.add_argument("question")
+    p.add_argument("--choices", help='comma-separated, 2 to 4: "Ship it, Hold"')
+    p.add_argument("--detail", help="a line or two of context under the question")
+    p.add_argument("--url", help="a link for more (the display shows its QR code)")
+    p.add_argument("--expires", help="when the question stops mattering, ISO-8601")
+    p.add_argument("--wait", type=float, metavar="SECONDS", help="wait this long for the answer and print only it")
+
+    p = sub.add_parser("answers", help="your asks and their answers")
+    p.add_argument("ids", nargs="*", help="your own ids; none: the last 100")
+    p.add_argument("--open", action="store_true", help="only the ones still waiting")
+
+    p = sub.add_parser("withdraw", help="take a question back")
+    p.add_argument("id")
+
     p = sub.add_parser("raw", help="any feed with a JSON file as the body")
     p.add_argument("feed", choices=FEEDS)
     p.add_argument("file")
@@ -177,6 +230,24 @@ def main(argv: list[str] | None = None) -> int:
         return send("events", {"events": [event]}, args.dry_run)
     if args.command == "dashboard":
         return send("dashboards", {"dashboards": [read_json(args.file)]}, args.dry_run)
+    if args.command == "ask":
+        choices = [c.strip() for c in args.choices.split(",") if c.strip()] if args.choices else None
+        ask = drop_none({"id": args.id, "question": args.question, "choices": choices, "detail": args.detail,
+                         "url": args.url, "expires_at": args.expires})
+        if args.wait is None or args.dry_run:
+            return send("asks", {"asks": [ask]}, args.dry_run)
+        ok, text = call("asks", {"asks": [ask]})
+        if not ok:
+            print(text, file=sys.stderr)
+            return 1
+        return wait_for_answer(args.id, args.wait)
+    if args.command == "answers":
+        query = {"id": ",".join(args.ids)} if args.ids else {}
+        if args.open:
+            query["open"] = "1"
+        return send("asks", None, args.dry_run, method="GET", query=("?" + urllib.parse.urlencode(query)) if query else "")
+    if args.command == "withdraw":
+        return send("asks", {"asks": [{"id": args.id, "withdrawn": True}]}, args.dry_run)
     if args.command == "raw":
         return send(args.feed, read_json(args.file), args.dry_run)
     if args.command == "whoami":

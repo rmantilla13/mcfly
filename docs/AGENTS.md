@@ -14,7 +14,7 @@ key is shown once. Every push is logged there (Overview → Recent pushes),
 with the first problem in a sentence when something is refused.
 
 The feeds are `briefs`, `quotes`, `news`, `projects`, `metrics`, `dashboards`,
-`events` and `todos`. `POST /ingest` with a `"type"` field works too, and
+`events`, `todos` and `asks`. `POST /ingest` with a `"type"` field works too, and
 `GET /ingest` answers who the key belongs to and its last ten pushes. Every
 answer is JSON: `{ "ok": true, "feed": "...", "count": n, ... }` or
 `{ "error": "what was wrong" }` with 400 (bad payload), 401 (no or unknown
@@ -363,6 +363,60 @@ overdue or undated at the top of the day. The assistant reads the open ones
 and can check any of them off when asked. McFly's own (added by asking it)
 belong to the built-in agent "McFly", which has no key.
 
+## Asks (a question for you, and your answer)
+
+An agent that needs a decision asks, and reads the answer back. The
+question shows on the display (a card at the top of the screen, with a
+button per choice), in the app and on the console until you answer, the
+agent takes it back, or it runs out. Answer with a tap, or ask McFly
+("tell Grok to ship it"). Nothing is sent to the agent: it reads the answer
+when it's ready.
+
+```bash
+curl -X POST "$MCFLY_URL/functions/v1/ingest/asks" \
+  -H "Authorization: Bearer $MCFLY_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "asks": [
+      { "id": "ship-2.3", "question": "Ship v2.3 to TestFlight?", "choices": ["Ship it", "Hold"],
+        "detail": "CI is green; the release notes are in the PR.", "url": "https://github.com/rmantilla13/mcfly/pull/40",
+        "expires_at": "2026-10-30T23:00:00-05:00" }
+    ]
+  }'
+```
+
+| Field | |
+|---|---|
+| `id` (≤200) | your id: read the answer back by it. The same id **changes** the question while nobody has answered it; an answered one stays as it was answered, so the answer always matches the question |
+| `question` (≤300) | required, except to withdraw |
+| `choices` | 2 to 4 labels of up to 32 characters, no two alike; the first is drawn as the main button. Left out: `["Yes", "No"]` |
+| `detail` (≤2000), `url` | optional: a line or two of context, and a link (the display shows its QR code) |
+| `expires_at` | optional: after it the question can't be answered and leaves every screen |
+| `withdrawn` | `true` takes it back (you decided some other way), `false` asks it again. `{ "id", "withdrawn": true }` alone is enough |
+
+On a re-push, a field you leave out stays as it was and a field sent as
+`null` is cleared. At most 50 per push. The answer to a push carries each
+ask as it now stands: `{ ..., "asks": [{ "id", "status", "question",
+"choices", "answer", "answered_at", "answered_via", "asked_at",
+"expires_at" }] }`, `status` being `open`, `answered`, `withdrawn` or
+`expired`, and `answered_via` where you answered: `display`, `app`,
+`console` or `assistant` (by asking McFly).
+
+**Reading the answer back:** `GET /ingest/asks` with the key answers
+`{ "ok": true, "asks": [...] }`, the agent's own asks, newest first (the last
+100); `?id=ship-2.3,other` picks some, `?open=1` the ones still waiting. No
+permission is needed: an agent reads only its own. Poll it every few
+seconds to a few minutes, as fits the question; `mcfly_push.py` does it for
+you and prints only the choice:
+
+```bash
+answer=$(scripts/mcfly_push.py ask ship-2.3 "Ship v2.3 to TestFlight?" --choices "Ship it, Hold" --wait 3600)
+[ "$answer" = "Ship it" ] && ./release.sh
+```
+
+(exit 3: no answer in time, the question stays open; exit 4: withdrawn or run
+out). An answer can't be changed once it's in. Answered, withdrawn and
+run-out asks are kept for 30 days.
+
 ## Reading back
 
 `GET /ingest` with the key:
@@ -370,7 +424,7 @@ belong to the built-in agent "McFly", which has no key.
 ```json
 { "ok": true, "agent": { "id": "…", "name": "Grok", "slug": "grok", "kind": "grok" },
   "recent": [ { "feed": "briefs", "count": 1, "status": "ok", "message": null, "created_at": "…" } ],
-  "feeds": ["briefs", "quotes", "news", "projects", "metrics", "dashboards", "events"] }
+  "feeds": ["briefs", "quotes", "news", "projects", "metrics", "dashboards", "events", "todos", "asks"] }
 ```
 
 ## Keys

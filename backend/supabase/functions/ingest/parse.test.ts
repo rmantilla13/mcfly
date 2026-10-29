@@ -3,11 +3,13 @@
 import { assertEquals, assertMatch } from "jsr:@std/assert@1";
 import {
   agentKey,
+  type Ask,
   type Dashboard,
   feedFromBody,
   feedFromPath,
   KEY_SHAPE,
   parse,
+  parseAsks,
   parseBriefs,
   parseDashboards,
   parseEvents,
@@ -28,7 +30,7 @@ Deno.test("feedFromPath: the segment after ingest, on Supabase and locally", () 
   assertEquals(feedFromPath("/functions/v1/ingest"), "");
   assertEquals(feedFromPath("/ingest/photos"), null);
   assertEquals(feedFromPath("/ingest/news/extra"), null);
-  for (const feed of ["projects", "metrics", "dashboards", "events", "todos"]) assertEquals(feedFromPath(`/functions/v1/ingest/${feed}`), feed);
+  for (const feed of ["projects", "metrics", "dashboards", "events", "todos", "asks"]) assertEquals(feedFromPath(`/functions/v1/ingest/${feed}`), feed);
 });
 
 Deno.test("feedFromBody: type, feed, or the shape itself", () => {
@@ -51,6 +53,8 @@ Deno.test("feedFromBody: type, feed, or the shape itself", () => {
   assertEquals(feedFromBody({ type: "dashboards", events: [] }), "dashboards");
   assertEquals(feedFromBody({ todos: [] }), "todos");
   assertEquals(feedFromBody({ todo: { title: "t" } }), "todos");
+  assertEquals(feedFromBody({ asks: [] }), "asks");
+  assertEquals(feedFromBody({ ask: { question: "q" } }), "asks");
 });
 
 Deno.test("agentKey: bearer or the header, and the key shape", () => {
@@ -478,4 +482,46 @@ Deno.test("parseTodos: what it refuses", () => {
   assertEquals(fail(parseTodos({ todos: Array.from({ length: 201 }, () => ({ title: "x" })) })), "at most 200 todos per push");
   const long = parseTodos({ todos: [{ id: "i".repeat(300), title: "t".repeat(400), notes: "n".repeat(3000) }] }) as { todos: Todo[] };
   assertEquals([long.todos[0].id!.length, long.todos[0].title.length, long.todos[0].notes!.length], [200, 300, 2000]);
+});
+
+Deno.test("parseAsks: questions, choices, and taking one back", () => {
+  assertEquals(parseAsks({
+    asks: [
+      { id: "ship-2.3", question: "  Ship v2.3? ", choices: [" Ship it", "Hold "], detail: "CI green", url: "https://github.com/x/y/pull/4" },
+      { question: "Renew the domain?" },
+      { id: "headline", question: "Which?", options: ["A", "B", "C"], expires_at: "2026-11-02T15:00:00Z", detail: null, url: "" },
+      { id: "old", withdrawn: true },
+    ],
+  }), {
+    asks: [
+      { id: "ship-2.3", question: "Ship v2.3?", choices: ["Ship it", "Hold"], detail: "CI green", url: "https://github.com/x/y/pull/4" },
+      { question: "Renew the domain?" },
+      { id: "headline", question: "Which?", choices: ["A", "B", "C"], detail: null, url: null, expires_at: "2026-11-02T15:00:00.000Z" },
+      { id: "old", withdrawn: true },
+    ],
+  });
+  assertEquals(parseAsks({ ask: { question: "q", expires_at: null, withdrawn: false } }), { asks: [{ question: "q", expires_at: null, withdrawn: false }] });
+  assertEquals(parse("asks", { question: "x" }), { feed: "asks", asks: [{ question: "x" }] });
+});
+
+Deno.test("parseAsks: what it refuses", () => {
+  const one = (a: Record<string, unknown>) => fail(parseAsks({ asks: [{ question: "x", ...a }] }));
+  assertEquals(fail(parseAsks({})), "send { asks: [{ id, question, choices? }] } or one { id, question, choices? }");
+  assertEquals(fail(parseAsks({ asks: [] })), "no asks in the request");
+  assertEquals(fail(parseAsks({ asks: [1] })), "ask 1 must be an object");
+  assertEquals(fail(parseAsks({ asks: [{ question: " " }] })), "ask 1 needs a question");
+  assertEquals(fail(parseAsks({ asks: [{ id: "a" }] })), "ask a needs a question");
+  assertEquals(fail(parseAsks({ asks: [{ id: "a", withdrawn: "yes" }] })), "ask a: withdrawn must be true or false");
+  assertEquals(one({ choices: "Yes" }), "ask x: choices must be a list of 2 to 4 labels");
+  assertEquals(one({ choices: ["Only"] }), "ask x: give 2 to 4 choices");
+  assertEquals(one({ choices: ["a", "b", "c", "d", "e"] }), "ask x: give 2 to 4 choices");
+  assertEquals(one({ choices: ["ok", " "] }), "ask x: each choice must be a label of 1 to 32 characters");
+  assertEquals(one({ choices: ["ok", "x".repeat(33)] }), "ask x: each choice must be a label of 1 to 32 characters");
+  assertEquals(one({ choices: ["ok", 2] }), "ask x: each choice must be a label of 1 to 32 characters");
+  assertEquals(one({ choices: ["Yes", "yes"] }), "ask x: choice yes is there twice");
+  assertEquals(one({ url: "ftp://x" }), "ask x: url must be an http(s) URL");
+  assertEquals(one({ expires_at: "soon" }), "ask x: expires_at must be an ISO-8601 timestamp");
+  assertEquals(fail(parseAsks({ asks: Array.from({ length: 51 }, () => ({ question: "x" })) })), "at most 50 asks per push");
+  const long = parseAsks({ asks: [{ id: "i".repeat(300), question: "q".repeat(400), detail: "d".repeat(3000) }] }) as { asks: Ask[] };
+  assertEquals([long.asks[0].id!.length, long.asks[0].question!.length, long.asks[0].detail!.length], [200, 300, 2000]);
 });

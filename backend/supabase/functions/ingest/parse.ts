@@ -3,8 +3,8 @@
 // this turns whatever an agent sent into exactly what the ingest_* SQL
 // functions take, or says what's wrong in one sentence.
 
-export type Feed = "briefs" | "quotes" | "news" | "projects" | "metrics" | "dashboards" | "events" | "todos";
-export const FEEDS: Feed[] = ["briefs", "quotes", "news", "projects", "metrics", "dashboards", "events", "todos"];
+export type Feed = "briefs" | "quotes" | "news" | "projects" | "metrics" | "dashboards" | "events" | "todos" | "asks";
+export const FEEDS: Feed[] = ["briefs", "quotes", "news", "projects", "metrics", "dashboards", "events", "todos", "asks"];
 
 export type Brief = {
   id?: string;
@@ -116,6 +116,19 @@ export type Todo = {
   data?: Record<string, unknown>;
 };
 
+// A question for the person, with two to four choices (Yes and No when none
+// are sent). A field sent as null is cleared on a re-push; one left out
+// stays. { id, withdrawn } alone takes an ask back, or asks it again.
+export type Ask = {
+  id?: string;
+  question?: string;
+  detail?: string | null;
+  choices?: string[];
+  url?: string | null;
+  expires_at?: string | null;
+  withdrawn?: boolean;
+};
+
 export type Parsed =
   | { feed: "briefs"; briefs: Brief[] }
   | { feed: "quotes"; quotes: Quote[]; as_of?: string }
@@ -124,7 +137,8 @@ export type Parsed =
   | { feed: "metrics"; metrics: Metric[]; as_of?: string }
   | { feed: "dashboards"; dashboards: Dashboard[] }
   | { feed: "events"; events: CalendarEvent[]; calendar?: string; replace: boolean }
-  | { feed: "todos"; todos: Todo[] };
+  | { feed: "todos"; todos: Todo[] }
+  | { feed: "asks"; asks: Ask[] };
 
 type Fail = { error: string };
 
@@ -156,6 +170,8 @@ export const MAX_LIST_ITEMS = 20;
 export const MAX_POINTS = 120;
 export const MAX_EVENTS = 1000;
 export const MAX_TODOS = 200;
+export const MAX_ASKS = 50;
+export const MAX_CHOICE = 32;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -182,6 +198,7 @@ export function feedFromBody(body: unknown): Feed | null {
   if (Array.isArray(body.dashboards) || isObject(body.dashboard)) return "dashboards";
   if (Array.isArray(body.events) || isObject(body.event)) return "events";
   if (Array.isArray(body.todos) || isObject(body.todo)) return "todos";
+  if (Array.isArray(body.asks) || isObject(body.ask)) return "asks";
   return null;
 }
 
@@ -685,6 +702,56 @@ export function parseTodos(body: unknown): { todos: Todo[] } | Fail {
   return { todos };
 }
 
+// { asks: [...] } | { ask: {...} } | [...] | one { question, choices? }
+export function parseAsks(body: unknown): { asks: Ask[] } | Fail {
+  const items = listOf(body, "asks", "ask", "question", "{ id, question, choices? }");
+  if (isFail(items)) return items;
+  if (items.length === 0) return { error: "no asks in the request" };
+  if (items.length > MAX_ASKS) return { error: `at most ${MAX_ASKS} asks per push` };
+  const asks: Ask[] = [];
+  for (const [i, raw] of items.entries()) {
+    if (!isObject(raw)) return { error: `ask ${i + 1} must be an object` };
+    const id = str(raw.id ?? raw.external_id, 200);
+    if (raw.withdrawn != null && typeof raw.withdrawn !== "boolean") return { error: `ask ${id ?? i + 1}: withdrawn must be true or false` };
+    const question = str(raw.question ?? raw.title, 300);
+    if (!question) {
+      if (id && typeof raw.withdrawn === "boolean") {
+        asks.push({ id, withdrawn: raw.withdrawn });
+        continue;
+      }
+      return { error: `ask ${id ?? i + 1} needs a question` };
+    }
+    const ask: Ask = { ...(id ? { id } : {}), question };
+    const given = raw.choices ?? raw.options;
+    if (given != null) {
+      if (!Array.isArray(given)) return { error: `ask ${question}: choices must be a list of 2 to 4 labels` };
+      if (given.length < 2 || given.length > 4) return { error: `ask ${question}: give 2 to 4 choices` };
+      const choices: string[] = [];
+      for (const c of given) {
+        const label = typeof c === "string" ? c.trim() : "";
+        if (!label || label.length > MAX_CHOICE) return { error: `ask ${question}: each choice must be a label of 1 to ${MAX_CHOICE} characters` };
+        if (choices.some((x) => x.toLowerCase() === label.toLowerCase())) return { error: `ask ${question}: choice ${label} is there twice` };
+        choices.push(label);
+      }
+      ask.choices = choices;
+    }
+    if ("detail" in raw || "description" in raw) ask.detail = str(raw.detail ?? raw.description, 2000) ?? null;
+    if ("url" in raw || "link" in raw) {
+      const url = str(raw.url ?? raw.link, 2000);
+      if (url && !HTTP.test(url)) return { error: `ask ${question}: url must be an http(s) URL` };
+      ask.url = url ?? null;
+    }
+    if ("expires_at" in raw) {
+      const expires = when(raw.expires_at, `ask ${question}: expires_at`);
+      if (isFail(expires)) return expires;
+      ask.expires_at = expires ?? null;
+    }
+    if (typeof raw.withdrawn === "boolean") ask.withdrawn = raw.withdrawn;
+    asks.push(ask);
+  }
+  return { asks };
+}
+
 export function parse(feed: Feed, body: unknown): Parsed | Fail {
   switch (feed) {
     case "briefs": {
@@ -717,6 +784,10 @@ export function parse(feed: Feed, body: unknown): Parsed | Fail {
     }
     case "todos": {
       const r = parseTodos(body);
+      return isFail(r) ? r : { feed, ...r };
+    }
+    case "asks": {
+      const r = parseAsks(body);
       return isFail(r) ? r : { feed, ...r };
     }
   }
