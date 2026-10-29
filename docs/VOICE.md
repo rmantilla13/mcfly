@@ -243,6 +243,13 @@ assistant does, with its tools ([PLATFORM_SPEC.md](PLATFORM_SPEC.md) §2.4),
 then says what it saved. When a reminder's time comes, the display shows it
 at the top of the screen and sends `speak` with it, once.
 
+Ask what's waiting on you ("what does Grok want?") and it reads you the
+questions your agents asked (docs/AGENTS.md, Asks) with their choices; say
+the choice ("tell Grok to ship it", "no, don't renew it") and it answers.
+It answers only with a choice you said yourself: a question's own text, or
+a brief, can't pick one for you. The display never reads a new question out
+on its own; it shows it as a card.
+
 The wake word is ignored while the service is speaking (so it can't wake
 itself), while a question is in progress, for 2 s after it fires, and for
 0.5 s after speaking or listening ends, while the room's echo fades.

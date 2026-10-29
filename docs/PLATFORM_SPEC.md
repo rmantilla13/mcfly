@@ -237,8 +237,9 @@ local time (`platform_settings`), the newest briefs (10, clipped), every
 visible symbol's latest quote and note, and the newest report's stories
 (headline, takeaway, source), the open `todos`, and the open `asks` (with
 their agent's name and choices). Tools: when the person
-asks, it adds an event (calendar "McFly"), a todo or a reminder, or checks a
-todo off (`add_event`, `add_todo`, `add_reminder`, `complete_todo`). Times
+asks, it adds an event (calendar "McFly"), a todo or a reminder, checks a
+todo off, or answers an agent's question (`add_event`, `add_todo`,
+`add_reminder`, `complete_todo`, `answer_ask`). Times
 come from the model as local wall-clock times and are turned into instants
 in `platform_settings.timezone` on the server. The writes go through
 `ingest_events` / `ingest_todos` / `set_todo_done` with the service role, as
