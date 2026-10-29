@@ -1,5 +1,6 @@
 import type { Dismissal } from "@/lib/dismissals";
 import "server-only";
+import { demoAsks, openAsks, type OpenAsk } from "@/lib/asks";
 import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -295,6 +296,49 @@ export async function listDismissals(): Promise<Dismissal[]> {
     return [];
   }
   return Array.isArray(data) ? (data as Dismissal[]) : [];
+}
+
+// The questions agents are waiting on (lib/asks.ts), oldest first, with
+// their agent's name and colour. Optional too: a database without the table
+// has none waiting.
+const demoAnswered = new Set<string>(); // the demo's answers, until the server restarts
+export async function listOpenAsks(): Promise<OpenAsk[]> {
+  const src = await source();
+  if (src.demo) return demoAsks(demo.demoListAgents(), Date.now()).filter((a) => !demoAnswered.has(a.id));
+  const { data, error } = await src.db
+    .from("asks")
+    .select("id,question,detail,choices,url,expires_at,created_at,agents(name,color)")
+    .is("answered_at", null)
+    .is("withdrawn_at", null)
+    .order("created_at")
+    .limit(50);
+  if (error) {
+    console.error("asks failed:", error.message);
+    return [];
+  }
+  type Row = Omit<OpenAsk, "agent_name" | "agent_color" | "choices"> & { choices: unknown; agents: { name: string; color: string } | null };
+  const rows = (Array.isArray(data) ? data : []) as unknown as Row[];
+  return openAsks(
+    rows.map(({ agents, choices, ...a }) => ({
+      ...a,
+      choices: Array.isArray(choices) ? choices.filter((c): c is string => typeof c === "string") : [],
+      agent_name: agents?.name ?? null,
+      agent_color: agents?.color ?? null,
+    })),
+    Date.now(),
+  );
+}
+
+// Answers one with a choice (answer_ask, `via` console). Its refusals are
+// sentences: "already answered: Hold", "this question ran out".
+export async function answerAsk(id: string, choice: string): Promise<string> {
+  const src = await source();
+  if (src.demo) {
+    demoAnswered.add(id);
+    return choice;
+  }
+  const row = record<{ answer?: unknown }>(await rpc(src.db, "answer_ask", { ask: id, choice, via: "console" }), "answer_ask");
+  return typeof row.answer === "string" ? row.answer : choice;
 }
 
 export async function listNewsReports(lim = 30): Promise<NewsReportRow[]> {

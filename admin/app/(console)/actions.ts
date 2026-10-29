@@ -673,3 +673,17 @@ export async function runBotAction(_prev: ActionResult, fd: FormData): Promise<A
     return { ok: true, message: `Done: "${result.title ?? "report"}" is on the display.` };
   });
 }
+
+// ───────────────────────────── Asks ─────────────────────────────
+
+// Answers an agent's question from Today (lib/asks.ts). Not a form: the
+// band calls it with the ask and the choice once its undo has run out.
+export async function answerAskAction(ask: string, choice: string): Promise<ActionResult> {
+  return mutate(async () => {
+    if (typeof ask !== "string" || !UUID.test(ask)) throw new DataError("That question is out of date. Reload the page and try again.");
+    const label = typeof choice === "string" ? choice.trim().slice(0, 64) : "";
+    if (!label) throw new DataError("Pick one of the choices.");
+    const answer = await data.answerAsk(ask.toLowerCase(), label);
+    return { ok: true, message: answer };
+  });
+}
