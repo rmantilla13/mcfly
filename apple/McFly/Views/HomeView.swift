@@ -59,6 +59,20 @@ struct HomeView: View {
                     if let message = feeds.errorMessage {
                         ErrorBanner(message: message) { Task { await feeds.refresh() } }
                     }
+                    // What the agents are waiting on, before anything else.
+                    ForEach(feeds.openAsks(now: now)) { ask in
+                        AskCard(ask: ask, agent: feeds.agents.first { $0.id == ask.agentId }, now: now) { choice in
+                            withAnimation(.snappy) { app.answer(ask, choice: choice) }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    if let pending = app.pendingAnswer {
+                        AnsweredBar(text: pending.agent.map { "Told \($0): \(pending.choice)" } ?? "Answered: \(pending.choice)") {
+                            withAnimation(.snappy) { app.undoAnswer() }
+                        }
+                    } else if let note = app.answerNote {
+                        AnsweredBar(text: note, action: "OK") { app.answerNote = nil }
+                    }
                     #if os(iOS)
                     GlanceGrid(now: now, feeds: feeds, weather: weather)
                     let shownProject = GlanceGrid.shownProject(feeds, now: now)
@@ -401,6 +415,97 @@ private struct NextCard: View {
 
 /// The first blocked project, on a warm tint; its progress as a ring when
 /// the agent reports one (the console's NeedsYouCard).
+/// A question an agent is waiting on (`Ask`): who asks and when, the
+/// question and a line of context, its link, and a button per choice, the
+/// first the main one. A tap answers it (`AppModel.answer`), with an undo.
+private struct AskCard: View {
+    let ask: Ask
+    let agent: Agent?
+    let now: Date
+    let onAnswer: (String) -> Void
+
+    var body: some View {
+        let tint = agent.map { Color(hex: $0.color) } ?? Theme.accent
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(tint.opacity(Theme.palette.isDark ? 0.28 : 0.16))
+                    .frame(width: 40, height: 40)
+                    .overlay(Image(systemName: "bubble.left").font(.system(size: 17, weight: .semibold)).foregroundStyle(tint))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(heading)
+                        .font(.caption.weight(.semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.muted)
+                    Text(ask.question)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail = ask.detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(3)
+                    }
+                    if let url = ask.url {
+                        Link(destination: url) {
+                            Label(url.host() ?? url.absoluteString, systemImage: "link")
+                                .font(.footnote.weight(.medium))
+                        }
+                        .tint(Theme.accent)
+                        .padding(.top, 2)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            // A button per choice, in a row where they fit.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { buttons }
+                VStack(alignment: .leading, spacing: 10) { buttons }
+            }
+        }
+        .padding(16)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
+    }
+
+    private var heading: String {
+        var parts = [agent.map { "\($0.name) asks" } ?? "A question", Format.relative(ask.createdAt, now: now)]
+        if let until = ask.expiresAt {
+            parts.append("until " + (Calendar.current.isDate(until, inSameDayAs: now)
+                ? until.formatted(date: .omitted, time: .shortened)
+                : until.formatted(.dateTime.weekday(.abbreviated).hour().minute())))
+        }
+        return parts.joined(separator: " · ").uppercased()
+    }
+
+    @ViewBuilder private var buttons: some View {
+        ForEach(Array(ask.choices.enumerated()), id: \.offset) { index, choice in
+            Button { onAnswer(choice) } label: {
+                Text(choice).frame(minHeight: 24)
+            }
+            .buttonStyle(.pill(index == 0 ? .prominent : .neutral))
+        }
+    }
+}
+
+/// An answer's few seconds to change your mind, or a line about how one went.
+private struct AnsweredBar: View {
+    let text: String
+    var action = "Undo"
+    let onAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.bubble").foregroundStyle(Theme.accent)
+            Text(text).font(.subheadline).foregroundStyle(Theme.text).lineLimit(2)
+            Spacer()
+            Button(action, action: onAction).buttonStyle(.pill(.soft))
+        }
+        .card(padding: 12, radius: Theme.radiusSm)
+    }
+}
+
 private struct BlockedCard: View {
     let project: Project
     let others: Int

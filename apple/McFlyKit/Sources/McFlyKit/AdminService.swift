@@ -19,6 +19,10 @@ public protocol AdminService: Sendable {
     func updateSettings(displayName: String?, timezone: String?, assistantProvider: AssistantProvider?) async throws -> PlatformSettings
     /// `admin_project_updates`: more of a project's timeline than the feed embeds.
     func projectUpdates(_ projectId: UUID, limit: Int) async throws -> [ProjectUpdate]
+    /// Answers an agent's question with one of its choices (`answer_ask`, as
+    /// the app); returns the choice as stored. Throws "already answered: X"
+    /// when another screen got there first.
+    func answerAsk(_ id: UUID, choice: String) async throws -> String
     /// Made dashboards (DashboardBuilding.swift): what a part can pull from,
     /// a recipe drawn without saving, and saving one (a new board without an id).
     func dashboardSources() async throws -> DashboardSourceOptions
@@ -113,6 +117,17 @@ public struct SupabaseAdminService: AdminService {
         }
         let data = try await client.rpc("admin_project_updates", params: Params(project: projectId.lowercased, lim: limit)).execute().data
         return try JSONDecoder.mcfly.decode([ProjectUpdate].self, from: data)
+    }
+
+    public func answerAsk(_ id: UUID, choice: String) async throws -> String {
+        struct Params: Encodable {
+            let ask: String
+            let choice: String
+            let via = "app"
+        }
+        struct Answered: Decodable { let answer: String }
+        let data = try await client.rpc("answer_ask", params: Params(ask: id.lowercased, choice: choice)).execute().data
+        return try JSONDecoder.mcfly.decode(Answered.self, from: data).answer
     }
 
     private func rows<T: Decodable>(_ function: String, params: [String: String] = [:]) async throws -> [T] {

@@ -65,6 +65,15 @@ public struct SupabaseFeedSource: FeedSource {
             .execute().data)
     }
 
+    public func loadAsks() async throws -> [Ask] {
+        try decode(await client.from("asks").select("id,agent_id,question,detail,choices,url,expires_at,created_at")
+            .is("answered_at", value: nil)
+            .is("withdrawn_at", value: nil)
+            .order("created_at")
+            .limit(50)
+            .execute().data)
+    }
+
     public func loadDismissals() async throws -> [Dismissal] {
         try decode(await client.from("dismissals").select("key,hide_until").execute().data)
     }

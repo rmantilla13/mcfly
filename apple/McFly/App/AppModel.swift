@@ -46,6 +46,18 @@ final class AppModel {
     /// season, or one kind. A build pinned to one (`-McFlyWeather`) keeps it.
     private(set) var weather = Config.pinnedWeather ?? AccountWeather.off
 
+    /// An answer to an agent's question waiting out its few seconds' undo
+    /// (`answer(_:choice:)`), and a line about one that didn't go as tapped.
+    private(set) var pendingAnswer: PendingAnswer?
+    var answerNote: String?
+    @ObservationIgnored private var answering: Task<Void, Never>?
+
+    struct PendingAnswer: Equatable {
+        let ask: Ask
+        let choice: String
+        let agent: String?
+    }
+
     private let client: McFlyClient?
     private let pairingClient: PairingClient?
 
@@ -225,6 +237,62 @@ final class AppModel {
         guard PairingCode.isValid(PairingCode.normalize(code)) else { throw McFlyError.message("Enter the 6 digits on the display.") }
         try await Task.sleep(for: .milliseconds(600))
         return UUID()
+    }
+
+    // MARK: Asks
+
+    /// Answers an agent's question: it leaves Home at once and reaches the
+    /// agent after a few seconds unless `undoAnswer()` takes it back, as on
+    /// the display. A second answer sends the first straight away.
+    func answer(_ ask: Ask, choice: String) {
+        if let earlier = pendingAnswer { commit(earlier) }
+        feeds.setAnsweredHere(ask.id, true)
+        let pending = PendingAnswer(ask: ask, choice: choice, agent: feeds.agents.first { $0.id == ask.agentId }?.name)
+        pendingAnswer = pending
+        answerNote = nil
+        answering = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.commit(pending)
+        }
+    }
+
+    func undoAnswer() {
+        guard let pending = pendingAnswer else { return }
+        answering?.cancel()
+        answering = nil
+        pendingAnswer = nil
+        feeds.setAnsweredHere(pending.ask.id, false)
+    }
+
+    /// Sends it. Answered on another screen first, or taken back: it stays
+    /// gone, with a line saying so; any other failure brings it back.
+    private func commit(_ pending: PendingAnswer) {
+        if pendingAnswer == pending {
+            answering?.cancel()
+            answering = nil
+            pendingAnswer = nil
+        }
+        let admin = admin
+        let feeds = feeds
+        Task {
+            do {
+                _ = try await admin.answerAsk(pending.ask.id, choice: pending.choice)
+                await feeds.refresh()
+            } catch {
+                let message = McFlyError.describe(error)
+                if let first = Ask.answeredElsewhere(message) {
+                    answerNote = "Already answered on another screen: \(first)"
+                    await feeds.refresh()
+                } else if message.contains("took this question back") || message.contains("ran out") {
+                    answerNote = "That question was taken back"
+                    await feeds.refresh()
+                } else {
+                    feeds.setAnsweredHere(pending.ask.id, false)
+                    answerNote = "Couldn't send that answer, so the question is back"
+                }
+            }
+        }
     }
 
     /// The assistant, streamed. Demo mode answers from the loaded feeds.
