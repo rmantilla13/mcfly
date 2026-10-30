@@ -145,6 +145,9 @@ struct GameScreen: View {
         case .scoopShop: ScoopShopView(covered: covered)
         case .penguinMarch: PenguinMarchView(covered: covered)
         case .colorByNumber: ColorByNumberView()
+        case .solitaire: SolitaireView()
+        case .pairs: PairsView()
+        case .dotsAndBoxes: DotsAndBoxesView()
         }
     }
 
@@ -231,7 +234,7 @@ struct GameIconButton: View {
 
 /// `-McFlyGame <name>` (screenshots): opens on the Games list with that
 /// game open (`list` for the list alone). Names: traffic, tictactoe,
-/// fourinarow, 2048, scoops, penguins, colors. `-McFlyGameClock` slows the
+/// fourinarow, 2048, scoops, penguins, colors, solitaire, pairs, dots. `-McFlyGameClock` slows the
 /// clock; `-McFlyColorPicture <id>` opens Color by Number on that picture.
 enum GameLaunch {
     static let requested: String? = {
@@ -258,6 +261,9 @@ enum GameLaunch {
         case "scoops": return .scoopShop
         case "penguins": return .penguinMarch
         case "colors": return .colorByNumber
+        case "solitaire": return .solitaire
+        case "pairs": return .pairs
+        case "dots": return .dotsAndBoxes
         default: return nil
         }
     }()

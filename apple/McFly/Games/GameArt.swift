@@ -15,6 +15,9 @@ struct GameArt: View {
         case .scoopShop: ScoopArt()
         case .penguinMarch: PenguinArtCard()
         case .colorByNumber: ColorsArt()
+        case .solitaire: SolitaireArt()
+        case .pairs: PairsArt()
+        case .dotsAndBoxes: DotsArt()
         }
     }
 }
@@ -182,5 +185,98 @@ private struct ColorsArt: View {
     var body: some View {
         ColorPictureView(picture: Self.pip, saved: Self.saved)
             .padding(10)
+    }
+}
+
+/// A hand of five, fanned: a run down from the king, as the columns build.
+private struct SolitaireArt: View {
+    private let hand: [(card: Int, angle: Double)] = [(12, -18), (24, -9), (49, 0), (35, 9), (8, 18)]
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = min(geo.size.height * 0.7, geo.size.width / 4.2 * 1.4), w = h / 1.4
+            ZStack {
+                ForEach(hand.indices, id: \.self) { i in
+                    PlayingCard(card: hand[i].card, up: true)
+                        .frame(width: w, height: h)
+                        .rotationEffect(.degrees(hand[i].angle), anchor: .bottom)
+                        .offset(x: CGFloat(i - 2) * w * 0.38, y: abs(CGFloat(i - 2)) * h * 0.05)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+}
+
+/// Two of the same picture face up, the rest face down.
+private struct PairsArt: View {
+    private static let pip = ColorByNumber.index(of: "pip") ?? 0
+    private let up = [false, true, false, false, false, false, true, false]
+
+    var body: some View {
+        GeometryReader { geo in
+            let cell = min(geo.size.width / 4.6, geo.size.height / 2.4)
+            let radius = min(Theme.radiusSm, cell * 0.18)
+            Grid(horizontalSpacing: cell * 0.1, verticalSpacing: cell * 0.1) {
+                ForEach(0..<2, id: \.self) { r in
+                    GridRow {
+                        ForEach(0..<4, id: \.self) { c in
+                            Group {
+                                if up[r * 4 + c] {
+                                    PairsPicture(picture: Self.pip)
+                                        .padding(cell * 0.12)
+                                        .background(Theme.palette.isDark ? Color(rgb: 0x2C2C31) : .white,
+                                                    in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                                } else {
+                                    CardBack(radius: radius)
+                                }
+                            }
+                            .frame(width: cell, height: cell)
+                        }
+                    }
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+}
+
+/// A board of three by three: some lines drawn, a box each.
+private struct DotsArt: View {
+    // [column, row, across, orange]: the lines drawn so far.
+    private let lines: [(Int, Int, Bool, Bool)] = [(0, 0, true, true), (0, 1, true, false), (0, 0, false, false), (1, 0, false, true),
+                                                   (1, 1, true, true), (1, 2, true, false), (1, 1, false, true), (2, 1, false, false),
+                                                   (2, 0, true, false), (2, 3, true, true), (0, 2, false, false), (3, 2, false, true)]
+
+    var body: some View {
+        GeometryReader { geo in
+            let box = min(geo.size.width, geo.size.height) * 0.78 / 3
+            let thick = max(3, box * 0.09)
+            let dot = max(7, box * 0.16)
+            ZStack(alignment: .topLeading) {
+                ForEach([(0, 0, true), (1, 1, false)], id: \.0) { b in
+                    RoundedRectangle(cornerRadius: box * 0.15, style: .continuous)
+                        .fill(b.2 ? GameColors.x : GameColors.o)
+                        .opacity(0.3)
+                        .frame(width: box - thick, height: box - thick)
+                        .offset(x: CGFloat(b.0) * box + thick / 2, y: CGFloat(b.1) * box + thick / 2)
+                }
+                ForEach(lines.indices, id: \.self) { i in
+                    let l = lines[i]
+                    Capsule()
+                        .fill(l.3 ? GameColors.x : GameColors.o)
+                        .frame(width: l.2 ? box : thick, height: l.2 ? thick : box)
+                        .offset(x: CGFloat(l.0) * box - (l.2 ? 0 : thick / 2), y: CGFloat(l.1) * box - (l.2 ? thick / 2 : 0))
+                }
+                ForEach(0..<16, id: \.self) { i in
+                    Circle()
+                        .fill(Theme.text)
+                        .frame(width: dot, height: dot)
+                        .offset(x: CGFloat(i % 4) * box - dot / 2, y: CGFloat(i / 4) * box - dot / 2)
+                }
+            }
+            .frame(width: box * 3, height: box * 3, alignment: .topLeading)
+            .position(x: geo.size.width / 2, y: geo.size.height / 2)
+        }
     }
 }

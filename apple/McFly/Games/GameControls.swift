@@ -55,19 +55,26 @@ struct ScoreChips: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            chip(xName, score.x, GameColors.x)
-            chip("Draws", score.draws, Theme.muted)
-            chip(oName, score.o, GameColors.o)
+            ScoreChip(label: xName, value: String(score.x), color: GameColors.x)
+            ScoreChip(label: "Draws", value: String(score.draws), color: Theme.muted)
+            ScoreChip(label: oName, value: String(score.o), color: GameColors.o)
         }
     }
+}
 
-    private func chip(_ label: String, _ value: Int, _ color: Color) -> some View {
+/// One chip: a label in its colour over a number.
+struct ScoreChip: View {
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
         VStack(spacing: 1) {
             Text(label)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(color)
                 .lineLimit(1)
-            Text(String(value))
+            Text(value)
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(Theme.text)
         }

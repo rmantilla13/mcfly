@@ -5,6 +5,7 @@ import Foundation
 /// Maroon in Trouble, the Qt demos, aren't in the app yet.
 public enum GameID: String, Sendable, CaseIterable, Identifiable {
     case trafficJam, ticTacToe, fourInARow, game2048, scoopShop, penguinMarch, colorByNumber
+    case solitaire, pairs, dotsAndBoxes
 
     public var id: Self { self }
 
@@ -17,6 +18,9 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .scoopShop: return "Scoop Shop"
         case .penguinMarch: return "Penguin March"
         case .colorByNumber: return "Color by Number"
+        case .solitaire: return "Solitaire"
+        case .pairs: return "Pairs"
+        case .dotsAndBoxes: return "Dots and Boxes"
         }
     }
 
@@ -29,6 +33,9 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .scoopShop: return "Serve every order before they give up."
         case .penguinMarch: return "Get the penguins home to the igloo."
         case .colorByNumber: return "Fill in the picture, one number at a time."
+        case .solitaire: return "The classic patience, a tap a move."
+        case .pairs: return "Turn two cards over and find the pairs."
+        case .dotsAndBoxes: return "Close a box to claim it."
         }
     }
 
@@ -48,12 +55,18 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
             return "Penguins drop in and keep walking, turning at walls, and a long fall is the end of one. Pick a skill, then tap a penguin: Block turns the others back, Dig goes down, Bash goes through a wall, Build lays steps and Float opens an umbrella. Get enough of them into the igloo to win."
         case .colorByNumber:
             return "Pick a picture, then a colour: its number lights up on the picture. Tap or sweep across those cells to fill them in. Only cells with that number take the colour, so a sweep can't go wrong. Tap a cell with another number to switch to its colour. Zoom in with + and −, and drag from any other cell to move around. Your pictures are saved as you go."
+        case .solitaire:
+            return "Build each suit up from the ace to the king on the four piles at the top right. In the seven columns, a card goes on one a rank higher in the other colour, and only a king, or a run under one, goes in an empty column. Tap a card to move it, and every card on it, to the best place it can go. Tap the deck to turn over one card, or three; when it runs out, tap it to turn the pile back over. Undo takes back a move. Once every card is face up, the rest go home on their own. Your game is saved as you go."
+        case .pairs:
+            return "Every picture is on two cards, face down. Turn two over: a pair stays up and you go again, and two that don't match turn back, so remember where they were. Play alone and clear the board in as few turns as you can, take turns with someone at the screen, or play McFly: Easy forgets, Hard remembers everything it has seen. Pick 12, 16 or 20 cards."
+        case .dotsAndBoxes:
+            return "Take turns drawing a line between two dots side by side: tap near where it should go. Draw the fourth side of a box to claim it, then go again. The most boxes wins. Play someone at the screen, or play McFly: Easy is beatable, Hard knows how to play the chains."
         }
     }
 
     public var players: String {
         switch self {
-        case .ticTacToe, .fourInARow: return "1–2 players"
+        case .ticTacToe, .fourInARow, .pairs, .dotsAndBoxes: return "1–2 players"
         default: return "1 player"
         }
     }
@@ -66,6 +79,9 @@ public enum GameID: String, Sendable, CaseIterable, Identifiable {
         case .game2048: return "2048 by Gabriele Cirulli. MIT License."
         case .scoopShop: return "Made for McFly, Pip and Lotl too."
         case .colorByNumber: return "Made for McFly, after Araib Karim's Color by Number for iOS. The pictures are ours."
+        case .solitaire: return "Klondike, a traditional card game. Made for McFly, the cards too."
+        case .pairs: return "A traditional memory game. Made for McFly, with Color by Number's pictures."
+        case .dotsAndBoxes: return "A traditional pencil-and-paper game. Made for McFly."
         }
     }
 

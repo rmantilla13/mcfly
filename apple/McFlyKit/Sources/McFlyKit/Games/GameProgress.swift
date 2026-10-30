@@ -3,9 +3,11 @@ import Foundation
 /// What the games keep on this device, in UserDefaults as the app's other
 /// local settings are (the voice, `mcfly.voice`): 2048's best score and the
 /// game in progress, Traffic Jam's and Penguin March's level and each
-/// level's best, Scoop Shop's best and who worked last, and every Color by
-/// Number picture as far as it's painted. Tic-tac-toe and Four in a Row keep
-/// their score only while open, as on the display.
+/// level's best, Scoop Shop's best and who worked last, every Color by
+/// Number picture as far as it's painted, the Solitaire game in progress
+/// with its wins and fewest moves, and Pairs' fewest turns for each size of
+/// board. Tic-tac-toe, Four in a Row and Dots and Boxes keep their score
+/// only while open, as on the display.
 public final class GameProgress: @unchecked Sendable {
     public static let shared = GameProgress()
 
@@ -112,5 +114,46 @@ public final class GameProgress: @unchecked Sendable {
         guard all[id] != saved else { return }
         all[id] = saved
         defaults.set(all, forKey: Self.prefix + "colors.progress")
+    }
+
+    // MARK: Solitaire
+
+    /// The game in progress, if it holds every card once; nil once one is won.
+    public var solitaire: Solitaire? {
+        get {
+            defaults.data(forKey: Self.prefix + "solitaire.game")
+                .flatMap { try? JSONDecoder().decode(Solitaire.self, from: $0) }
+                .flatMap { $0.isValid && !$0.won ? $0 : nil }
+        }
+        set {
+            if let newValue, !newValue.won, let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: Self.prefix + "solitaire.game")
+            } else {
+                defaults.removeObject(forKey: Self.prefix + "solitaire.game")
+            }
+        }
+    }
+
+    public var solitaireWins: Int { int("solitaire.wins") }
+    /// The fewest moves in a win; 0 before the first.
+    public var solitaireFewest: Int { int("solitaire.fewest") }
+
+    /// A win in `moves`: one more, and the fewest if it is.
+    public func recordSolitaireWin(moves: Int) {
+        setInt(solitaireWins + 1, "solitaire.wins")
+        if solitaireFewest == 0 || moves < solitaireFewest { setInt(moves, "solitaire.fewest") }
+    }
+
+    // MARK: Pairs
+
+    /// The fewest turns to clear each size of board alone.
+    public var pairsBest: [Int: Int] { table("pairs.best") }
+
+    /// Keeps `moves` for a board of `size` cards if it's the fewest yet.
+    public func recordPairs(size: Int, moves: Int) {
+        var best = pairsBest
+        if let old = best[size], old <= moves { return }
+        best[size] = moves
+        setTable(best, "pairs.best")
     }
 }
