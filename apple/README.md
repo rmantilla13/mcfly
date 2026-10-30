@@ -158,7 +158,7 @@ Agents, Settings) sit behind **More**, Games in a **Play** section of its
 own: five tabs in all, as many as an iPhone's tab bar shows. Voice is also
 Home's Ask bar. On the Mac they're a sidebar, with the same Play section.
 
-`-McFlyGame traffic|tictactoe|fourinarow|2048|scoops|penguins|colors` (or
+`-McFlyGame traffic|tictactoe|fourinarow|2048|scoops|penguins|colors|solitaire|pairs|dots` (or
 `list`) opens on the Games list with that game open, for screenshots
 (`-McFlyColorPicture pip` opens Color by Number on a picture), and
 `-McFlyGameClock 0.1` runs Scoop Shop's and Penguin March's clocks at a
