@@ -55,6 +55,23 @@ final class SSEParserTests: XCTestCase {
         XCTAssertEqual(json, [["role": "user", "text": "hi"], ["role": "assistant", "text": "hello"]])
     }
 
+    /// `suggested` goes only when the app wrote the question; a typed or
+    /// spoken one sends the body older apps did.
+    func testASuggestedQuestionSaysSo() async throws {
+        let client = AssistantClient(supabaseURL: URL(string: "https://example.supabase.co")!, anonKey: "anon") { "token" }
+        func body(suggested: Bool) async throws -> [String: Any] {
+            let request = try await client.makeRequest("What's blocking McFly?", mode: .read, history: [], provider: nil,
+                                                       suggested: suggested, streaming: true)
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+        }
+        let chip = try await body(suggested: true)
+        XCTAssertEqual(chip["suggested"] as? Bool, true)
+        XCTAssertEqual(chip["message"] as? String, "What's blocking McFly?")
+        let typed = try await body(suggested: false)
+        XCTAssertNil(typed["suggested"])
+        XCTAssertEqual(Set(typed.keys), ["message", "mode", "stream", "history"])
+    }
+
     func testAnAnswerCutShortSaysSo() throws {
         let data = try JSONEncoder().encode(AssistantTurn(role: .assistant, text: "Saturday you have", interrupted: true))
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -204,6 +204,10 @@ struct MainView: View {
         // Back in front after a while: what the agents pushed meanwhile. The
         // display syncs every minute; the phone catches up when it's looked at.
         .onChange(of: scenePhase) { _, phase in
+            // Leaving the screen: an answer still in its undo goes now, while
+            // the app can send it (on iOS it is suspended soon after).
+            // Not on inactive: Control Center or a notification would cut the undo short.
+            if phase == .background { app.sendPendingAnswer() }
             guard phase == .active else { return }
             // The voice too: picked on the display or the web, it's this device's as well.
             Task { await app.syncVoice() }

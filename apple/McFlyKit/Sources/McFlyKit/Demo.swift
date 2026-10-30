@@ -142,6 +142,10 @@ public struct DemoFeedSource: FeedSource {
     public func loadEvents(from: Date, to: Date) async throws -> [CalendarEvent] {
         data.events.filter { $0.endsAt >= from && $0.startsAt <= to }
     }
+    public func loadAsks() async throws -> [Ask] { Ask.demo(agents: data.agents, now: asked) }
+
+    /// When the demo's questions count from: when it was loaded, so they don't come back each refresh.
+    private let asked = Date.now
 }
 
 /// Admin calls answered from memory, so the Displays, Agents and Settings
@@ -171,6 +175,9 @@ public actor DemoAdminService: AdminService {
         guard let project = projects.first(where: { $0.id == projectId }) else { throw McFlyError.message("Project not found") }
         return Array(project.updates.prefix(limit))
     }
+
+    /// The demo's answers stay on this device (`FeedStore.answeredHere`).
+    public func answerAsk(_ id: UUID, choice: String, question: String) async throws -> String { choice }
 
     public func renameDevice(_ id: UUID, name: String) async throws {
         guard let i = devices.firstIndex(where: { $0.id == id }) else { throw McFlyError.message("Device not found") }

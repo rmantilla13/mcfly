@@ -19,6 +19,13 @@ public protocol AdminService: Sendable {
     func updateSettings(displayName: String?, timezone: String?, assistantProvider: AssistantProvider?) async throws -> PlatformSettings
     /// `admin_project_updates`: more of a project's timeline than the feed embeds.
     func projectUpdates(_ projectId: UUID, limit: Int) async throws -> [ProjectUpdate]
+    /// Answers an agent's question with one of its choices (`answer_ask`, as
+    /// the app); returns the choice as stored. `question` is the question as
+    /// the server sent it, the one the person saw: the server turns the
+    /// answer down ("the agent changed this question; look again") when the
+    /// agent has changed it since. Throws "already answered: X" when another
+    /// screen got there first.
+    func answerAsk(_ id: UUID, choice: String, question: String) async throws -> String
     /// Made dashboards (DashboardBuilding.swift): what a part can pull from,
     /// a recipe drawn without saving, and saving one (a new board without an id).
     func dashboardSources() async throws -> DashboardSourceOptions
@@ -115,10 +122,26 @@ public struct SupabaseAdminService: AdminService {
         return try JSONDecoder.mcfly.decode([ProjectUpdate].self, from: data)
     }
 
+    public func answerAsk(_ id: UUID, choice: String, question: String) async throws -> String {
+        struct Answered: Decodable { let answer: String }
+        let params = AnswerAskParams(ask: id.lowercased, choice: choice, question: question)
+        let data = try await client.rpc("answer_ask", params: params).execute().data
+        return try JSONDecoder.mcfly.decode(Answered.self, from: data).answer
+    }
+
     private func rows<T: Decodable>(_ function: String, params: [String: String] = [:]) async throws -> [T] {
         let data = try await client.rpc(function, params: params).execute().data
         return try JSONDecoder.mcfly.decode([T].self, from: data)
     }
+}
+
+/// `answer_ask`'s arguments from the app. The question goes as it came, not
+/// trimmed or reflowed: the server compares it with the one it holds.
+struct AnswerAskParams: Encodable {
+    let ask: String
+    let choice: String
+    let via = "app"
+    let question: String
 }
 
 extension UUID {

@@ -21,6 +21,8 @@ public protocol FeedSource: Sendable {
     func loadEvents(from: Date, to: Date) async throws -> [CalendarEvent]
     /// The callouts dismissed on any screen.
     func loadDismissals() async throws -> [Dismissal]
+    /// The questions agents are waiting on: open, oldest first.
+    func loadAsks() async throws -> [Ask]
 }
 
 extension FeedSource {
@@ -28,6 +30,8 @@ extension FeedSource {
     public func loadLatestQuoteData() async throws -> [QuoteLatest] { [] }
     /// The demo has nothing dismissed.
     public func loadDismissals() async throws -> [Dismissal] { [] }
+    /// A source without asks has none waiting.
+    public func loadAsks() async throws -> [Ask] { [] }
 }
 
 /// Everything the feed screens read. One refresh loads every feed at once,
@@ -57,6 +61,11 @@ public final class FeedStore {
     public private(set) var events: [CalendarEvent] = []
     /// What's been dismissed, on any screen (`isDismissed`).
     public private(set) var dismissals: [Dismissal] = []
+    /// The questions agents are waiting on, as last read (`openAsks`).
+    public private(set) var asks: [Ask] = []
+    /// Asks answered here that a refresh still lists (the answer is on its
+    /// way, or waiting out its undo): hidden until a refresh drops them.
+    public private(set) var answeredHere: Set<UUID> = []
     public private(set) var isLoading = false
     public private(set) var loadedAt: Date?
     public var errorMessage: String?
@@ -101,6 +110,7 @@ public final class FeedStore {
             async let dashboards = source.loadDashboards()
             async let events = source.loadEvents(from: eventsFrom, to: eventsTo)
             async let dismissals = source.loadDismissals()
+            async let asks = source.loadAsks()
             self.agents = try await agents
             self.briefs = try await briefs
                 .filter { $0.expiresAt.map { $0 > now } ?? true }
@@ -120,6 +130,11 @@ public final class FeedStore {
             self.events = try await events.sorted { ($0.startsAt, $0.title) < ($1.startsAt, $1.title) }
             // Extra too (an older server has no table): kept as it was when it fails.
             if let dismissals = try? await dismissals { self.dismissals = dismissals }
+            // So are asks; one answered here stays hidden while it's still listed.
+            if let asks = try? await asks {
+                self.asks = asks.sorted { $0.createdAt < $1.createdAt }
+                answeredHere.formIntersection(asks.map(\.id))
+            }
             loadedAt = now
             errorMessage = nil
         } catch is CancellationError {
@@ -147,6 +162,17 @@ public final class FeedStore {
 
     /// The blocked projects McFly calls out ("Needs you"): less those dismissed.
     public var needsYou: [Project] { blockedProjects.filter { !isDismissed("blocked:\($0.id.uuidString)") } }
+
+    /// The questions still waiting at `now`, oldest first, less those answered here.
+    public func openAsks(now: Date = .now) -> [Ask] {
+        asks.filter { $0.isOpen(now: now) && !answeredHere.contains($0.id) }
+    }
+
+    /// Hides an ask answered on this device (or shows it again, when the
+    /// answer is taken back or couldn't be sent).
+    public func setAnsweredHere(_ id: UUID, _ answered: Bool) {
+        if answered { answeredHere.insert(id) } else { answeredHere.remove(id) }
+    }
 
     /// Whether a callout's id (an insight's, any case) has been dismissed and hasn't run out.
     public func isDismissed(_ id: String, now: Date = .now) -> Bool {

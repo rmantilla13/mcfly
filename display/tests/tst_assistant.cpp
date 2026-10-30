@@ -161,6 +161,41 @@ private slots:
         QCOMPARE(m_server.requests("POST", "/auth/v1/token").size(), 2);
     }
 
+    // A question the person picked (a chip, an insight) says so, so the
+    // assistant answers no agent's question from it; typed and spoken ones
+    // say nothing. A resend after a refreshed token still says it.
+    void suggestedQuestionsSaySo()
+    {
+        startLive();
+        int calls = 0;
+        m_server.route("/functions/v1/assistant", [&calls](const Request &r) {
+            if (r.body.value("message").toString() == QLatin1String("Retry me") && ++calls == 1)
+                return FakeServer::json("{\"error\":\"expired\"}", 401);
+            return okStream("Fine.");
+        });
+        rig->ai.ask("Typed");
+        QTRY_VERIFY(!rig->ai.busy());
+        rig->ai.askSuggested("What needs me today?");
+        QTRY_VERIFY(!rig->ai.busy());
+        rig->ai.askQuick("Spoken");
+        QTRY_VERIFY(!rig->ai.busy());
+        QCOMPARE(asks().size(), 3);
+        QVERIFY(!asks().at(0).body.contains("suggested"));
+        QCOMPARE(asks().at(1).body.value("suggested"), QJsonValue(true));
+        QCOMPARE(asks().at(1).body.value("mode").toString(), QStringLiteral("chat"));
+        QVERIFY(!asks().at(2).body.contains("suggested"));
+        // A chip asked as any message is: in the conversation, answered.
+        QCOMPARE(rig->ai.messages()->at(2).text, QStringLiteral("What needs me today?"));
+        QCOMPARE(rig->ai.messages()->at(3).text, QStringLiteral("Fine."));
+
+        rig->ai.askSuggested("Retry me");
+        QTRY_VERIFY(!rig->ai.busy());
+        QCOMPARE(lastReply(), QStringLiteral("Fine."));
+        QCOMPARE(asks().size(), 5);
+        QCOMPARE(asks().at(3).body.value("suggested"), QJsonValue(true));
+        QCOMPARE(asks().at(4).body.value("suggested"), QJsonValue(true));
+    }
+
     void statusesBecomeSentences()
     {
         startLive();

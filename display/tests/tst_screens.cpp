@@ -7,6 +7,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTemporaryDir>
+#include <QWheelEvent>
 
 #include <functional>
 
@@ -415,6 +416,171 @@ private slots:
                 cleanup();
             }
         }
+    }
+
+    // A question's card on each panel: its choices whole inside it, each a
+    // full touch target tall, and a tap answers (the undo puts it back).
+    void askCardFitsAndAnswers()
+    {
+        struct Panel
+        {
+            int w, h;
+            const char *tier;
+            int card;
+        };
+        for (const Panel &p : {Panel{800, 480, "mini", 768}, Panel{720, 1280, "tall", 680}, Panel{1280, 800, "compact", 680},
+                               Panel{1920, 1080, "wide", 820}}) {
+            const QString where = QString::fromLatin1(p.tier);
+            QVERIFY(show("AskCard { }", p.w, p.h, where));
+            auto *card = qobject_cast<QQuickItem *>(m_screen);
+            card->setWidth(p.card); // as wide as Main.qml makes it there
+            const QVariantList asks = m_store->asks();
+            QVERIFY(asks.size() >= 2);
+            // Four long choices: the most a question may have.
+            QVariantMap busiest = asks.first().toMap();
+            busiest.insert("choices", QStringList{"Ship it to TestFlight now", "Hold until Monday", "Ask Lina first", "Cancel the release"});
+            m_screen->setProperty("asks", QVariantList{busiest, asks.at(1)});
+            QTRY_VERIFY(find("askQuestion")->isVisible());
+            QTest::qWait(50); // the Flow lays its buttons out on the next polish
+            card->setHeight(card->implicitHeight());
+            QTest::qWait(50);
+            QCOMPARE(find("askHeading")->property("text").toString().endsWith(QStringLiteral("1 MORE")), true);
+            QList<QQuickItem *> buttons;
+            for (int i = 0; i < 4; ++i)
+                collect(qobject_cast<QQuickItem *>(m_screen), QStringLiteral("askChoice%1").arg(i), buttons);
+            QCOMPARE(buttons.size(), 4);
+            for (QQuickItem *b : std::as_const(buttons)) {
+                const QRectF r = b->mapRectToItem(qobject_cast<QQuickItem *>(m_screen), QRectF(QPointF(0, 0), b->size()));
+                QVERIFY2(b->height() >= 64, qPrintable(where));
+                QVERIFY2(r.left() >= 0 && r.right() <= p.card && r.bottom() <= card->height(),
+                         qPrintable(QStringLiteral("%1: a choice at %2,%3 to %4,%5 is outside the card").arg(where).arg(r.left()).arg(r.top()).arg(r.right()).arg(r.bottom())));
+            }
+            shoot(QStringLiteral("ask-%1").arg(where));
+            cleanup();
+        }
+        // The real one: a tap on its second choice answers it.
+        QVERIFY(show("AskCard { }", 1280, 800, QStringLiteral("compact")));
+        const QVariantMap first = m_store->asks().first().toMap();
+        m_screen->setProperty("asks", m_store->asks());
+        QQuickItem *second = nullptr;
+        QList<QQuickItem *> found;
+        collect(qobject_cast<QQuickItem *>(m_screen), QStringLiteral("askChoice1"), found);
+        QTRY_VERIFY(!found.isEmpty() && found.first()->isVisible());
+        second = found.first();
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, second->mapToScene(QPointF(second->width() / 2, second->height() / 2)).toPoint());
+        QTRY_COMPARE(m_store->pendingAnswer().value("id").toString(), first.value("id").toString());
+        QCOMPARE(m_store->pendingAnswer().value("choice").toString(), first.value("choices").toStringList().at(1));
+        m_store->undoAnswer();
+        QCOMPARE(m_store->asks().first().toMap().value("id").toString(), first.value("id").toString());
+    }
+
+    // The card sits over the page, not in a Layer, so it takes every touch
+    // on it: a tap on its words, on its padding or between its buttons, a
+    // finger, a drag and a wheel all leave the page underneath alone. Just
+    // off the card, the page gets them.
+    void askCardKeepsTouchesOffThePage()
+    {
+        QVERIFY(show("Item {\n"
+                     "    id: root\n"
+                     "    property int taps: 0\n"
+                     "    Flickable {\n"
+                     "        objectName: \"page\"\n"
+                     "        anchors.fill: parent\n"
+                     "        contentWidth: width\n"
+                     "        contentHeight: 4000\n"
+                     "        MouseArea { width: 1280; height: 4000; onClicked: root.taps++ }\n"
+                     "    }\n"
+                     "    AskCard { objectName: \"card\"; x: 300; y: 32; width: 680; height: implicitHeight }\n"
+                     "}",
+                     1280, 800, QStringLiteral("compact")));
+        auto *page = m_screen->findChild<QQuickItem *>(QStringLiteral("page"));
+        auto *card = m_screen->findChild<QQuickItem *>(QStringLiteral("card"));
+        QVERIFY(page && card);
+        card->setProperty("asks", m_store->asks());
+        QTRY_VERIFY(find("askQuestion")->isVisible());
+        QTRY_COMPARE(card->opacity(), 1.0);
+        QTest::qWait(50); // the Flow lays its buttons out on the next polish
+        QList<QQuickItem *> first, second;
+        collect(card, QStringLiteral("askChoice0"), first);
+        collect(card, QStringLiteral("askChoice1"), second);
+        QVERIFY(!first.isEmpty() && !second.isEmpty());
+        const QRectF one = first.first()->mapRectToScene(QRectF(QPointF(0, 0), first.first()->size()));
+        const QRectF two = second.first()->mapRectToScene(QRectF(QPointF(0, 0), second.first()->size()));
+        QVERIFY2(qFuzzyCompare(one.center().y(), two.center().y()) && two.left() > one.right() + 4, "the choices share a row with a gap");
+        QQuickItem *question = find("askQuestion");
+        const QPoint words = question->mapToScene(QPointF(question->width() / 2, question->height() / 2)).toPoint();
+        const QPoint padding = card->mapToScene(QPointF(card->width() / 2, 6)).toPoint();
+        const QPoint between = QPointF((one.right() + two.left()) / 2, one.center().y()).toPoint();
+        const QPoint off(640, 720); // under the card, on the page
+        QVERIFY(!card->contains(card->mapFromScene(QPointF(off))));
+        // A few notches, stamped as a wheel's would be: Flickable reads its
+        // speed from the time between them.
+        auto wheel = [this](const QPoint &at) {
+            static quint64 stamp = 1000;
+            for (int notch = 0; notch < 3; ++notch) {
+                QWheelEvent e(QPointF(at), m_window->mapToGlobal(QPointF(at)), QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier,
+                              Qt::NoScrollPhase, false);
+                e.setTimestamp(stamp += 30);
+                QCoreApplication::sendEvent(m_window, &e);
+            }
+        };
+        auto drag = [this](const QPoint &from) {
+            QTest::mousePress(m_window, Qt::LeftButton, {}, from);
+            for (int dy = 20; dy <= 300; dy += 20)
+                QTest::mouseMove(m_window, from - QPoint(0, dy), 8);
+            QTest::mouseRelease(m_window, Qt::LeftButton, {}, from - QPoint(0, 300), 8);
+        };
+        auto rest = [page]() {
+            QMetaObject::invokeMethod(page, "cancelFlick");
+            page->setProperty("contentY", 0);
+        };
+
+        // On the card: nothing reaches the page.
+        for (const QPoint &at : {words, padding, between})
+            QTest::mouseClick(m_window, Qt::LeftButton, {}, at);
+        static QPointingDevice *finger = QTest::createTouchDevice();
+        QTest::touchEvent(m_window, finger).press(0, words, m_window);
+        QTest::touchEvent(m_window, finger).release(0, words, m_window);
+        drag(words);
+        wheel(words);
+        QTest::qWait(300);
+        QCOMPARE(m_screen->property("taps").toInt(), 0);
+        QCOMPARE(page->property("contentY").toReal(), 0.0);
+        QVERIFY(m_store->pendingAnswer().isEmpty()); // and nothing was answered
+
+        // Off it, the page takes each of them.
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, off);
+        QCOMPARE(m_screen->property("taps").toInt(), 1);
+        drag(off);
+        QTRY_VERIFY(page->property("contentY").toReal() > 0);
+        rest();
+        QTest::qWait(50);
+        QCOMPARE(page->property("contentY").toReal(), 0.0);
+        wheel(off);
+        QTRY_VERIFY(page->property("contentY").toReal() > 0);
+    }
+
+    // The Ask panel asks its chips as suggestions (AI.askSuggested, so they
+    // never answer an agent's question) and what is typed as a message
+    // (AI.ask); both join the conversation.
+    void assistantPanelAsksChipsAsSuggestions()
+    {
+        m_ai->reset();
+        QVERIFY(show("AssistantPanel { open: true }", 1280, 800, QStringLiteral("compact")));
+        QQuickItem *chips = find("panelChips");
+        QQuickItem *input = find("panelInput");
+        QVERIFY(chips && input);
+        QMetaObject::invokeMethod(chips, "picked", Q_ARG(QString, QStringLiteral("What can you do?")));
+        QCOMPARE(m_ai->messages()->count(), 2);
+        QCOMPARE(m_ai->messages()->at(0).text, QStringLiteral("What can you do?"));
+        QTRY_VERIFY_WITH_TIMEOUT(!m_ai->busy(), 10000);
+        input->setProperty("text", QStringLiteral("What's next?"));
+        QMetaObject::invokeMethod(input, "accepted");
+        QCOMPARE(m_ai->messages()->count(), 4);
+        QCOMPARE(m_ai->messages()->at(2).text, QStringLiteral("What's next?"));
+        QCOMPARE(input->property("text").toString(), QString());
+        QTRY_VERIFY_WITH_TIMEOUT(!m_ai->busy(), 10000);
+        m_ai->reset();
     }
 
     void homeFitsTheSmallPanel()
@@ -897,17 +1063,19 @@ private slots:
 
     // The assistant panel opens voice first: nothing has focus, so the
     // on-screen keyboard stays down, and Send waits for something typed. A
-    // tap on the field brings the keyboard; sending (Send, or a suggestion,
-    // which goes through send() too) takes the focus off the field, so the
+    // tap on the field brings the keyboard; sending (Send, or a chip, which
+    // goes through send() too) takes the focus off the field, so the
     // keyboard goes and a later tap brings it back.
     void assistantPanelKeepsTheKeyboardDown()
     {
+        m_ai->reset();
         QVERIFY(show("AssistantPanel { open: true }", 1180, 800, QStringLiteral("compact")));
         m_window->requestActivate();
         QVERIFY(QTest::qWaitForWindowActive(m_window));
-        QQuickItem *field = find("askField");
+        QQuickItem *field = find("panelInput");
         QQuickItem *send = find("sendButton");
-        QVERIFY(field && send);
+        QQuickItem *chips = find("panelChips");
+        QVERIFY(field && send && chips);
         QVERIFY(!field->hasActiveFocus());
         QVERIFY(!send->isVisible());
         shoot(QStringLiteral("assistant-panel-open"));
@@ -928,9 +1096,10 @@ private slots:
         QVERIFY(!send->isVisible());
         QTRY_VERIFY_WITH_TIMEOUT(!m_ai->busy(), 15000);
 
+        m_ai->reset(); // New chat: the chips are back
         tap(field);
         QTRY_VERIFY(field->hasActiveFocus());
-        QMetaObject::invokeMethod(m_screen, "send", Q_ARG(QVariant, QStringLiteral("What's blocking Onyx?")));
+        QMetaObject::invokeMethod(chips, "picked", Q_ARG(QString, QStringLiteral("What's blocking Onyx?")));
         QVERIFY(!field->hasActiveFocus());
         QTRY_VERIFY_WITH_TIMEOUT(!m_ai->busy(), 15000);
         shoot(QStringLiteral("assistant-panel-answered"));

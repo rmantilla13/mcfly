@@ -401,4 +401,40 @@ vt_count="$(printf '%s\n' "$got6" | tr ' ' '\n' | grep -cE '^console=tty[0-9]+$'
 "$quiet" "$tmp/missing-cmdline.txt" "$tmp/missing-config.txt" >"$tmp/missing.out"
 grep -q 'skipping console setup' "$tmp/missing.out" || fail "missing cmdline did not skip"
 
+# The fan's steps (fan-steps.sh): about 5 °C above the firmware's, as a
+# marked block of dtparams under [pi5] at the end of config.txt. The
+# installer sets them; the uninstaller takes them out again.
+fan="$root/display/deploy/fan-steps.sh"
+[ -x "$fan" ] || fail "fan-steps.sh is not executable"
+grep -Fxq '"$repo/display/deploy/fan-steps.sh"' "$install" || fail "install script does not set the fan's steps"
+grep -Fxq '"$(dirname "$0")/fan-steps.sh" --remove' "$root/display/deploy/uninstall-pi.sh" || fail "uninstall script leaves the fan's steps"
+stock_pi5=('# stock' 'dtparam=audio=on' 'arm_boost=1' '[cm4]' 'otg_mode=1' '[cm5]' 'dtoverlay=dwc2,dr_mode=host' '[pi5]' 'dtoverlay=nospi10' '[all]')
+printf '%s\n' "${stock_pi5[@]}" >"$tmp/fan.txt"
+cp "$tmp/fan.txt" "$tmp/fan.orig"
+"$fan" "$tmp/fan.txt" >"$tmp/fan.out"
+grep -q '55, 65, 72 and 78' "$tmp/fan.out" || fail "fan-steps.sh did not say what it set"
+want_block=$'# McFly: the fan steps 5 degrees up (display/deploy/fan-steps.sh)\n[pi5]\ndtparam=fan_temp0=55000\ndtparam=fan_temp1=65000\ndtparam=fan_temp2=72000\ndtparam=fan_temp3=78000\n[all]\n# McFly: end of the fan steps'
+[ "$(tail -n 8 "$tmp/fan.txt")" = "$want_block" ] || fail "the fan's steps are not the block under [pi5] at the end"
+[ "$(head -n 10 "$tmp/fan.txt")" = "$(cat "$tmp/fan.orig")" ] || fail "fan-steps.sh changed the rest of config.txt"
+cmp -s "$tmp/fan.txt.mcfly-backup" "$tmp/fan.orig" || fail "config.txt was not backed up before the fan's steps"
+# Again: nothing to do, nothing said.
+cp "$tmp/fan.txt" "$tmp/fan.once"
+"$fan" "$tmp/fan.txt" >"$tmp/fan2.out"
+cmp -s "$tmp/fan.txt" "$tmp/fan.once" || fail "a second fan-steps.sh run rewrote config.txt"
+[ ! -s "$tmp/fan2.out" ] || fail "a second fan-steps.sh run reported a change"
+# Fan steps set by hand give way to the block, wherever they were.
+printf '%s\n' 'dtparam=fan_temp0=40000' '[pi5]' 'dtparam=fan_temp0_speed=90' 'dtparam=fan_temp1_hyst=2000' '[all]' >"$tmp/fan3.txt"
+"$fan" "$tmp/fan3.txt" >/dev/null
+[ "$(grep -c '^dtparam=fan_temp' "$tmp/fan3.txt")" -eq 4 ] || fail "hand-set fan steps were kept beside the block"
+grep -qx 'dtparam=fan_temp0=55000' "$tmp/fan3.txt" || fail "the block did not replace a hand-set step"
+# --remove puts config.txt back as it was, and says so once.
+"$fan" --remove "$tmp/fan.txt" >"$tmp/fan4.out"
+cmp -s "$tmp/fan.txt" "$tmp/fan.orig" || fail "fan-steps.sh --remove left something behind"
+grep -q 'firmware' "$tmp/fan4.out" || fail "fan-steps.sh --remove did not say so"
+"$fan" --remove "$tmp/fan.txt" >"$tmp/fan5.out"
+[ ! -s "$tmp/fan5.out" ] || fail "a second --remove reported a change"
+# Not a Pi (a container): nothing to set, and the installer goes on.
+"$fan" "$tmp/missing-config.txt" >"$tmp/fan6.out"
+grep -q 'leaving the fan as it is' "$tmp/fan6.out" || fail "a missing config.txt did not skip the fan"
+
 echo "kiosk boot ok"

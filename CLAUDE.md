@@ -29,8 +29,8 @@ role key exists only inside edge functions. The console and the apps sign
 in as the person and let the database check `is_platform_admin()`.
 
 **Displays read, never write** (except their own `last_seen_at`, their
-settings through `device_update_settings`, and a dismissed callout through
-`dismiss()`). RLS lets
+settings through `device_update_settings`, a dismissed callout through
+`dismiss()`, and the answer to an agent's question through `answer_ask()`). RLS lets
 `can_read()` callers (a paired device or an admin) select every feed table;
 nothing else sees a row. A new table needs `enable row level security` and a
 `for select using (public.can_read())` policy or it is invisible.

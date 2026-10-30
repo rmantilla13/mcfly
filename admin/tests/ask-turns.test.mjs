@@ -1,7 +1,8 @@
-// Answers the person cut short, and the history the Ask proxy passes on (lib/ask-turns.ts).
+// Answers the person cut short, the history the Ask proxy passes on, and
+// whether a question was suggested rather than the person's own (lib/ask-turns.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { afterStop, askHistory, markCutShort } from "../lib/ask-turns.ts";
+import { afterStop, askHistory, askSuggested, assistantBody, markCutShort } from "../lib/ask-turns.ts";
 
 const q = { role: "user", text: "What's on this weekend?" };
 
@@ -41,4 +42,24 @@ test("the proxy's history: last ten, clipped, only answers cut short", () => {
   assert.equal(out.length, 10);
   assert.equal(out[0].text, "2");
   assert.equal(out[9].text.length, 4000);
+});
+
+test("suggested: only a page that says so; the person's own questions go as before", () => {
+  assert.equal(askSuggested(true), true);
+  for (const not of [undefined, null, false, "true", 1, {}]) assert.equal(askSuggested(not), false, String(not));
+});
+
+test("the assistant hears suggested only when it was", () => {
+  const history = [q];
+  assert.deepEqual(assistantBody("Tell me more about the rollout", history, "read", true), {
+    message: "Tell me more about the rollout",
+    history,
+    mode: "read",
+    stream: true,
+    suggested: true,
+  });
+  // Typed or spoken: no key at all, as an older console sent it.
+  const own = assistantBody("Ship it", history, "chat", false);
+  assert.deepEqual(own, { message: "Ship it", history, mode: "chat", stream: true });
+  assert.equal("suggested" in own, false);
 });

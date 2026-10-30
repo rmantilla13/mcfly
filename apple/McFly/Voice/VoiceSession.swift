@@ -131,7 +131,8 @@ final class VoiceSession {
     private func ask(_ text: String, history prior: [AssistantTurn]) async {
         var finalReply = ""
         do {
-            try await answerer(text, .quick, prior, nil) { [weak self] event in
+            // Spoken by the person, so it may answer an agent's question.
+            try await answerer(text, .quick, prior, nil, false) { [weak self] event in
                 guard let self else { return }
                 switch event {
                 case .delta(let piece):

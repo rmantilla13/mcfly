@@ -3,6 +3,8 @@
 //   GET  /ingest/memory   (memory:read)   the shared notes and the agent's own
 //   POST /ingest/memory   (memory:write)  { memories: [{ key?, text, shared? }], remove?: [key] }
 //   GET  /ingest/events   (calendar:read) upcoming events; ?days=1..60 (default 14)
+//   GET  /ingest/asks     (any agent)     its own asks and their answers;
+//                                         ?id=a,b picks some, ?open=1 the ones still waiting
 //
 // Pure, so reads.test.ts can check it.
 
@@ -12,12 +14,12 @@ export type MemoryPush = { items: { key?: string; text: string; shared?: boolean
 
 const KEY = /^[A-Za-z0-9._:-]{1,80}$/;
 
-export function readRoute(pathname: string): "memory" | "events" | null {
+export function readRoute(pathname: string): "memory" | "events" | "asks" | null {
   const parts = pathname.split("/").filter(Boolean);
   const at = parts.lastIndexOf("ingest");
   const rest = at < 0 ? parts : parts.slice(at + 1);
   if (rest.length !== 1) return null;
-  return rest[0] === "memory" ? "memory" : rest[0] === "events" ? "events" : null;
+  return rest[0] === "memory" ? "memory" : rest[0] === "events" ? "events" : rest[0] === "asks" ? "asks" : null;
 }
 
 export function hasScope(scopes: unknown, scope: Scope): boolean {
@@ -65,4 +67,16 @@ export function parseMemoryPush(body: unknown): MemoryPush | { error: string } {
 export function eventDays(search: string): number {
   const n = Number(new URLSearchParams(search).get("days") ?? 14);
   return Number.isFinite(n) ? Math.min(60, Math.max(1, Math.round(n))) : 14;
+}
+
+// Which of its asks an agent reads back: ?id=a,b (or id=a&id=b), at most 50,
+// and ?open=1 for the ones still waiting. Ids can't hold a comma (parse.ts
+// refuses one) and are cut to 200 characters as a push cuts them, so each
+// reads back the ask pushed with it. An id param that leaves no id still
+// picks: it reads none, never the agent's last 100 in its place.
+export function askQuery(search: string): { ids: string[] | null; open_only: boolean } {
+  const q = new URLSearchParams(search);
+  const ids = q.getAll("id").flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean).map((v) => v.slice(0, 200)).slice(0, 50);
+  const open = (q.get("open") ?? "").toLowerCase();
+  return { ids: q.has("id") ? ids : null, open_only: open === "1" || open === "true" };
 }

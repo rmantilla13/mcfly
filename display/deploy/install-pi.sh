@@ -240,6 +240,9 @@ step "Configuring the console"
 # until the boot video (or McFly) draws, instead of scrolling boot text.
 # SSH is unchanged. Takes effect on reboot.
 "$repo/display/deploy/quiet-boot.sh"
+# The Pi 5's fan steps about 5 °C up, so it hums less for the same work (see
+# the script). Takes effect on reboot.
+"$repo/display/deploy/fan-steps.sh"
 
 # cloud-init prints "Completed socket interaction for boot stage final" on
 # the console after quiet boot. The kernel command line does not stop it:

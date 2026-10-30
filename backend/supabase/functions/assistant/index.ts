@@ -3,7 +3,8 @@
 // Ask (mode "read": longer, Markdown-shaped answers).
 //
 //   POST { message, mode?: "chat" | "quick" | "read", stream?: boolean,
-//          history?: [{ role, text, interrupted? }], provider?: "claude" | "grok" }
+//          history?: [{ role, text, interrupted? }], provider?: "claude" | "grok",
+//          suggested?: boolean }
 //     stream false -> { reply, model, changed? }
 //     stream true  -> text/event-stream: delta…, then done { reply, model, changed? } (or error)
 //
@@ -13,11 +14,14 @@
 // read with the caller's own JWT, so row-level security decides what it sees.
 //
 // Tools (tools.ts): when the person asks, it adds an event, a todo or a
-// reminder, or checks a todo off. Those writes go through the ingest SQL
-// functions with the service role, as McFly's own agent, after can_read()
+// reminder, checks a todo off, or answers an agent's question with the
+// choice they said. Those writes go through the ingest SQL functions (and
+// answer_ask) with the service role, as McFly's own agent, after can_read()
 // has said the caller may read; the display itself still never writes.
-// `done` (and the JSON reply) carries `changed: ["events" | "todos"]` when
-// something was written, so a client can refresh at once.
+// `done` (and the JSON reply) carries `changed: ["asks" | "events" | "todos"]`
+// when something was written, so a client can refresh at once. A message
+// the client marks `suggested` (a chip, an insight, a link's question) never
+// answers an ask: its words may be an agent's, not the person's.
 //
 // Who answers is platform_settings.assistant_provider, which the body may
 // override: Claude through the SDK (ANTHROPIC_API_KEY, ASSISTANT_MODEL) or
@@ -45,6 +49,7 @@ import {
   ToolRunner,
 } from "./tools.ts";
 import {
+  type AskRow,
   type AssistantRequest,
   chooseProvider,
   conversation,
@@ -59,6 +64,8 @@ import {
   type Mode,
   modelName,
   oneLine,
+  openAsks,
+  ownWords,
   parseRequest,
   ReplyBuilder,
   SNAPSHOT,
@@ -132,7 +139,7 @@ function modelOutcome(err: unknown): "busy" | "unavailable" | null {
 async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
   const now = new Date().toISOString();
   const weekAhead = new Date(Date.now() + SNAPSHOT.eventDays * 86_400_000).toISOString();
-  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories, todos] = await Promise.all([
+  const [settings, briefs, symbols, quotes, projects, metricSettings, metrics, dashboards, events, reports, memories, todos, asks] = await Promise.all([
     db.from("platform_settings").select("display_name, timezone, assistant_provider").maybeSingle(),
     db.from("briefs").select("title, kind, published_at, body")
       .or(`expires_at.is.null,expires_at.gt.${now}`)
@@ -163,6 +170,10 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     db.from("todos").select("id, kind, title, due_at, all_day").is("done_at", null)
       .or(`kind.eq.todo,due_at.gte.${new Date(Date.now() - 86_400_000).toISOString()}`)
       .order("due_at", { ascending: true, nullsFirst: false }).order("created_at").limit(SNAPSHOT.todos),
+    // Questions agents asked that are still waiting, oldest first.
+    db.from("asks").select("id, question, detail, choices, created_at, expires_at, agents(name)")
+      .is("answered_at", null).is("withdrawn_at", null).or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order("created_at").limit(SNAPSHOT.asks),
   ]);
   const failed = (what: string, r: { error: { message: string } | null }) => {
     if (r.error) console.error(`snapshot ${what} failed:`, r.error.message);
@@ -181,6 +192,7 @@ async function loadSnapshot(db: SupabaseClient): Promise<SnapshotRows> {
     reports: failed("report", reports) ? null : reports.data ?? [],
     memories: failed("notes", memories) ? null : memories.data ?? [],
     todos: failed("todos", todos) ? null : todos.data ?? [],
+    asks: failed("asks", asks) ? null : (asks.data ?? []) as AskRow[],
   };
 }
 
@@ -207,6 +219,14 @@ const store: Store = {
   async setDone(id: string) {
     const { error } = await service.rpc("set_todo_done", { todo: id, done: true });
     if (error) throw new Error(error.message);
+  },
+  async answerAsk(id: string, choice: string, question: string) {
+    // The service role: answer_ask records it as McFly's (answered_via
+    // assistant). The question as the snapshot read it: one the agent has
+    // changed since is refused rather than answered.
+    const { data, error } = await service.rpc("answer_ask", { ask: id, choice, question });
+    if (error) throw new Error(error.message);
+    return { answer: String((data as { answer?: unknown } | null)?.answer ?? choice) };
   },
   async log(agent: string, feed: Changed, ok: boolean, message?: string) {
     const { error } = await service.rpc("record_ingest", { agent, feed, count: 1, status: ok ? "ok" : "error", message: message ?? null });
@@ -454,7 +474,7 @@ async function answer(db: SupabaseClient, req: AssistantRequest): Promise<Respon
     mode: req.mode,
     snapshot: snapshot.text,
     messages: conversation(req.history, req.message),
-    tools: new ToolRunner(store, snapshot.timezone, open),
+    tools: new ToolRunner(store, snapshot.timezone, open).offerAsks(openAsks(rows.asks), ownWords(req)),
   };
 
   // The provider is picked after the snapshot read: the setting rides in it.

@@ -10,10 +10,12 @@
 //   POST /ingest/dashboards  { dashboards: [{ key, title, subtitle?, widgets: [{ type, ... }] }] }
 //   POST /ingest/events      { calendar?, replace?, events: [{ id?, title, starts_at, ends_at?, all_day?, location? }] }
 //   POST /ingest/todos       { todos: [{ id?, title, kind?: "todo" | "reminder", due_at?, all_day?, notes?, done? }] }
-//   POST /ingest             any of the above with "type": "briefs" | "quotes" | ... | "todos"
+//   POST /ingest/asks        { asks: [{ id, question, choices?, detail?, url?, expires_at?, withdrawn? }] }
+//   POST /ingest             any of the above with "type": "briefs" | "quotes" | ... | "asks"
 //   GET  /ingest             who the key belongs to and its last few pushes
 //   GET  /ingest/memory      notes (memory:read)      POST /ingest/memory   keep notes (memory:write)
 //   GET  /ingest/events      upcoming events (calendar:read)   (reads.ts)
+//   GET  /ingest/asks        the agent's own asks and their answers (?id=a,b, ?open=1)
 //
 //   Authorization: Bearer mcf_…   (or X-Agent-Key: mcf_…)
 //
@@ -25,7 +27,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { json, preflight, readJson } from "../_shared/http.ts";
 import { resolveImages } from "./images.ts";
 import { agentKey, feedFromBody, feedFromPath, FEEDS, KEY_SHAPE, parse, type Parsed } from "./parse.ts";
-import { eventDays, hasScope, parseMemoryPush, readRoute, scopeMissing } from "./reads.ts";
+import { askQuery, eventDays, hasScope, parseMemoryPush, readRoute, scopeMissing } from "./reads.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -131,6 +133,13 @@ async function store(agent: Agent, parsed: Parsed): Promise<{ count: number; ext
       const ids = Array.isArray(data) ? data : [];
       return { count: ids.length || parsed.todos.length, extra: { ids } };
     }
+    case "asks": {
+      // Each ask as it now stands, an answer included: a re-push reads it back.
+      const { data, error } = await service.rpc("ingest_asks", { agent: agent.id, items: parsed.asks });
+      if (error) return { error: error.message };
+      const asks = Array.isArray(data) ? data : [];
+      return { count: asks.length, extra: { asks } };
+    }
   }
 }
 
@@ -160,6 +169,14 @@ async function memory(agent: Agent, req: Request): Promise<Response> {
   return reply({ ok: true, feed: "memory", agent: agent.slug, ...result });
 }
 
+// An agent's own asks need no scope: they and their answers are its own.
+async function asks(agent: Agent, search: string): Promise<Response> {
+  const { ids, open_only } = askQuery(search);
+  const { data, error } = await service.rpc("agent_read_asks", { agent: agent.id, ids, open_only });
+  if (error) return reply({ error: "couldn't read the asks; try again in a moment" }, 503);
+  return reply({ ok: true, asks: data ?? [] });
+}
+
 async function events(agent: Agent, search: string): Promise<Response> {
   if (!hasScope(agent.scopes, "calendar:read")) return reply({ error: scopeMissing("calendar:read") }, 403);
   const { data, error } = await service.rpc("agent_read_events", { days: eventDays(search) });
@@ -186,6 +203,7 @@ Deno.serve(async (req) => {
   const route = readRoute(url.pathname);
   if (route === "memory") return memory(agent, req);
   if (route === "events" && req.method === "GET") return events(agent, url.search);
+  if (route === "asks" && req.method === "GET") return asks(agent, url.search);
 
   const path = feedFromPath(url.pathname);
   if (path === null) return reply({ error: `the feed must be ${FEEDS.slice(0, -1).join(", ")} or ${FEEDS.at(-1)}` }, 404);
@@ -194,7 +212,7 @@ Deno.serve(async (req) => {
   const read = await readJson(req, MAX_BODY);
   if ("error" in read) return read.error;
   const feed = path || feedFromBody(read.body);
-  if (!feed) return reply({ error: 'say which feed: POST /ingest/briefs, /quotes, /news, /projects, /metrics, /dashboards, /events or /todos, or add "type"' }, 400);
+  if (!feed) return reply({ error: 'say which feed: POST /ingest/briefs, /quotes, /news, /projects, /metrics, /dashboards, /events, /todos or /asks, or add "type"' }, 400);
 
   const parsed = parse(feed, read.body);
   if ("error" in parsed) {
@@ -209,8 +227,10 @@ Deno.serve(async (req) => {
       return reply({ error: result.error }, 400);
     }
     await record(agent, feed, result.count, "ok");
-    // Retention, a little at a time: every push is a fine moment.
+    // Retention, a little at a time: every push is a fine moment. Closed asks
+    // go here too, so they leave after 30 days even when no agent asks again.
     service.rpc("prune_feed").then(({ error }) => error && console.error("prune_feed failed:", error.message));
+    service.rpc("prune_asks").then(({ error }) => error && console.error("prune_asks failed:", error.message));
     return reply({ ok: true, feed, count: result.count, agent: agent.slug, ...result.extra });
   } catch (err) {
     console.error(`ingest ${feed} from ${agent.slug} failed:`, err);

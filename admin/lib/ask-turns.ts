@@ -1,5 +1,6 @@
-// An Ask conversation's turns when the person cuts an answer short, and the
-// history the browser posts. Pure, so tests/ask-turns.test.mjs can check it.
+// An Ask conversation's turns when the person cuts an answer short, the
+// history the browser posts, and what the proxy passes on to the assistant.
+// Pure, so tests/ask-turns.test.mjs can check it.
 
 // `interrupted`: an answer the person cut short (stopped it, or talked over
 // it), so the assistant takes the next question as a change to it.
@@ -34,4 +35,20 @@ export function askHistory(raw: unknown): AskTurn[] {
         ? { role: t.role, text: t.text.slice(0, 4000), interrupted: true }
         : { role: t.role, text: t.text.slice(0, 4000) },
     );
+}
+
+// Whether a question posted to the Ask proxy was suggested rather than typed
+// or said by the person: a chip, an insight, Summarize my day, or a question
+// carried in a link (/ask?q=…). Only a literal true counts, so a page that
+// never says is taken as the person's own words, as before.
+export function askSuggested(raw: unknown): boolean {
+  return raw === true;
+}
+
+// What the Ask proxy posts to the assistant. `suggested: true` goes only with
+// a suggested question: the assistant then answers no agent's ask with it, so
+// text an agent pushed (a headline in a chip, a link's ?q=) can't pick an
+// answer. The person's own questions send nothing.
+export function assistantBody(message: string, history: AskTurn[], mode: string, suggested: boolean) {
+  return { message, history, mode, stream: true, ...(suggested ? { suggested: true } : {}) };
 }

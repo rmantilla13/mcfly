@@ -673,3 +673,21 @@ export async function runBotAction(_prev: ActionResult, fd: FormData): Promise<A
     return { ok: true, message: `Done: "${result.title ?? "report"}" is on the display.` };
   });
 }
+
+// ───────────────────────────── Asks ─────────────────────────────
+
+// Answers an agent's question from Today (lib/asks.ts). Not a form: the
+// band calls it with the ask, the choice and the question as the page showed
+// it, once its undo has run out. The question goes on untouched (answer_ask
+// compares it with the one standing, so an answer to a question the agent
+// has changed since is refused).
+export async function answerAskAction(ask: string, choice: string, question: string): Promise<ActionResult> {
+  return mutate(async () => {
+    if (typeof ask !== "string" || !UUID.test(ask)) throw new DataError("That question is out of date. Reload the page and try again.");
+    if (typeof question !== "string" || question.length > 2000) throw new DataError("That question is out of date. Reload the page and try again.");
+    const label = typeof choice === "string" ? choice.trim().slice(0, 64) : "";
+    if (!label) throw new DataError("Pick one of the choices.");
+    const answer = await data.answerAsk(ask.toLowerCase(), label, question);
+    return { ok: true, message: answer };
+  });
+}

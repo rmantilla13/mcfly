@@ -1,11 +1,12 @@
 import type { Dismissal } from "@/lib/dismissals";
 import "server-only";
+import { demoAsks, notRunOut, openAsks, type OpenAsk } from "@/lib/asks";
 import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { accountVoice, type KokoroVoice } from "@/lib/account-voice";
-import type { AskTurn } from "@/lib/ask-turns";
+import { assistantBody, type AskTurn } from "@/lib/ask-turns";
 import { EMPTY_OPTIONS, type DashboardPart, type DashboardSourceOptions } from "@/lib/dashboard-sources";
 import * as demo from "@/lib/demo/store";
 import { demoMode, supabaseConfig, supabaseProjectUrl } from "@/lib/env";
@@ -295,6 +296,53 @@ export async function listDismissals(): Promise<Dismissal[]> {
     return [];
   }
   return Array.isArray(data) ? (data as Dismissal[]) : [];
+}
+
+// The questions agents are waiting on (lib/asks.ts), oldest first, with
+// their agent's name and colour. Run-out ones are left out by the query, so
+// they can't fill the 50. Optional too: a database without the table has
+// none waiting.
+const demoAnswered = new Set<string>(); // the demo's answers, until the server restarts
+export async function listOpenAsks(): Promise<OpenAsk[]> {
+  const src = await source();
+  if (src.demo) return demoAsks(demo.demoListAgents(), Date.now()).filter((a) => !demoAnswered.has(a.id));
+  const { data, error } = await src.db
+    .from("asks")
+    .select("id,question,detail,choices,url,expires_at,created_at,agents(name,color)")
+    .is("answered_at", null)
+    .is("withdrawn_at", null)
+    .or(notRunOut(Date.now()))
+    .order("created_at")
+    .limit(50);
+  if (error) {
+    console.error("asks failed:", error.message);
+    return [];
+  }
+  type Row = Omit<OpenAsk, "agent_name" | "agent_color" | "choices"> & { choices: unknown; agents: { name: string; color: string } | null };
+  const rows = (Array.isArray(data) ? data : []) as unknown as Row[];
+  return openAsks(
+    rows.map(({ agents, choices, ...a }) => ({
+      ...a,
+      choices: Array.isArray(choices) ? choices.filter((c): c is string => typeof c === "string") : [],
+      agent_name: agents?.name ?? null,
+      agent_color: agents?.color ?? null,
+    })),
+    Date.now(),
+  );
+}
+
+// Answers one with a choice (answer_ask, `via` console). `question` is the
+// question as the page showed it, so an answer to one the agent has changed
+// since is refused. Its refusals are sentences: "already answered: Hold",
+// "this question ran out", "the agent changed this question; look again".
+export async function answerAsk(id: string, choice: string, question: string): Promise<string> {
+  const src = await source();
+  if (src.demo) {
+    demoAnswered.add(id);
+    return choice;
+  }
+  const row = record<{ answer?: unknown }>(await rpc(src.db, "answer_ask", { ask: id, choice, via: "console", question }), "answer_ask");
+  return typeof row.answer === "string" ? row.answer : choice;
 }
 
 export async function listNewsReports(lim = 30): Promise<NewsReportRow[]> {
@@ -1036,10 +1084,11 @@ export type { AskTurn };
 // asked with the admin's own JWT, so it sees what they see. The token stays on
 // the server: the browser talks to /api/ask, never to Supabase.
 // chat: a few sentences (Today's Ask bar). quick: spoken (/voice). read: the
-// full-screen Ask (/ask), longer and in Markdown.
+// full-screen Ask (/ask), longer and in Markdown. `suggested`: the person
+// didn't type or say the question (lib/ask-turns.ts).
 export type AskMode = "chat" | "quick" | "read";
 
-export async function askAssistant(message: string, history: AskTurn[], mode: AskMode): Promise<Response> {
+export async function askAssistant(message: string, history: AskTurn[], mode: AskMode, suggested = false): Promise<Response> {
   const src = await source();
   if (src.demo) return demo.demoAsk(message, mode);
   const { data } = await src.db.auth.getSession();
@@ -1049,7 +1098,7 @@ export async function askAssistant(message: string, history: AskTurn[], mode: As
   return fetch(`${config.url}/functions/v1/assistant`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, apikey: config.anonKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history, mode, stream: true }),
+    body: JSON.stringify(assistantBody(message, history, mode, suggested)),
   });
 }
 

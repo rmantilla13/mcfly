@@ -72,6 +72,9 @@ if [ -f /etc/asound.conf ] && grep -q 'McFly' /etc/asound.conf; then
     sudo rm -f /etc/asound.conf
 fi
 
+step "Putting the fan's steps back"
+"$(dirname "$0")/fan-steps.sh" --remove
+
 step "Removing the voice service"
 sudo rm -rf /opt/mcfly-voice
 if [ "$keep_models" != 1 ]; then

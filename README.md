@@ -48,7 +48,8 @@ and launch mark from `apple/scripts/flux_mark.py`, and the console's
    once (`mcf_…`).
 2. The agent pushes to `https://<project>.supabase.co/functions/v1/ingest/<feed>`
    with that key: `briefs`, `quotes`, `news`, `projects`, `metrics`,
-   `dashboards`, `events` or `todos`. [AGENTS.md](docs/AGENTS.md) has every payload;
+   `dashboards`, `events`, `todos` or `asks` (a question for you, whose
+   answer it reads back). [AGENTS.md](docs/AGENTS.md) has every payload;
    `scripts/mcfly_push.py` pushes from a shell.
 3. A display pairs to **your account**: it shows a 6-digit code and a QR
    code; sign in on the phone, the Mac or mcfly.bot/pair and enter it. The
@@ -56,7 +57,9 @@ and launch mark from `apple/scripts/flux_mark.py`, and the console's
 4. The assistant answers questions about what is on the display, in text or
    by voice, with Claude or Grok (your choice, in Settings), and adds to
    your day when asked: an event, a todo or a reminder (which the display
-   announces at its time).
+   announces at its time). It also answers an agent's question with the
+   choice you say; or tap the choice on the display, in the app or on the
+   console.
 
 ## Quick start
 
