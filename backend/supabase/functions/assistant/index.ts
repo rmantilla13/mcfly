@@ -3,7 +3,8 @@
 // Ask (mode "read": longer, Markdown-shaped answers).
 //
 //   POST { message, mode?: "chat" | "quick" | "read", stream?: boolean,
-//          history?: [{ role, text, interrupted? }], provider?: "claude" | "grok" }
+//          history?: [{ role, text, interrupted? }], provider?: "claude" | "grok",
+//          suggested?: boolean }
 //     stream false -> { reply, model, changed? }
 //     stream true  -> text/event-stream: delta…, then done { reply, model, changed? } (or error)
 //
@@ -13,11 +14,14 @@
 // read with the caller's own JWT, so row-level security decides what it sees.
 //
 // Tools (tools.ts): when the person asks, it adds an event, a todo or a
-// reminder, or checks a todo off. Those writes go through the ingest SQL
-// functions with the service role, as McFly's own agent, after can_read()
+// reminder, checks a todo off, or answers an agent's question with the
+// choice they said. Those writes go through the ingest SQL functions (and
+// answer_ask) with the service role, as McFly's own agent, after can_read()
 // has said the caller may read; the display itself still never writes.
-// `done` (and the JSON reply) carries `changed: ["events" | "todos"]` when
-// something was written, so a client can refresh at once.
+// `done` (and the JSON reply) carries `changed: ["asks" | "events" | "todos"]`
+// when something was written, so a client can refresh at once. A message
+// the client marks `suggested` (a chip, an insight, a link's question) never
+// answers an ask: its words may be an agent's, not the person's.
 //
 // Who answers is platform_settings.assistant_provider, which the body may
 // override: Claude through the SDK (ANTHROPIC_API_KEY, ASSISTANT_MODEL) or
@@ -61,6 +65,7 @@ import {
   modelName,
   oneLine,
   openAsks,
+  ownWords,
   parseRequest,
   ReplyBuilder,
   SNAPSHOT,
@@ -215,9 +220,11 @@ const store: Store = {
     const { error } = await service.rpc("set_todo_done", { todo: id, done: true });
     if (error) throw new Error(error.message);
   },
-  async answerAsk(id: string, choice: string) {
-    // The service role: answer_ask records it as McFly's (answered_via assistant).
-    const { data, error } = await service.rpc("answer_ask", { ask: id, choice });
+  async answerAsk(id: string, choice: string, question: string) {
+    // The service role: answer_ask records it as McFly's (answered_via
+    // assistant). The question as the snapshot read it: one the agent has
+    // changed since is refused rather than answered.
+    const { data, error } = await service.rpc("answer_ask", { ask: id, choice, question });
     if (error) throw new Error(error.message);
     return { answer: String((data as { answer?: unknown } | null)?.answer ?? choice) };
   },
@@ -467,7 +474,7 @@ async function answer(db: SupabaseClient, req: AssistantRequest): Promise<Respon
     mode: req.mode,
     snapshot: snapshot.text,
     messages: conversation(req.history, req.message),
-    tools: new ToolRunner(store, snapshot.timezone, open).offerAsks(openAsks(rows.asks), req.message),
+    tools: new ToolRunner(store, snapshot.timezone, open).offerAsks(openAsks(rows.asks), ownWords(req)),
   };
 
   // The provider is picked after the snapshot read: the setting rides in it.

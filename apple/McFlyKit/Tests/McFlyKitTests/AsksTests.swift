@@ -1,3 +1,4 @@
+import Supabase
 import XCTest
 @testable import McFlyKit
 
@@ -36,15 +37,68 @@ final class AsksTests: XCTestCase {
         """
         let asks = try JSONDecoder.mcfly.decode([Ask].self, from: Data(json.utf8))
         XCTAssertEqual(asks.first?.choices, ["Ship it", "Hold"])
-        XCTAssertEqual(asks.first?.url?.host(), "example.com")
+        XCTAssertEqual(asks.first?.link?.host(), "example.com")
         XCTAssertNil(asks.first?.expiresAt)
         XCTAssertTrue(asks.first?.isOpen(now: .now) ?? false)
+    }
+
+    /// The server takes any http(s) link; one Foundation can't read has no
+    /// link, and the rest of the list still reads.
+    func testALinkFoundationCantReadKeepsTheList() throws {
+        let json = """
+        [{"id": "a5c00000-0000-0000-0000-000000000009", "question": "Ship v2.3?", "choices": ["Ship it", "Hold"],
+          "url": "https://example.com:8o80/", "created_at": "2026-10-29T18:00:00Z"},
+         {"id": "a5c00000-0000-0000-0000-00000000000a", "question": "Which story?", "choices": ["A", "B"],
+          "url": "https://example.com/pr/4", "created_at": "2026-10-29T18:01:00Z"}]
+        """
+        let asks = try JSONDecoder.mcfly.decode([Ask].self, from: Data(json.utf8))
+        XCTAssertEqual(asks.map(\.question), ["Ship v2.3?", "Which story?"])
+        XCTAssertEqual(asks[0].url, "https://example.com:8o80/")
+        XCTAssertNil(asks[0].link)
+        XCTAssertEqual(asks[1].link?.host(), "example.com")
     }
 
     func testAnsweredElsewhere() {
         XCTAssertEqual(Ask.answeredElsewhere("already answered: Hold"), "Hold")
         XCTAssertEqual(Ask.answeredElsewhere("Couldn't save: already answered: Ship it "), "Ship it")
         XCTAssertNil(Ask.answeredElsewhere("this question ran out"))
+        // As the app shows it: describe() capitalises the server's sentence.
+        let described = McFlyError.describe(PostgrestError(code: "P0001", message: "already answered: Hold"))
+        XCTAssertEqual(described, "Already answered: Hold")
+        XCTAssertEqual(Ask.answeredElsewhere(described), "Hold")
+    }
+
+    /// What each of answer_ask's refusals does to the card, from the error
+    /// supabase-swift throws for it.
+    func testAnswerFailures() {
+        func failure(_ message: String) -> Ask.AnswerFailure {
+            Ask.AnswerFailure(PostgrestError(code: "P0001", message: message))
+        }
+        XCTAssertEqual(failure("already answered: Ship it"), .answeredElsewhere("Ship it"))
+        XCTAssertEqual(failure("the agent took this question back"), .closed)
+        XCTAssertEqual(failure("this question ran out"), .closed)
+        XCTAssertEqual(failure("the agent changed this question; look again"), .changed)
+        // Refusals a fresh read clears, in the server's words.
+        XCTAssertEqual(failure("answer with one of: Ship now, Wait"), .refused("answer with one of: Ship now, Wait"))
+        XCTAssertEqual(failure("ask not found"), .refused("ask not found"))
+        // A label that only mentions running out is still the server's list.
+        XCTAssertEqual(failure("answer with one of: Ran out, Plenty"), .refused("answer with one of: Ran out, Plenty"))
+        // Never reached the server.
+        XCTAssertEqual(Ask.AnswerFailure(URLError(.notConnectedToInternet)), .unsent)
+    }
+
+    /// answer_ask's arguments: the question goes exactly as it came.
+    func testAnswerSendsTheQuestionAsItCame() throws {
+        let params = AnswerAskParams(ask: "a5c00000-0000-0000-0000-000000000009", choice: "Hold", question: "Ship  v2.3?\n")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(params)) as? [String: String])
+        XCTAssertEqual(json, ["ask": "a5c00000-0000-0000-0000-000000000009", "choice": "Hold", "via": "app",
+                              "question": "Ship  v2.3?\n"])
+    }
+
+    /// Run-out asks are filtered by the server, in UTC.
+    func testTheQueryLeavesOutTheRunOut() {
+        let now = Date(timeIntervalSince1970: 1_793_361_600)  // 2026-10-30 12:00 UTC
+        XCTAssertEqual(SupabaseFeedSource.notRunOut(at: now), "expires_at.is.null,expires_at.gt.2026-10-30T12:00:00Z")
     }
 
     @MainActor
@@ -81,7 +135,8 @@ final class AsksTests: XCTestCase {
         let asks = feeds.openAsks()
         XCTAssertEqual(asks.map(\.choices), [["Ship it", "Hold"], ["Chips", "Rates", "Launch"]])
         XCTAssertNotNil(asks.first?.agentId)
-        let answered = try await DemoAdminService(data: DemoData.load()).answerAsk(asks[0].id, choice: "Hold")
+        let answered = try await DemoAdminService(data: DemoData.load()).answerAsk(asks[0].id, choice: "Hold",
+                                                                                  question: asks[0].question)
         XCTAssertEqual(answered, "Hold")
     }
 }

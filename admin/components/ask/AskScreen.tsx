@@ -25,7 +25,9 @@ import { Markdown } from "./Markdown";
 // out below it as it arrives; the page holds still while you read. Type, or
 // tap the mic and speak. The thread stays for the tab, and Today's Ask bar
 // hands its conversation over when it expands to here. /ask?q=… (a card's
-// "Ask about this") asks that question on arrival. Behind it all, the
+// "Ask about this") asks that question on arrival. That one and the chips
+// go as suggested (useAsk), since the person didn't type them, so they never
+// answer an agent's question. Behind it all, the
 // display's backdrop (Displays → Customize), as the display's assistant draws
 // it: the moving gradient or one of its skies, light or dark with the theme.
 
@@ -82,7 +84,7 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
   const [listening, setListening] = useState(false);
   const [atEnd, setAtEnd] = useState(true);
   const [copied, setCopied] = useState<number | null>(null);
-  const [lastAsked, setLastAsked] = useState("");
+  const [lastAsked, setLastAsked] = useState({ q: "", suggested: false });
   // A question was asked here, so the latest exchange shows how long McFly
   // thought (React Bits' ThoughtLine); a thread read back from the tab has
   // no timing to show.
@@ -93,15 +95,17 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
   const latest = useRef<HTMLElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
 
-  const send = (text: string) => {
+  // `suggested`: not the person's own words (a chip, or a question carried
+  // in the address).
+  const send = (text: string, suggested = false) => {
     const q = text.trim();
     if (!q || busy) return;
-    setLastAsked(q);
+    setLastAsked({ q, suggested });
     setThinking(true);
     if (isSpeaking()) cutShort(); // asked over the answer being read out
     stopSpeaking();
     setInput("");
-    void ask(q, "read");
+    void ask(q, "read", suggested);
   };
 
   // A question handed over in the address is asked once, then dropped from
@@ -109,7 +113,7 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
   // thread is in and the question joins it.
   const askOnArrival = useEffectEvent((q: string) => {
     window.history.replaceState(null, "", "/ask");
-    send(q);
+    send(q, true);
   });
   useEffect(() => {
     if (!question) return;
@@ -290,7 +294,7 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
                   <button
                     key={s}
                     type="button"
-                    onClick={() => send(s)}
+                    onClick={() => send(s, true)}
                     disabled={busy}
                     className="group flex items-start justify-between gap-3 rounded-2xl border bg-card px-5 py-4 text-left text-[15px] leading-snug shadow-xs transition-colors hover:border-foreground/20 hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                   >
@@ -345,8 +349,8 @@ export function AskScreen({ suggestions, question, backdrop = "mesh" }: { sugges
                     {last && failed ? (
                       <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
                         <span className="text-destructive">{error}</span>
-                        {lastAsked ? (
-                          <Button type="button" variant="outline" size="sm" onClick={() => send(lastAsked)}>
+                        {lastAsked.q ? (
+                          <Button type="button" variant="outline" size="sm" onClick={() => send(lastAsked.q, lastAsked.suggested)}>
                             <RotateCcwIcon data-icon="inline-start" />
                             Try again
                           </Button>

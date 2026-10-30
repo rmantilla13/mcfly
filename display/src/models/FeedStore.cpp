@@ -882,21 +882,27 @@ void FeedStore::loadDemo()
 
 // ───────────────────────────── Live data ─────────────────────────────
 
-void FeedStore::withSession(std::function<void()> fn)
+void FeedStore::withSession(std::function<void()> fn, std::function<void()> onFail)
 {
     if (m_client->hasSession()) {
         fn();
         return;
     }
     const int generation = m_generation;
-    m_client->refreshSession([this, fn, generation](bool ok) {
-        if (generation != m_generation)
-            return; // re-paired meanwhile
+    m_client->refreshSession([this, fn, onFail, generation](bool ok) {
+        if (generation != m_generation) {
+            // Re-paired meanwhile: fn belonged to the old session.
+            if (onFail)
+                onFail();
+            return;
+        }
         if (ok) {
             fn();
         } else {
             setOnline(false, tr("Can't reach McFly cloud"));
             retrySoon();
+            if (onFail)
+                onFail();
         }
     });
 }
@@ -1049,6 +1055,9 @@ void FeedStore::loadLive()
         asks.addQueryItem("select", "id,agent_id,question,detail,choices,url,expires_at,created_at");
         asks.addQueryItem("answered_at", "is.null");
         asks.addQueryItem("withdrawn_at", "is.null");
+        // Run-out ones stay on the server for 30 days: left out there, or
+        // enough of them would fill the 50 and keep new ones from coming.
+        asks.addQueryItem("or", "(expires_at.is.null,expires_at.gt." + now().toUTC().toString(Qt::ISODateWithMs) + ")");
         asks.addQueryItem("order", "created_at");
         asks.addQueryItem("limit", "50");
         ++sync->pending;
@@ -1197,6 +1206,15 @@ void FeedStore::unpair()
     m_rawDashboards.clear();
     m_rawEvents.clear();
     m_rawTodos.clear();
+    // An answer still in its undo goes with the session (it's this one's to
+    // send), and so does what was answered here.
+    m_answerTimer.stop();
+    if (!m_pendingAnswer.isEmpty()) {
+        m_pendingAnswer.clear();
+        emit pendingAnswerChanged();
+    }
+    m_localAnswered.clear();
+    m_rawAsks.clear();
     m_seen.clear(); // the next account's values are new, not changes
     m_lastSync = QDateTime();
     rebuild();
@@ -1991,10 +2009,13 @@ void FeedStore::rebuildAsks()
         const QDateTime expires = parseTimestamp(a.value("expires_at").toString());
         if (expires.isValid() && expires <= nowDt)
             continue;
+        // The labels exactly as the server has them: answer_ask looks the
+        // answer up by its label, so one tidied here (a double space, the
+        // narrow space a clock puts before "AM") would be refused.
         QStringList choices;
         for (const QVariant &c : a.value("choices").toList()) {
-            const QString label = c.toString().simplified();
-            if (!label.isEmpty())
+            const QString label = c.toString();
+            if (!label.trimmed().isEmpty())
                 choices << label;
         }
         if (choices.size() < 2)
@@ -2007,6 +2028,7 @@ void FeedStore::rebuildAsks()
                                                    : tr("until %1 %2").arg(dayLabel(expires.date()), timeLabel(expires));
         out << QVariantMap{{"id", id},
                            {"question", a.value("question").toString().simplified()},
+                           {"rawQuestion", a.value("question").toString()},
                            {"detail", a.value("detail").toString().simplified()},
                            {"choices", choices},
                            {"url", a.value("url").toString()},
@@ -2027,13 +2049,19 @@ void FeedStore::answer(const QString &id, const QString &choice)
     for (const QVariant &v : std::as_const(m_asks))
         if (v.toMap().value("id").toString() == id)
             ask = v.toMap();
-    const QString label = choice.simplified();
-    if (ask.isEmpty() || !ask.value("choices").toStringList().contains(label))
+    // The server's own label is what goes, whatever spacing came with it.
+    const QStringList choices = ask.value("choices").toStringList();
+    QString label = choices.contains(choice) ? choice : QString();
+    for (const QString &c : choices)
+        if (label.isEmpty() && c.trimmed() == choice.trimmed())
+            label = c;
+    if (ask.isEmpty() || label.isEmpty())
         return;
     if (!m_pendingAnswer.isEmpty())
         commitAnswer();
     m_localAnswered.insert(id);
-    m_pendingAnswer = QVariantMap{{"id", id}, {"choice", label}, {"agentName", ask.value("agentName")}};
+    m_pendingAnswer = QVariantMap{{"id", id}, {"choice", label}, {"agentName", ask.value("agentName")},
+                                  {"question", ask.value("rawQuestion")}};
     m_answerTimer.start();
     emit pendingAnswerChanged();
     rebuildAsks();
@@ -2055,35 +2083,63 @@ void FeedStore::commitAnswer()
     m_answerTimer.stop();
     const QString id = m_pendingAnswer.value("id").toString();
     const QString choice = m_pendingAnswer.value("choice").toString();
+    const QString question = m_pendingAnswer.value("question").toString();
     m_pendingAnswer.clear();
     emit pendingAnswerChanged();
-    if (id.isEmpty() || m_mode != QLatin1String("live"))
+    if (id.isEmpty() || m_mode == QLatin1String("demo"))
         return; // the demo keeps it answered here until the app restarts
-    withSession([this, id, choice]() {
-        m_client->rpc("answer_ask", QJsonObject{{"ask", id}, {"choice", choice}}, [this, id](const QJsonDocument &, const QString &error) {
-            if (error.isEmpty()) {
-                refresh(); // the agent can read it now; the sync shows it gone
-                return;
-            }
-            // Answered on another screen first, or taken back: it stays gone.
-            static const QRegularExpression taken(QStringLiteral("already answered: (.+) \\(HTTP \\d+\\)$"));
-            const QRegularExpressionMatch m = taken.match(error);
-            if (m.hasMatch()) {
-                emit notify(tr("Already answered on another screen: %1").arg(m.captured(1)));
-                refresh();
-                return;
-            }
-            if (error.contains(QLatin1String("took this question back")) || error.contains(QLatin1String("ran out"))) {
-                emit notify(tr("That question was taken back"));
-                refresh();
-                return;
-            }
-            qWarning() << "answering" << id << "failed:" << error;
-            m_localAnswered.remove(id);
-            rebuildAsks();
-            emit notify(tr("Couldn't send that answer, so the question is back"));
-        });
-    });
+    // An answer that can't go comes back, or the question would stay hidden
+    // here, unanswered, while the agent waits.
+    const auto giveBack = [this, id]() {
+        if (!m_localAnswered.remove(id))
+            return; // forgotten meanwhile (re-paired)
+        rebuildAsks();
+        emit notify(tr("Couldn't send that answer, so the question is back"));
+    };
+    if (m_mode != QLatin1String("live")) {
+        giveBack(); // signed out in the undo window
+        return;
+    }
+    const int generation = m_generation;
+    withSession(
+        [this, id, choice, question, generation, giveBack]() {
+            // The question as it was shown: an agent that changed it since
+            // gets no answer to the old one.
+            const QJsonObject args{{"ask", id}, {"choice", choice}, {"question", question}};
+            m_client->rpc("answer_ask", args, [this, id, generation, giveBack](const QJsonDocument &, const QString &error) {
+                if (generation != m_generation)
+                    return; // re-paired meanwhile
+                if (error.isEmpty()) {
+                    refresh(); // the agent can read it now; the sync shows it gone
+                    return;
+                }
+                // Answered on another screen first, or taken back: it stays gone.
+                static const QRegularExpression taken(QStringLiteral("already answered: (.+) \\(HTTP \\d+\\)$"));
+                const QRegularExpressionMatch m = taken.match(error);
+                if (m.hasMatch()) {
+                    emit notify(tr("Already answered on another screen: %1").arg(m.captured(1)));
+                    refresh();
+                    return;
+                }
+                if (error.contains(QLatin1String("took this question back")) || error.contains(QLatin1String("ran out"))) {
+                    emit notify(tr("That question was taken back"));
+                    refresh();
+                    return;
+                }
+                if (error.contains(QLatin1String("changed this question"))) {
+                    // It comes back with the new wording once the sync has
+                    // it; the old row would show the old question meanwhile.
+                    m_localAnswered.remove(id);
+                    m_rawAsks.removeIf([&id](const QVariant &v) { return v.toMap().value("id").toString() == id; });
+                    emit notify(tr("The agent changed that question: have another look"));
+                    refresh();
+                    return;
+                }
+                qWarning() << "answering" << id << "failed:" << error;
+                giveBack();
+            });
+        },
+        giveBack);
 }
 
 QVariantMap FeedStore::dayLoad(const QVariantList &events, qint64 dayStartMs, qint64 dayEndMs)

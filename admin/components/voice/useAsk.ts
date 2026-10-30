@@ -70,8 +70,11 @@ export function useAsk(onReply?: (reply: string) => void, { persist = false }: {
 
   useEffect(() => () => abort.current?.abort(), []);
 
+  // `suggested`: a question the person didn't type or say (a chip, an
+  // insight, /ask?q=…). It goes to the assistant marked so, and can't answer
+  // an agent's ask.
   const ask = useCallback(
-    async (question: string, mode: AskMode) => {
+    async (question: string, mode: AskMode, suggested = false) => {
       const q = question.trim();
       if (!q || busy) return;
       setError(null);
@@ -88,7 +91,7 @@ export function useAsk(onReply?: (reply: string) => void, { persist = false }: {
         const res = await fetch("/api/ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: q, history, mode }),
+          body: JSON.stringify({ message: q, history, mode, ...(suggested ? { suggested: true } : {}) }),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {

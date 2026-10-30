@@ -65,10 +65,13 @@ public struct SupabaseFeedSource: FeedSource {
             .execute().data)
     }
 
+    /// Run-out asks are left out here, not after the limit: they're kept for
+    /// 30 days, and enough of them would crowd the newest open ones out.
     public func loadAsks() async throws -> [Ask] {
         try decode(await client.from("asks").select("id,agent_id,question,detail,choices,url,expires_at,created_at")
             .is("answered_at", value: nil)
             .is("withdrawn_at", value: nil)
+            .or(Self.notRunOut(at: .now))
             .order("created_at")
             .limit(50)
             .execute().data)
@@ -104,6 +107,11 @@ public struct SupabaseFeedSource: FeedSource {
             .order("starts_at").order("id")
             .limit(1000)
             .execute().data)
+    }
+
+    /// The PostgREST filter for rows that haven't run out at `now` (UTC).
+    static func notRunOut(at now: Date) -> String {
+        "expires_at.is.null,expires_at.gt.\(ISO8601DateFormatter().string(from: now))"
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {

@@ -1,25 +1,27 @@
-import { askHistory } from "@/lib/ask-turns";
+import { askHistory, askSuggested } from "@/lib/ask-turns";
 import { askAssistant, requireAdmin, type AskMode } from "@/lib/data";
 import { DataError } from "@/lib/errors";
 
 // Ask McFly from the console (Today's Ask bar, /voice, /ask): the browser
 // posts here; this passes the question to the assistant edge function with
 // the admin's own JWT (which never reaches the page) and streams the answer
-// back unchanged.
+// back unchanged. `suggested: true` from the page (a chip, an insight, /ask?q=)
+// goes along, so such a question never answers an agent's ask.
 export async function POST(req: Request) {
   await requireAdmin();
-  const body = (await req.json().catch(() => null)) as { message?: unknown; history?: unknown; mode?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { message?: unknown; history?: unknown; mode?: unknown; suggested?: unknown } | null;
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2000) : "";
   if (!message) return Response.json({ error: "Ask something first." }, { status: 400 });
   const history = askHistory(body?.history);
+  const suggested = askSuggested(body?.suggested);
   try {
     const mode: AskMode = body?.mode === "quick" || body?.mode === "read" ? body.mode : "chat";
-    let upstream = await askAssistant(message, history, mode);
+    let upstream = await askAssistant(message, history, mode, suggested);
     // A function deployed before "read" existed refuses the mode with a 400:
     // answer in chat mode rather than not at all until it's redeployed.
     if (upstream.status === 400 && mode === "read") {
       await upstream.body?.cancel();
-      upstream = await askAssistant(message, history, "chat");
+      upstream = await askAssistant(message, history, "chat", suggested);
     }
     if (!upstream.ok || !upstream.body) {
       const err = (await upstream.json().catch(() => null)) as { error?: string } | null;

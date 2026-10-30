@@ -343,6 +343,11 @@ void Assistant::ask(const QString &text)
     send(text, QStringLiteral("chat"));
 }
 
+void Assistant::askSuggested(const QString &text)
+{
+    send(text, QStringLiteral("chat"), true);
+}
+
 void Assistant::askQuick(const QString &text)
 {
     send(text, QStringLiteral("quick"));
@@ -403,7 +408,7 @@ QJsonArray Assistant::history() const
     return out;
 }
 
-void Assistant::send(const QString &text, const QString &mode)
+void Assistant::send(const QString &text, const QString &mode, bool suggested)
 {
     const QString question = text.trimmed();
     if (question.isEmpty())
@@ -429,24 +434,27 @@ void Assistant::send(const QString &text, const QString &mode)
         return;
     }
     if (m_client->hasSession()) {
-        request(generation, question, mode, false);
+        request(generation, question, mode, suggested, false);
         return;
     }
-    m_client->refreshSession([this, generation, question, mode](bool ok) {
+    m_client->refreshSession([this, generation, question, mode, suggested](bool ok) {
         if (generation != m_generation)
             return;
         if (ok)
-            request(generation, question, mode, false);
+            request(generation, question, mode, suggested, false);
         else
             fail(tr("I couldn't reach McFly cloud just now. Try again in a moment."));
     });
 }
 
-void Assistant::request(int generation, const QString &question, const QString &mode, bool retried)
+void Assistant::request(int generation, const QString &question, const QString &mode, bool suggested, bool retried)
 {
     QJsonObject body{{"message", question}, {"mode", mode}, {"stream", true}, {"history", history()}};
     if (!m_provider.isEmpty())
         body.insert("provider", m_provider);
+    // Not the person's own words: the assistant answers no ask from it.
+    if (suggested)
+        body.insert("suggested", true);
 
     m_reply = m_client->streamFunction(
         "assistant", body,
@@ -454,7 +462,7 @@ void Assistant::request(int generation, const QString &question, const QString &
             if (generation == m_generation)
                 onEvent(event, data);
         },
-        [this, generation, question, mode, retried](const QString &error) {
+        [this, generation, question, mode, suggested, retried](const QString &error) {
             if (generation != m_generation || !m_busy)
                 return; // superseded, or `done` / `error` already ended the turn
             m_reply = nullptr;
@@ -468,11 +476,11 @@ void Assistant::request(int generation, const QString &question, const QString &
             const int status = httpStatus(error);
             if (!retried && nothingYet && status == 401) {
                 // The access token expired between syncs: refresh once and resend.
-                m_client->refreshSession([this, generation, question, mode](bool ok) {
+                m_client->refreshSession([this, generation, question, mode, suggested](bool ok) {
                     if (generation != m_generation)
                         return;
                     if (ok)
-                        request(generation, question, mode, true);
+                        request(generation, question, mode, suggested, true);
                     else
                         fail(tr("I couldn't reach McFly cloud just now. Try again in a moment."));
                 });

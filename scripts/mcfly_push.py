@@ -18,16 +18,20 @@
     mcfly_push.py raw briefs payload.json           # any feed, any JSON body
     mcfly_push.py whoami
 
-Every command prints the server's answer. `ask --wait` instead waits for the
-person and prints only the choice they picked (exit 0), or exits 3 if the
-wait ran out with the question still open and 4 if it was withdrawn or ran
-out itself. --dry-run prints the request instead of sending it. See
-docs/AGENTS.md for the payloads.
+Every command prints the server's answer. `ask` asks again each time it
+runs: an id taken back, or one that ran out, is open again, with the new
+--expires or none. `ask --wait` instead waits for the person and prints only
+the choice they picked (exit 0, also when it was answered before), or exits
+3 if the wait ran out with the question still open, 4 if it was withdrawn or
+ran out itself, and 1 on an error, a revoked key included; a dropped
+connection or a slow reply while waiting is tried again. --dry-run prints
+the request instead of sending it. See docs/AGENTS.md for the payloads.
 """
 
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -47,8 +51,9 @@ def settings() -> tuple[str, str]:
     return url, key
 
 
-def call(feed: str, body: dict | list | None, method: str = "POST", query: str = "") -> tuple[bool, str]:
-    """The server's answer as (ok, text); text is the error sentence when not ok."""
+def call(feed: str, body: dict | list | None, method: str = "POST", query: str = "") -> tuple[bool, str, int | None]:
+    """The server's answer as (ok, text, HTTP status); text is the error
+    sentence when not ok, and the status is None when McFly wasn't reached."""
     url, key = settings()
     endpoint = f"{url}/functions/v1/ingest" + (f"/{feed}" if feed else "") + query
     data = None if body is None else json.dumps(body).encode()
@@ -56,11 +61,19 @@ def call(feed: str, body: dict | list | None, method: str = "POST", query: str =
                                      headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            return True, response.read().decode()
+            return True, response.read().decode(errors="replace"), response.status
     except urllib.error.HTTPError as error:
-        return False, error.read().decode() or f"HTTP {error.code}"
+        try:
+            text = error.read().decode(errors="replace")
+        except (OSError, http.client.HTTPException):
+            text = ""
+        return False, text or f"HTTP {error.code}", error.code
     except urllib.error.URLError as error:
-        return False, f"could not reach McFly: {error.reason}"
+        return False, f"could not reach McFly: {error.reason}", None
+    # urllib doesn't wrap what reading the response raises: a timeout, a
+    # dropped connection, a reply cut short.
+    except (OSError, http.client.HTTPException) as error:
+        return False, f"could not reach McFly: {str(error) or type(error).__name__}", None
 
 
 def send(feed: str, body: dict | list | None, dry_run: bool, method: str = "POST", query: str = "") -> int:
@@ -70,27 +83,58 @@ def send(feed: str, body: dict | list | None, dry_run: bool, method: str = "POST
         if body is not None:
             print(json.dumps(body, indent=2))
         return 0
-    ok, text = call(feed, body, method, query)
+    ok, text, _ = call(feed, body, method, query)
     print(text, file=sys.stdout if ok else sys.stderr)
     return 0 if ok else 1
 
 
+def asks_in(text: str) -> list[dict] | None:
+    """The asks in a reply from /ingest/asks, or None when it isn't one (not
+    JSON, or no list of asks: a proxy's page, a reply cut short)."""
+    try:
+        reply = json.loads(text)
+    except ValueError:
+        return None
+    asks = reply.get("asks") if isinstance(reply, dict) else None
+    return [a for a in asks if isinstance(a, dict)] if isinstance(asks, list) else None
+
+
+def settled(ask: dict) -> int | None:
+    """Prints how an ask ended and returns the exit status, or None while it's open."""
+    status = ask.get("status")
+    if status == "answered":
+        print(ask.get("answer"))
+        return 0
+    if status == "open":
+        return None
+    print(f"{ask.get('id')} is {status}, not answered", file=sys.stderr)
+    return 4
+
+
 def wait_for_answer(ask_id: str, seconds: float, every: float = 5.0) -> int:
-    """Polls GET /ingest/asks until the person answers; prints the choice."""
+    """Polls GET /ingest/asks until the person answers; prints the choice.
+
+    A failed or garbled poll is tried again until the time runs out, except a
+    key the server refuses (401, 403) or a route it doesn't know (404): those
+    won't get better by waiting, so it stops at once with exit 1."""
     deadline = time.monotonic() + seconds
     query = "?" + urllib.parse.urlencode({"id": ask_id})
     while True:
-        ok, text = call("asks", None, "GET", query)
-        if ok:
-            asks = json.loads(text).get("asks") or []
+        ok, text, status = call("asks", None, "GET", query)
+        asks = asks_in(text) if ok else None
+        if asks is not None:
             ask = next((a for a in asks if a.get("id") == ask_id), None)
-            status = ask.get("status") if ask else "missing"
-            if status == "answered":
-                print(ask["answer"])
-                return 0
-            if status != "open":
-                print(f"{ask_id} is {status}, not answered", file=sys.stderr)
+            if ask is None:
+                print(f"{ask_id} is missing, not answered", file=sys.stderr)
                 return 4
+            done = settled(ask)
+            if done is not None:
+                return done
+        elif ok:
+            print(f"McFly's answer didn't list the asks: {text[:200]}", file=sys.stderr)
+        elif status in (401, 403, 404):
+            print(text, file=sys.stderr)
+            return 1
         else:
             print(text, file=sys.stderr)
         if time.monotonic() + every > deadline:
@@ -232,15 +276,26 @@ def main(argv: list[str] | None = None) -> int:
         return send("dashboards", {"dashboards": [read_json(args.file)]}, args.dry_run)
     if args.command == "ask":
         choices = [c.strip() for c in args.choices.split(",") if c.strip()] if args.choices else None
-        ask = drop_none({"id": args.id, "question": args.question, "choices": choices, "detail": args.detail,
-                         "url": args.url, "expires_at": args.expires})
+        ask = drop_none({"id": args.id, "question": args.question, "choices": choices, "detail": args.detail, "url": args.url})
+        # Asking is asking now: an id taken back or run out opens again, and
+        # an expiry left out clears the old one (null) instead of keeping it.
+        ask["withdrawn"] = False
+        ask["expires_at"] = args.expires
         if args.wait is None or args.dry_run:
             return send("asks", {"asks": [ask]}, args.dry_run)
-        ok, text = call("asks", {"asks": [ask]})
+        ok, text, _ = call("asks", {"asks": [ask]})
         if not ok:
             print(text, file=sys.stderr)
             return 1
-        return wait_for_answer(args.id, args.wait)
+        # The reply says where the ask stands, under the id the server keeps
+        # (trimmed and cut to 200 characters, or made up when none was given).
+        asks = asks_in(text)
+        stands = asks[0] if asks else None
+        if stands is None or not isinstance(stands.get("id"), str) or not stands["id"]:
+            print(f"McFly's answer didn't say where the ask stands: {text[:200]}", file=sys.stderr)
+            return 1
+        done = settled(stands)
+        return done if done is not None else wait_for_answer(stands["id"], args.wait)
     if args.command == "answers":
         query = {"id": ",".join(args.ids)} if args.ids else {}
         if args.open:

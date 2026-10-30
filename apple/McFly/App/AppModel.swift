@@ -1,11 +1,17 @@
 import Foundation
 import McFlyKit
 import Observation
+#if os(iOS)
+import UIKit
+#endif
 
 /// Streams an answer: the `assistant` function in the real app, canned text in
 /// demo mode. Events arrive on the main actor, `done` or `error` last.
+/// `suggested` is true when the app wrote the question (a chip, an insight's
+/// question) rather than the person typing or saying it: the assistant then
+/// answers no agent's question with it.
 typealias Answerer = @MainActor (_ message: String, _ mode: AssistantClient.Mode, _ history: [AssistantTurn],
-                                 _ provider: AssistantProvider?,
+                                 _ provider: AssistantProvider?, _ suggested: Bool,
                                  _ onEvent: @escaping @MainActor @Sendable (AssistantEvent) -> Void) async throws -> Void
 
 /// App-wide state: who is signed in, whether they're the admin, the feeds,
@@ -265,8 +271,17 @@ final class AppModel {
         feeds.setAnsweredHere(pending.ask.id, false)
     }
 
-    /// Sends it. Answered on another screen first, or taken back: it stays
-    /// gone, with a line saying so; any other failure brings it back.
+    /// Sends an answer still in its undo now: the app is leaving the screen,
+    /// and iOS would suspend it before the few seconds were up.
+    func sendPendingAnswer() {
+        if let pending = pendingAnswer { commit(pending) }
+    }
+
+    /// Sends it, with the question as the server sent it, so an answer can't
+    /// land on a question the agent has changed since. Answered on another
+    /// screen first, or taken back: it stays gone, with a line saying so.
+    /// Changed by the agent, or turned down for another reason: it comes back
+    /// as the server has it now. Not sent at all: it comes back as it was.
     private func commit(_ pending: PendingAnswer) {
         if pendingAnswer == pending {
             answering?.cancel()
@@ -275,23 +290,41 @@ final class AppModel {
         }
         let admin = admin
         let feeds = feeds
+        #if os(iOS)
+        // Time to finish the request if the app leaves the screen meanwhile.
+        let time = BackgroundTime("Send an answer")
+        #endif
         Task {
+            var failure: Ask.AnswerFailure?
             do {
-                _ = try await admin.answerAsk(pending.ask.id, choice: pending.choice)
-                await feeds.refresh()
+                _ = try await admin.answerAsk(pending.ask.id, choice: pending.choice, question: pending.ask.question)
             } catch {
-                let message = McFlyError.describe(error)
-                if let first = Ask.answeredElsewhere(message) {
-                    answerNote = "Already answered on another screen: \(first)"
-                    await feeds.refresh()
-                } else if message.contains("took this question back") || message.contains("ran out") {
-                    answerNote = "That question was taken back"
-                    await feeds.refresh()
-                } else {
-                    feeds.setAnsweredHere(pending.ask.id, false)
-                    answerNote = "Couldn't send that answer, so the question is back"
-                }
+                failure = Ask.AnswerFailure(error)
             }
+            #if os(iOS)
+            time.end()
+            #endif
+            switch failure {
+            case nil:
+                break
+            case .answeredElsewhere(let first)?:
+                answerNote = "Already answered on another screen: \(first)"
+            case .closed?:
+                answerNote = "That question was taken back"
+            case .changed?:
+                // The server still lists it, so a refresh alone would keep it hidden.
+                feeds.setAnsweredHere(pending.ask.id, false)
+                answerNote = "The agent changed that question; here it is again"
+            case .refused(let why)?:
+                feeds.setAnsweredHere(pending.ask.id, false)
+                answerNote = "Couldn't send that answer: \(why)"
+            case .unsent?:
+                // Nothing changed on the server; a refresh would only fail the same way.
+                feeds.setAnsweredHere(pending.ask.id, false)
+                answerNote = "Couldn't send that answer, so the question is back"
+                return
+            }
+            await feeds.refresh()
         }
     }
 
@@ -302,12 +335,13 @@ final class AppModel {
             // The sheet's own choice first, else the platform setting, so the request says
             // so even before the server rereads it.
             let fallback = feeds.settings?.assistantProvider
-            return { message, mode, history, provider, onEvent in
-                try await assistant.stream(message, mode: mode, history: history, provider: provider ?? fallback, onEvent: onEvent)
+            return { message, mode, history, provider, suggested, onEvent in
+                try await assistant.stream(message, mode: mode, history: history, provider: provider ?? fallback,
+                                           suggested: suggested, onEvent: onEvent)
             }
         }
         let feeds = feeds
-        return { message, mode, _, provider, onEvent in
+        return { message, mode, _, provider, _, onEvent in
             let reply = mode == .read ? Self.demoReadReply(to: message, feeds: feeds, provider: provider)
                 : Self.demoReply(to: message, mode: mode, feeds: feeds, provider: provider)
             for word in reply.split(separator: " ", omittingEmptySubsequences: false) {
@@ -428,3 +462,23 @@ final class AppModel {
         errorMessage = McFlyError.describe(error)
     }
 }
+
+#if os(iOS)
+/// Background time from iOS (`beginBackgroundTask`), so a request started
+/// as the app leaves the screen can finish. `end()` gives it back; iOS ends
+/// it itself if the time runs out first.
+@MainActor
+private final class BackgroundTime {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init(_ name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in self?.end() }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+#endif

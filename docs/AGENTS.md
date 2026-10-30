@@ -386,9 +386,9 @@ curl -X POST "$MCFLY_URL/functions/v1/ingest/asks" \
 
 | Field | |
 |---|---|
-| `id` (≤200) | your id: read the answer back by it. The same id **changes** the question while nobody has answered it; an answered one stays as it was answered, so the answer always matches the question |
+| `id` (≤200, no commas) | your id: read the answer back by it. The same id **changes** the question while nobody has answered it; an answered one stays as it was answered, so the answer always matches the question. Someone answering while you change the question is refused and shown the new one |
 | `question` (≤300) | required, except to withdraw |
-| `choices` | 2 to 4 labels of up to 32 characters, no two alike; the first is drawn as the main button. Left out: `["Yes", "No"]` |
+| `choices` | 2 to 4 labels of one line and up to 32 characters, no two alike; the first is drawn as the main button. Left out: `["Yes", "No"]`; `null` on a re-push puts Yes and No back |
 | `detail` (≤2000), `url` | optional: a line or two of context, and a link (the display shows its QR code) |
 | `expires_at` | optional: after it the question can't be answered and leaves every screen |
 | `withdrawn` | `true` takes it back (you decided some other way), `false` asks it again. `{ "id", "withdrawn": true }` alone is enough |
@@ -403,7 +403,8 @@ ask as it now stands: `{ ..., "asks": [{ "id", "status", "question",
 
 **Reading the answer back:** `GET /ingest/asks` with the key answers
 `{ "ok": true, "asks": [...] }`, the agent's own asks, newest first (the last
-100); `?id=ship-2.3,other` picks some, `?open=1` the ones still waiting. No
+100); `?id=ship-2.3,other` picks some (an `id` that matches none answers an
+empty list), `?open=1` the ones still waiting. No
 permission is needed: an agent reads only its own. Poll it every few
 seconds to a few minutes, as fits the question; `mcfly_push.py` does it for
 you and prints only the choice:
@@ -413,9 +414,12 @@ answer=$(scripts/mcfly_push.py ask ship-2.3 "Ship v2.3 to TestFlight?" --choices
 [ "$answer" = "Ship it" ] && ./release.sh
 ```
 
-(exit 3: no answer in time, the question stays open; exit 4: withdrawn or run
-out). An answer can't be changed once it's in. Answered, withdrawn and
-run-out asks are kept for 30 days.
+(exit 0 also when it was answered before; exit 1: an error, a revoked key
+included; exit 3: no answer in time, the question stays open; exit 4:
+withdrawn or run out). `ask` asks again each time it runs: an id you took
+back, or one that ran out, is open again, with the new `--expires` or none.
+An answer can't be changed once it's in. Answered, withdrawn and run-out
+asks are kept for 30 days, then go with the next push of any feed.
 
 ## Reading back
 

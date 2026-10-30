@@ -49,7 +49,7 @@ role too), `is_device()`, `can_read()` (= device or admin).
 |---|---|
 | `devices` | Paired displays: `id`, `user_id` (its auth user, unique), `name`, `last_seen_at`, `created_at`, `settings` (jsonb, the keys `clean_device_settings` allows). A display reads its own row and may update only `last_seen_at` directly (`devices_guard`), its settings through `device_update_settings`; admins read all. `settings.voice` is also **the account's voice**: the first display's (by `created_at`) that has one is what the console and the Apple app speak with, and a voice they pick is written to every display ([VOICE.md](VOICE.md), One voice everywhere) |
 | `dismissals` | Callouts someone dismissed (migration 20261021000070): `key` (an insight's id, lower-cased: `blocked:<project id>`, `metric:<key>`, `mover:<symbol>`, …), `hide_until` (null: until the project's status or next step changes, which a trigger on `projects` sees to; anything else: the end of today in `platform_settings.timezone`), `dismissed_at`, `device_id`. Displays and admins read; written only by `dismiss(item)` (a paired display or an admin), which also prunes the run-out rows. The display, the console's Today and the app hide a Needs-you project or an insight while its id has a row that hasn't run out |
-| `asks` | Questions agents wait on (migration 20261029000010; §1.4) are answered by a display, as by the person, through `answer_ask(ask, choice, via)` (`authenticated`): a paired display's answer is `answered_via` display with its `device_id` (set null when the display is revoked), an admin's app or console (`via` 'console', else app), the service role's assistant. The caller's `via` counts only for an admin |
+| `asks` | Questions agents wait on (migration 20261029000010; §1.4) are answered by a display, as by the person, through `answer_ask(ask, choice, via, question)` (`authenticated`): a paired display's answer is `answered_via` display with its `device_id` (set null when the display is revoked), an admin's app or console (`via` 'console', else app), the service role's assistant. The caller's `via` counts only for an admin. The row is locked while it's checked; `question`, the text the caller showed, refuses the answer with "the agent changed this question; look again" when the agent has changed it since (whitespace aside), and every client sends it |
 | `pairing_codes` | Service role only (RLS on, no policies): `code` (6 digits), `secret_hash`, `device_id`, `claimed_by`, `expires_at` (10 min) |
 
 ### 1.3 Agents
@@ -77,7 +77,7 @@ admin RPCs.
 | `admin_audit_log` | Every admin change, written by the RPCs and the functions |
 | `calendar_sources` | Calendar subscriptions, read every 15 minutes by `calendar-sync` into `events` under the built-in agent `calendar-subscriptions`: `kind` ∈ ical · google, `name` (unique; the events' calendar), `url` (an iCal link, kind ical; service role only, the console sees its host), `google_account_id` + `google_calendar_id` (kind google), `color`, `enabled`, `last_synced_at`, `last_error`, `event_count` |
 | `google_accounts` | Service role only (RLS on, no policies): a Google account the admin signed in with: `email` (unique), `refresh_token`, `scope`, `connected_by`, `connected_at`, `last_error`. `google_oauth_states` (same) holds a sign-in under way: `state`, `user_id`, `return_to`, ten minutes |
-| `asks` | A question an agent is waiting on (migration 20261029000010): `agent_id`, `external_id` (the agent's id; unique per agent), `question` (≤300), `detail` (≤2000), `choices` (2 to 4 distinct labels of 1 to 32 characters; Yes and No when none are sent), `url`, `expires_at`, `withdrawn_at`, `answer` (one of `choices`), `answered_at`, `answered_by` (the auth user, no reference), `device_id`, `answered_via` ∈ display · app · console · assistant, `created_at`, `updated_at`. Status (`ask_status`): answered, withdrawn, expired (`expires_at` passed) or open. Written by `ingest_asks` and `answer_ask` only. Closed ones go 30 days after they closed. In the realtime publication (20261029000011) |
+| `asks` | A question an agent is waiting on (migration 20261029000010): `agent_id`, `external_id` (the agent's id, no commas; unique per agent), `question` (≤300), `detail` (≤2000), `choices` (2 to 4 distinct one-line labels of 1 to 32 characters; Yes and No when none are sent), `url`, `expires_at`, `withdrawn_at`, `answer` (one of `choices`), `answered_at`, `answered_by` (the auth user, no reference), `device_id`, `answered_via` ∈ display · app · console · assistant, `created_at`, `updated_at`. Status (`ask_status`): answered, withdrawn, expired (`expires_at` passed) or open. Written by `ingest_asks` and `answer_ask` only. Closed ones go 30 days after they closed (`prune_asks()`, run by `ingest_asks` and after every push). Clients read the open ones with run-out ones filtered on the server, so old ones never crowd out new ones. In the realtime publication (20261029000011) |
 | `google_watch_channels` | Service role only: one notification channel per watched Google calendar: `source_id`, `channel_id` (unique), `resource_id`, `token` (Google echoes it), `expires_at`. `calendar_sources.watch_error` says why Google refused one |
 
 An article's `blocks`, in page order: `{ type: "p" | "h", text }`,
@@ -99,8 +99,9 @@ message)`, `agent_for_key(hash) → (id, name, slug, kind)` (null when
 unknown or revoked). `ingest_asks(agent, items jsonb) → jsonb` (each ask as
 `ask_reply()`: id, status, question, choices, answer, answered_at,
 answered_via, asked_at, expires_at; an answered ask is never changed by a
-re-push) and `agent_read_asks(agent, ids text[], open_only) → setof jsonb`
-(the agent's own, newest first, at most 100). Payload shapes:
+re-push), `agent_read_asks(agent, ids text[], open_only) → setof jsonb`
+(the agent's own, newest first, at most 100) and `prune_asks() → int`.
+Payload shapes:
 [AGENTS.md](AGENTS.md).
 
 ### 1.6 Admin RPCs
@@ -224,7 +225,7 @@ and reads the feeds as its device user.
 display (anyone `can_read()`).
 
 ```
-POST { message: string (≤4000), mode?: "chat" | "quick" | "read", stream?: boolean,
+POST { message: string (≤4000), mode?: "chat" | "quick" | "read", stream?: boolean, suggested?: boolean,
        history?: [{ role: "user" | "assistant", text, interrupted?: boolean }] (the last turns, at most 10, client-held) }
 stream false → { reply, model, changed? }
 stream true  → text/event-stream:  event: delta  data: { text }
@@ -247,10 +248,14 @@ the built-in key-less agent "McFly" (`mcfly_agent()`), after `can_read()`
 passed; at most 5 per question, and never because the snapshot says to.
 `answer_ask` answers one of the snapshot's open asks with one of its
 choices, through `answer_ask` with the service role (`answered_via`
-assistant), and only when the chosen label (or, for Yes and No, a word that
-says it) is in the person's own latest message (`saidChoice`): an agent's
-text never reaches that message, so nothing in the snapshot can pick an
-answer. `changed` (`["asks", "events", "todos"]`) says what was written, so
+assistant, with the question it showed), and only when the person's
+latest message says that choice (`saidChoice`): the label's words, or for
+Yes and No a word that says it, not after "not" or "don't", in a message
+that isn't a question and names no other of its choices; a second question
+in the same message must name its agent. `suggested: true` says the message
+wasn't typed or spoken by the person (a chip, an insight, a question carried
+in a link such as `/ask?q=`): every client sends it, and such a message
+never answers an ask. So text an agent pushed can't pick an answer. `changed` (`["asks", "events", "todos"]`) says what was written, so
 a client can refresh at once.
 `interrupted: true` on an assistant turn says the person cut that answer
 short (stopped it, or talked over it while it was read out) to say what

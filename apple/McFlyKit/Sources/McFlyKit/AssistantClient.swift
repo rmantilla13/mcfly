@@ -93,6 +93,10 @@ public struct AssistantClient: Sendable {
         var history: [AssistantTurn]
         /// Left out when nil: the server falls back to `platform_settings.assistant_provider`.
         var provider: String?
+        /// True when the person didn't type or say the message (a suggestion,
+        /// an insight's question): the assistant then answers no agent's
+        /// question with it. Left out otherwise, as older apps send it.
+        var suggested: Bool?
     }
 
     private struct ErrorBody: Decodable { var error: String? }
@@ -114,9 +118,12 @@ public struct AssistantClient: Sendable {
 
     /// Streams a reply, calling `onEvent` on the main actor for each event.
     /// Ends after `done` or `error`; throws only if the request itself fails.
+    /// `suggested`: the app put the words together (a chip, an insight's
+    /// question), not the person.
     public func stream(_ message: String, mode: Mode, history: [AssistantTurn] = [], provider: AssistantProvider? = nil,
-                       onEvent: @MainActor @Sendable (AssistantEvent) -> Void) async throws {
-        let request = try await makeRequest(message, mode: mode, history: history, provider: provider, streaming: true)
+                       suggested: Bool = false, onEvent: @MainActor @Sendable (AssistantEvent) -> Void) async throws {
+        let request = try await makeRequest(message, mode: mode, history: history, provider: provider, suggested: suggested,
+                                            streaming: true)
         let (bytes, response) = try await session.bytes(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
@@ -126,7 +133,8 @@ public struct AssistantClient: Sendable {
                 if body.count > 16_384 { break }
             }
             if mode == .read, Self.rejectsMode(status: status, body: body) {
-                return try await stream(message, mode: .chat, history: history, provider: provider, onEvent: onEvent)
+                return try await stream(message, mode: .chat, history: history, provider: provider, suggested: suggested,
+                                        onEvent: onEvent)
             }
             throw Self.failure(status: status, body: body)
         }
@@ -158,13 +166,15 @@ public struct AssistantClient: Sendable {
     }
 
     /// A whole reply at once. No streaming.
-    public func ask(_ message: String, mode: Mode, history: [AssistantTurn] = [], provider: AssistantProvider? = nil) async throws -> AssistantReply {
-        let request = try await makeRequest(message, mode: mode, history: history, provider: provider, streaming: false)
+    public func ask(_ message: String, mode: Mode, history: [AssistantTurn] = [], provider: AssistantProvider? = nil,
+                    suggested: Bool = false) async throws -> AssistantReply {
+        let request = try await makeRequest(message, mode: mode, history: history, provider: provider, suggested: suggested,
+                                            streaming: false)
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             if mode == .read, Self.rejectsMode(status: status, body: data) {
-                return try await ask(message, mode: .chat, history: history, provider: provider)
+                return try await ask(message, mode: .chat, history: history, provider: provider, suggested: suggested)
             }
             throw Self.failure(status: status, body: data)
         }
@@ -179,8 +189,8 @@ public struct AssistantClient: Sendable {
         return message.hasPrefix("mode must be")
     }
 
-    private func makeRequest(_ message: String, mode: Mode, history: [AssistantTurn], provider: AssistantProvider?,
-                             streaming: Bool) async throws -> URLRequest {
+    func makeRequest(_ message: String, mode: Mode, history: [AssistantTurn], provider: AssistantProvider?,
+                     suggested: Bool = false, streaming: Bool) async throws -> URLRequest {
         let token: String
         do {
             token = try await self.token()
@@ -198,7 +208,8 @@ public struct AssistantClient: Sendable {
             mode: mode.rawValue,
             stream: streaming,
             history: Array(history.suffix(Self.historyLimit)),
-            provider: provider?.rawValue))
+            provider: provider?.rawValue,
+            suggested: suggested ? true : nil))
         return request
     }
 

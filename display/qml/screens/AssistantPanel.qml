@@ -27,10 +27,13 @@ Rectangle {
         Behavior on y { NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
     }
 
-    function send(text) {
+    // `suggested`: picked from the chips, not typed, so it never answers an
+    // agent's question (AI.askSuggested).
+    function send(text, suggested) {
         // While a reply streams the message would be dropped: keep it typed.
         if (!text || !text.trim() || AI.busy) return
-        AI.ask(text)
+        if (suggested) AI.askSuggested(text)
+        else AI.ask(text)
         input.text = ""
     }
     function focusInput() { input.forceActiveFocus() }
@@ -247,13 +250,14 @@ Rectangle {
                 }
                 // Centred under the heading, row by row.
                 SuggestionChips {
+                    objectName: "panelChips"
                     width: parent.width
                     // suggestionsFor doesn't notify; reading AI.suggestions does.
                     items: {
                         const all = AI.suggestions
                         return panel.context ? AI.suggestionsFor(panel.context) : all
                     }
-                    onPicked: text => panel.send(text)
+                    onPicked: text => panel.send(text, true)
                 }
             }
         }
@@ -269,6 +273,7 @@ Rectangle {
 
             TextField {
                 id: input
+                objectName: "panelInput"
                 anchors.left: parent.left
                 anchors.right: buttons.left
                 anchors.verticalCenter: parent.verticalCenter

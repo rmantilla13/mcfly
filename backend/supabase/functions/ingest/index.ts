@@ -227,8 +227,10 @@ Deno.serve(async (req) => {
       return reply({ error: result.error }, 400);
     }
     await record(agent, feed, result.count, "ok");
-    // Retention, a little at a time: every push is a fine moment.
+    // Retention, a little at a time: every push is a fine moment. Closed asks
+    // go here too, so they leave after 30 days even when no agent asks again.
     service.rpc("prune_feed").then(({ error }) => error && console.error("prune_feed failed:", error.message));
+    service.rpc("prune_asks").then(({ error }) => error && console.error("prune_asks failed:", error.message));
     return reply({ ok: true, feed, count: result.count, agent: agent.slug, ...result.extra });
   } catch (err) {
     console.error(`ingest ${feed} from ${agent.slug} failed:`, err);

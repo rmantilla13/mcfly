@@ -447,7 +447,7 @@ private struct AskCard: View {
                             .foregroundStyle(Theme.muted)
                             .lineLimit(3)
                     }
-                    if let url = ask.url {
+                    if let url = ask.link {
                         Link(destination: url) {
                             Label(url.host() ?? url.absoluteString, systemImage: "link")
                                 .font(.footnote.weight(.medium))

@@ -17,7 +17,9 @@ import { ThinkingText } from "./ThinkingText";
 //
 // Asked here rather than through useAsk: this is one question with no
 // conversation around it, so each ask starts clean (no history) and a
-// Refresh can't send the last answer back as context.
+// Refresh can't send the last answer back as context. The page wrote the
+// question, not the person, so it goes as suggested and never answers an
+// agent's question.
 
 const QUESTION = "Summarize my day";
 const noSubscribe = () => () => {};
@@ -62,7 +64,7 @@ export function DayDigest({ day, timeZone }: { day: string; timeZone: string }) 
       const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: QUESTION, history: [], mode: "quick" }),
+        body: JSON.stringify({ message: QUESTION, history: [], mode: "quick", suggested: true }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {

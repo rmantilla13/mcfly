@@ -233,7 +233,9 @@ ApplicationWindow {
                 onOpenScreen: index => window.currentScreen = index
                 onOpenAssistant: question => {
                     assistant.open = true
-                    if (question) AI.ask(question)
+                    // A question Home offered (a chip, an insight), not one
+                    // typed: it never answers an agent's question.
+                    if (question) AI.askSuggested(question)
                     else assistant.focusInput()
                 }
                 onPushToTalk: {
@@ -411,7 +413,8 @@ ApplicationWindow {
     // A question an agent is waiting on (Store.asks): a card at the top,
     // under the screen saver, while nothing else has the screen (setup, the
     // assistant, a game). Its × puts that one off for half an hour; a new
-    // question shows straight away.
+    // question shows straight away. Covered, it is left out of the frames as
+    // the nav and the pages are.
     property var asksPutOff: ({}) // id → until (ms)
     property double askClock: Date.now()
     Timer { interval: 60 * 1000; repeat: true; running: Object.keys(window.asksPutOff).length > 0; onTriggered: window.askClock = Date.now() }
@@ -425,6 +428,7 @@ ApplicationWindow {
         width: Math.min(room - 2 * Theme.pageMargin, Theme.wide ? 820 : 680)
         height: askCard.implicitHeight
         visible: askCard.opacity > 0
+        opacity: window.covered ? 0 : 1
         AskCard {
             id: askCard
             objectName: "askCard"

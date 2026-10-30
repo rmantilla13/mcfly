@@ -98,12 +98,16 @@ export interface AssistantRequest {
   stream: boolean;
   history: Turn[];
   provider: Provider | null;
+  // The message wasn't typed or spoken by the person: a suggestion chip, an
+  // insight's question, or a question carried in a link (the console's
+  // /ask?q=). Its text may be an agent's, so it never answers an ask.
+  suggested: boolean;
 }
 export type ParsedRequest = { ok: true; request: AssistantRequest } | { ok: false; error: string };
 
-// { message, mode?, stream?, history?, provider? }; a history turn is
-// { role, text, interrupted? }. Unknown fields are
-// ignored; a wrong one is refused with a sentence that names it.
+// { message, mode?, stream?, history?, provider?, suggested? }; a history
+// turn is { role, text, interrupted? }. Unknown fields are ignored; a wrong
+// one is refused with a sentence that names it.
 export function parseRequest(body: unknown): ParsedRequest {
   const invalid = (error: string): ParsedRequest => ({ ok: false, error });
   if (!isObject(body)) return invalid("the body must be a JSON object");
@@ -113,6 +117,7 @@ export function parseRequest(body: unknown): ParsedRequest {
   if (body.mode != null && body.mode !== "chat" && body.mode !== "quick" && body.mode !== "read") return invalid('mode must be "chat", "quick" or "read"');
   if (body.stream != null && typeof body.stream !== "boolean") return invalid("stream must be true or false");
   if (body.provider != null && body.provider !== "claude" && body.provider !== "grok") return invalid("provider must be claude or grok");
+  if (body.suggested != null && typeof body.suggested !== "boolean") return invalid("suggested must be true or false");
 
   const turns: Turn[] = [];
   if (body.history != null) {
@@ -133,8 +138,17 @@ export function parseRequest(body: unknown): ParsedRequest {
       stream: body.stream === true,
       history: normalizeHistory(turns),
       provider: (body.provider as Provider | undefined) ?? null,
+      // A client that never sends it is taken as before: the person's words.
+      suggested: body.suggested === true,
     },
   };
+}
+
+// What the person said themselves in this request, which an answer to an
+// ask must be in: nothing when the message was suggested, so a chip or a
+// link can't answer one however it's worded.
+export function ownWords(req: Pick<AssistantRequest, "message" | "suggested">): string {
+  return req.suggested ? "" : req.message;
 }
 
 // The last turns of a client-held conversation, made safe for the model:
@@ -497,10 +511,13 @@ export interface AskRow {
 }
 
 // The open asks as the tool runner takes them: answer_ask answers only these.
+// The question and the choices stay as stored, since answer_ask is sent them
+// back as they are; the snapshot and the tool's sentences show them through
+// oneLine.
 export function openAsks(rows: AskRow[] | null | undefined): { id: string; question: string; choices: string[]; agent: string }[] {
   return (rows ?? []).map((a) => ({
     id: a.id,
-    question: oneLine(a.question, 300),
+    question: typeof a.question === "string" ? a.question : String(a.question ?? ""),
     choices: Array.isArray(a.choices) ? a.choices.filter((c): c is string => typeof c === "string") : [],
     agent: oneLine(a.agents?.name, 80) || "An agent",
   }));
@@ -731,7 +748,8 @@ export function formatSnapshot(rows: SnapshotRows, now = Date.now()): Snapshot {
       const row = rows.asks!.find((r) => r.id === a.id)!;
       const detail = oneLine(row.detail, SNAPSHOT.noteChars);
       const until = row.expires_at ? `; open until ${fmtLocal(row.expires_at, timezone)}` : "";
-      lines.push(`- [${oneLine(a.id, 64)}] ${a.agent} asks: ${a.question} Choices: ${a.choices.join(" / ")} (asked ${fmtLocal(row.created_at, timezone)}${until})${detail ? `. ${detail}` : ""}`);
+      const choices = a.choices.map((c) => oneLine(c, 32)).join(" / ");
+      lines.push(`- [${oneLine(a.id, 64)}] ${a.agent} asks: ${oneLine(a.question, 300)} Choices: ${choices} (asked ${fmtLocal(row.created_at, timezone)}${until})${detail ? `. ${detail}` : ""}`);
     }
   }
 

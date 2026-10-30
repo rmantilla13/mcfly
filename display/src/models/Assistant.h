@@ -59,8 +59,13 @@ public:
     void setProvider(const QString &provider);
     QString effectiveProvider() const;
 
-    // A chat message (typed in the assistant panel, or a chip).
+    // A chat message typed in the assistant panel.
     Q_INVOKABLE void ask(const QString &text);
+    // A question the person picked rather than typed or said: a suggestion
+    // chip, an insight, Home's question shortcuts. Asked as ask() is, and
+    // sent with `suggested: true`, so the assistant never answers an agent's
+    // question (an ask) from it: its words may be an agent's.
+    Q_INVOKABLE void askSuggested(const QString &text);
     // A short spoken answer to anything asked out loud: the voice card (wake
     // word, the mic on Home, its follow-ups) and push-to-talk in the panel.
     // Speaks the reply when it's done if spoken replies are on.
@@ -103,8 +108,8 @@ signals:
     void replyFinished(const QString &text, const QString &mode, const QString &speechId, bool error);
 
 private:
-    void send(const QString &text, const QString &mode);
-    void request(int generation, const QString &question, const QString &mode, bool retried);
+    void send(const QString &text, const QString &mode, bool suggested = false);
+    void request(int generation, const QString &question, const QString &mode, bool suggested, bool retried);
     void onEvent(const QString &event, const QJsonObject &data);
     void complete(const QString &reply);
     void fail(const QString &message);

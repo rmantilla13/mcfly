@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QNetworkProxy>
 #include <QSettings>
+#include <QUrlQuery>
 
 #include "FakeServer.h"
 #include "backend/SupabaseClient.h"
@@ -57,6 +58,29 @@ class TestFeedStore : public QObject
     {
         const QTime t = QTime::currentTime();
         return t >= QTime(23, 0) || t < QTime(0, 30);
+    }
+
+    // Two open asks: ask-1 (its question with a double space, as an agent
+    // may send it) and ask-2.
+    void serveTwoAsks()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        m_server.route("/rest/v1/asks", [now](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", "ask-1"}, {"agent_id", "a1"}, {"question", "Ship  v2.3?"}, {"choices", QJsonArray{"Ship it", "Hold"}},
+                            {"expires_at", QJsonValue::Null}, {"created_at", iso(now.addSecs(-10 * 60))}},
+                QJsonObject{{"id", "ask-2"}, {"agent_id", "a2"}, {"question", "Rebalance?"}, {"choices", QJsonArray{"Yes", "No"}},
+                            {"expires_at", QJsonValue::Null}, {"created_at", iso(now.addSecs(-5 * 60))}},
+            }));
+        });
+    }
+    // Whether the store has said `message` (a notify spy's calls).
+    static bool said(const QSignalSpy &notified, const QString &message)
+    {
+        for (const QList<QVariant> &call : notified)
+            if (call.first().toString() == message)
+                return true;
+        return false;
     }
 
     void serveFeeds()
@@ -595,32 +619,55 @@ private slots:
 
     // Asks (20261029000010): the open ones, shaped; answering hides one at
     // once, an undo takes it back, and after the undo window it reaches
-    // answer_ask. Answered on another screen first: a note says with what.
+    // answer_ask with the question as it came. Answered on another screen
+    // first: a note says with what.
     void askingAndAnswering()
     {
         const QDateTime now = QDateTime::currentDateTime();
-        m_server.route("/rest/v1/asks", [now](const Request &) {
+        // A label as a clock writes it: two spaces, and a narrow no-break
+        // space before "AM". It is shown and sent as it came.
+        const QString tuesday = QStringLiteral("Tue  9:00\u202FAM");
+        m_server.route("/rest/v1/asks", [now, tuesday](const Request &) {
             return json(rows({
                 QJsonObject{{"id", "ask-1"}, {"agent_id", "a1"}, {"question", "Ship  v2.3?"}, {"detail", "CI is green."},
                             {"choices", QJsonArray{"Ship it", "Hold"}}, {"url", "https://example.com/pr/4"},
                             {"expires_at", iso(now.addSecs(3 * 3600))}, {"created_at", iso(now.addSecs(-12 * 60))}},
                 QJsonObject{{"id", "ask-gone"}, {"agent_id", "a1"}, {"question", "Ran out?"}, {"choices", QJsonArray{"Yes", "No"}},
                             {"expires_at", iso(now.addSecs(-60))}, {"created_at", iso(now.addSecs(-3600))}},
-                QJsonObject{{"id", "ask-2"}, {"agent_id", "a2"}, {"question", "Rebalance?"}, {"choices", QJsonArray{"Yes", "No", "Later"}},
+                QJsonObject{{"id", "ask-2"}, {"agent_id", "a2"}, {"question", "Rebalance when?"}, {"choices", QJsonArray{"Now", tuesday, "Later"}},
                             {"expires_at", QJsonValue::Null}, {"created_at", iso(now.addSecs(-5 * 60))}},
             }));
         });
         m_server.route("/rest/v1/rpc/answer_ask", [](const Request &r) {
             if (r.body.value("ask").toString() == QLatin1String("ask-2"))
-                return json(R"({"code":"P0001","message":"already answered: No"})", 400);
+                return json(R"({"code":"P0001","message":"already answered: Now"})", 400);
             return json(R"({"id":"ship","status":"answered","answer":"Hold"})");
         });
         startLive();
         QTRY_COMPARE(rig->store.asks().size(), 2);
+        // Run-out ones are left out on the server, as of now (UTC), so they
+        // can't fill the 50 and keep new ones out (the one served here is
+        // left out on the minute as well).
+        const QList<Request> reads = m_server.requests("GET", "/rest/v1/asks");
+        QVERIFY(!reads.isEmpty());
+        const QUrlQuery read(QUrl::fromEncoded("http://x" + reads.first().path).query());
+        QCOMPARE(read.queryItemValue("answered_at", QUrl::FullyDecoded), QStringLiteral("is.null"));
+        QCOMPARE(read.queryItemValue("withdrawn_at", QUrl::FullyDecoded), QStringLiteral("is.null"));
+        const QString openFilter = read.queryItemValue("or", QUrl::FullyDecoded);
+        const QString prefix = QStringLiteral("(expires_at.is.null,expires_at.gt.");
+        QVERIFY2(openFilter.startsWith(prefix) && openFilter.endsWith(QLatin1Char(')')), qPrintable(openFilter));
+        const QString since = openFilter.mid(prefix.size(), openFilter.size() - prefix.size() - 1);
+        QVERIFY2(since.endsWith(QLatin1Char('Z')), qPrintable(since));
+        const QDateTime sinceDt = QDateTime::fromString(since, Qt::ISODateWithMs);
+        QVERIFY2(sinceDt.isValid() && qAbs(sinceDt.secsTo(QDateTime::currentDateTimeUtc())) < 120, qPrintable(since));
+
         const QVariantMap first = rig->store.asks().first().toMap();
         QCOMPARE(first.value("id").toString(), QStringLiteral("ask-1"));
+        // Tidied for the card; as it came for answer_ask.
         QCOMPARE(first.value("question").toString(), QStringLiteral("Ship v2.3?"));
+        QCOMPARE(first.value("rawQuestion").toString(), QStringLiteral("Ship  v2.3?"));
         QCOMPARE(first.value("choices").toStringList(), (QStringList{"Ship it", "Hold"}));
+        QCOMPARE(rig->store.asks().at(1).toMap().value("choices").toStringList(), (QStringList{"Now", tuesday, "Later"}));
         QCOMPARE(first.value("agentName").toString(), QStringLiteral("Grok"));
         QCOMPARE(first.value("agentColor").toString(), QStringLiteral("#7A64E8"));
         QCOMPARE(first.value("askedLabel").toString(), QStringLiteral("12 min ago"));
@@ -642,16 +689,131 @@ private slots:
         // Again, and a second answer sends the first straight away.
         QSignalSpy notified(&rig->store, &FeedStore::notify);
         rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
-        rig->store.answer(QStringLiteral("ask-2"), QStringLiteral("Yes"));
+        rig->store.answer(QStringLiteral("ask-2"), tuesday);
         QTRY_COMPARE(m_server.requests("POST", "/rest/v1/rpc/answer_ask").size(), 1);
         const QJsonObject sent = m_server.requests("POST", "/rest/v1/rpc/answer_ask").first().body;
         QCOMPARE(sent.value("ask").toString(), QStringLiteral("ask-1"));
         QCOMPARE(sent.value("choice").toString(), QStringLiteral("Hold"));
-        // The second waits out its undo, and the server says No got there first.
+        QCOMPARE(sent.value("question").toString(), QStringLiteral("Ship  v2.3?"));
+        QVERIFY(!sent.contains("via")); // a display's answer is the display's
+        // The second waits out its undo, its label sent as it came, and the
+        // server says Now got there first.
         QTRY_COMPARE_WITH_TIMEOUT(m_server.requests("POST", "/rest/v1/rpc/answer_ask").size(), 2, 10000);
+        const QJsonObject second = m_server.requests("POST", "/rest/v1/rpc/answer_ask").last().body;
+        QCOMPARE(second.value("choice").toString(), tuesday);
+        QCOMPARE(second.value("question").toString(), QStringLiteral("Rebalance when?"));
         QTRY_VERIFY(!notified.isEmpty());
-        QCOMPARE(notified.last().first().toString(), QStringLiteral("Already answered on another screen: No"));
+        QCOMPARE(notified.last().first().toString(), QStringLiteral("Already answered on another screen: Now"));
         QVERIFY(rig->store.pendingAnswer().isEmpty());
+    }
+
+    // An answer that can't be sent comes back with a note, rather than
+    // staying hidden here while the agent waits: no session to be had (the
+    // token gone and the network down), or signed out in its undo window.
+    void anUnsentAnswerComesBack()
+    {
+        serveTwoAsks();
+        startLive();
+        QTRY_COMPARE(rig->store.asks().size(), 2);
+        const QString back = QStringLiteral("Couldn't send that answer, so the question is back");
+        // The access token is gone and the refresh fails: the network, not a
+        // dead token, so the display stays paired.
+        m_server.route("/auth/v1/token", [](const Request &) { return json(R"({"error":"unavailable"})", 503); });
+        rig->client.setSession(QString(), QStringLiteral("refresh-2"));
+        QSignalSpy notified(&rig->store, &FeedStore::notify);
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
+        QCOMPARE(rig->store.asks().size(), 1);
+        rig->store.answer(QStringLiteral("ask-2"), QStringLiteral("Yes")); // sends the first now
+        rig->store.undoAnswer();
+        QTRY_VERIFY(said(notified, back));
+        QCOMPARE(rig->store.asks().size(), 2);
+        QCOMPARE(rig->store.mode(), QStringLiteral("live"));
+        QVERIFY(m_server.requests("POST", "/rest/v1/rpc/answer_ask").isEmpty());
+
+        // Signed out (the session lost) while the undo runs: back when it ends.
+        notified.clear();
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
+        QCOMPARE(rig->store.asks().size(), 1);
+        emit rig->client.sessionLost();
+        QCOMPARE(rig->store.mode(), QStringLiteral("pairing"));
+        QTRY_VERIFY_WITH_TIMEOUT(said(notified, back), 10000);
+        QCOMPARE(rig->store.asks().size(), 2);
+        QVERIFY(rig->store.pendingAnswer().isEmpty());
+        QVERIFY(m_server.requests("POST", "/rest/v1/rpc/answer_ask").isEmpty());
+    }
+
+    // An agent that changed its question after this display showed it gets
+    // no answer to the old one (answer_ask compares them): the question comes
+    // back with its new wording, never the old, and a note says why.
+    void aChangedQuestionComesBackFresh()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        auto wording = std::make_shared<QString>(QStringLiteral("Ship  v2.3?"));
+        m_server.route("/rest/v1/asks", [now, wording](const Request &) {
+            return json(rows({
+                QJsonObject{{"id", "ask-1"}, {"agent_id", "a1"}, {"question", *wording}, {"choices", QJsonArray{"Ship it", "Hold"}},
+                            {"expires_at", QJsonValue::Null}, {"created_at", iso(now.addSecs(-10 * 60))}},
+                QJsonObject{{"id", "ask-2"}, {"agent_id", "a2"}, {"question", "Rebalance?"}, {"choices", QJsonArray{"Yes", "No"}},
+                            {"expires_at", QJsonValue::Null}, {"created_at", iso(now.addSecs(-5 * 60))}},
+            }));
+        });
+        m_server.route("/rest/v1/rpc/answer_ask", [wording](const Request &r) {
+            // As the server compares them: whitespace aside.
+            if (r.body.value("question").toString().simplified() != wording->simplified())
+                return json(R"({"code":"P0001","message":"the agent changed this question; look again"})", 400);
+            return json(R"({"id":"ship","status":"answered","answer":"Hold"})");
+        });
+        startLive();
+        QTRY_COMPARE(rig->store.asks().size(), 2);
+        *wording = QStringLiteral("Ship v2.4?"); // after this display synced
+
+        // From the note on, ask-1 may only show with the new wording.
+        const QString changed = QStringLiteral("The agent changed that question: have another look");
+        QSignalSpy notified(&rig->store, &FeedStore::notify);
+        QStringList seen;
+        const QMetaObject::Connection watch = connect(&rig->store, &FeedStore::asksChanged, this, [&]() {
+            if (!said(notified, changed))
+                return;
+            for (const QVariant &a : rig->store.asks())
+                if (a.toMap().value("id").toString() == QLatin1String("ask-1"))
+                    seen << a.toMap().value("question").toString();
+        });
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
+        rig->store.answer(QStringLiteral("ask-2"), QStringLiteral("Yes")); // sends the first now
+        rig->store.undoAnswer();
+        QTRY_VERIFY(said(notified, changed));
+        QCOMPARE(m_server.requests("POST", "/rest/v1/rpc/answer_ask").first().body.value("question").toString(), QStringLiteral("Ship  v2.3?"));
+        QTRY_VERIFY(!seen.isEmpty());
+        disconnect(watch);
+        QCOMPARE(seen.first(), QStringLiteral("Ship v2.4?"));
+        QVERIFY2(!seen.contains(QStringLiteral("Ship v2.3?")), qPrintable(seen.join(QLatin1Char('|'))));
+        QVERIFY(!said(notified, QStringLiteral("Couldn't send that answer, so the question is back")));
+
+        // Answered again, now with the new question, it goes.
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
+        rig->store.answer(QStringLiteral("ask-2"), QStringLiteral("Yes"));
+        rig->store.undoAnswer();
+        QTRY_COMPARE(m_server.requests("POST", "/rest/v1/rpc/answer_ask").size(), 2);
+        QCOMPARE(m_server.requests("POST", "/rest/v1/rpc/answer_ask").last().body.value("question").toString(), QStringLiteral("Ship v2.4?"));
+    }
+
+    // Re-paired inside an answer's undo window: the answer goes with the old
+    // session (nothing is sent, nothing comes back), and so do the asks.
+    void unpairDropsTheAnswer()
+    {
+        serveTwoAsks();
+        startLive();
+        QTRY_COMPARE(rig->store.asks().size(), 2);
+        rig->store.answer(QStringLiteral("ask-1"), QStringLiteral("Hold"));
+        QVERIFY(!rig->store.pendingAnswer().isEmpty());
+        QSignalSpy notified(&rig->store, &FeedStore::notify);
+        rig->store.unpair();
+        QVERIFY(rig->store.pendingAnswer().isEmpty());
+        QVERIFY(rig->store.asks().isEmpty());
+        QTest::qWait(6500); // past the undo window
+        QVERIFY(m_server.requests("POST", "/rest/v1/rpc/answer_ask").isEmpty());
+        QVERIFY(!said(notified, QStringLiteral("Couldn't send that answer, so the question is back")));
+        QVERIFY(rig->store.asks().isEmpty());
     }
 
     void projectsGroupByStatus()

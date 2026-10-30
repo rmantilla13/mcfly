@@ -1,7 +1,7 @@
 // Questions agents are waiting on (the asks table, migration 20261029000010):
 // two to four choices, the first the main one, answered on any screen with
-// answer_ask. The display and the app show the same open ones. Pure, so
-// tests/asks.test.mjs can check it.
+// answer_ask, which is given the question as it was shown. The display and
+// the app show the same open ones. Pure, so tests/asks.test.mjs can check it.
 
 export type OpenAsk = {
   id: string;
@@ -23,11 +23,26 @@ export function openAsks(rows: OpenAsk[], nowMs: number): OpenAsk[] {
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
+// The PostgREST `or` filter that leaves out the asks run out at `nowMs`, so
+// the query's limit counts only those still waiting: a run-out ask is kept
+// for 30 days and, being older, would otherwise crowd the new ones out.
+// openAsks still drops any that run out while the page is open.
+export function notRunOut(nowMs: number): string {
+  return `expires_at.is.null,expires_at.gt.${new Date(nowMs).toISOString()}`;
+}
+
 // The choice another screen got in first, from answer_ask's refusal
 // ("already answered: Hold"), or null for any other error.
 export function answeredElsewhere(message: string): string | null {
   const m = /already answered: (.+?)\.?$/i.exec(message.trim());
   return m ? m[1].trim() : null;
+}
+
+// answer_ask's refusal when the agent changed the question after the person
+// saw it ("the agent changed this question; look again"), so the answer was
+// for a question that no longer stands.
+export function questionChanged(message: string): boolean {
+  return /the agent changed this question/i.test(message);
 }
 
 // What the demo asks: the display's two (display/resources/demo/feed.json),

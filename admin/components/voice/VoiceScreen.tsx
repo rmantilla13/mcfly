@@ -18,7 +18,8 @@ import { useAsk } from "./useAsk";
 // you pause. With "Keep talking" on, it listens again after each answer.
 // The mic is only on while the button says so. Before the first question it
 // offers a few, built from what is on the feeds (lib/suggestions.ts, the same
-// ones Today shows).
+// ones Today shows); a tapped one goes as suggested (useAsk), so it never
+// answers an agent's question.
 
 type Recognition = {
   lang: string;
@@ -273,7 +274,7 @@ export function VoiceScreen({ suggestions = [] }: { suggestions?: string[] }) {
                 <button
                   key={s}
                   type="button"
-                  onClick={() => void ask(s, "quick")}
+                  onClick={() => void ask(s, "quick", true)}
                   disabled={busy}
                   className="h-11 rounded-full border border-white/20 bg-white/5 px-5 text-[15px] text-white/90 transition-colors hover:bg-white/10"
                 >

@@ -11,7 +11,9 @@
 -- may write after its own check-in and settings (and dismiss()). Who
 -- answered (`answered_via`) is the server's to say, never the caller's:
 -- display for a paired display, app or console for the person, assistant
--- for McFly answering when asked to (the service role).
+-- for McFly answering when asked to (the service role). A screen sends the
+-- question it showed, so an answer never lands on a question the agent
+-- changed in the meantime.
 --
 -- Everything here is new: no table or function from an earlier migration
 -- changes.
@@ -58,7 +60,9 @@ language sql stable set search_path = public as $$
 $$;
 
 -- The choices an agent sent, checked: a list of 2 to 4 distinct labels, each
--- trimmed and 1 to 32 characters. None given means Yes and No.
+-- trimmed, one line and 1 to 32 characters. None given means Yes and No.
+-- One line because a label is drawn on a button and read into McFly's
+-- prompt, where a newline would start a line of its own.
 create function public.ask_choices(value jsonb, question text)
 returns jsonb
 language plpgsql immutable set search_path = public as $$
@@ -75,6 +79,9 @@ begin
   for c in select * from jsonb_array_elements(value) loop
     if jsonb_typeof(c) <> 'string' then raise exception 'ask %: each choice must be a label', question; end if;
     label := btrim(c #>> '{}');
+    if label ~ '[\x01-\x1f\x7f]' then
+      raise exception 'ask %: each choice must be one line', question;
+    end if;
     if length(label) not between 1 and 32 then
       raise exception 'ask %: each choice must be 1 to 32 characters', question;
     end if;
@@ -111,8 +118,8 @@ $$;
 -- again; { id, withdrawn } alone, with no question, does just that. An
 -- answered ask stays as it was answered, so the answer always matches the
 -- question. Returns each ask's ask_reply(), in order: a re-push is also a
--- way to read the answer. Closed asks (answered, withdrawn or run out) go
--- after 30 days.
+-- way to read the answer. An id can't hold a comma, since GET /ingest/asks
+-- takes `?id=a,b`. Closed asks go after 30 days (prune_asks).
 create function public.ingest_asks(agent uuid, items jsonb)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -142,6 +149,7 @@ begin
        where a.agent_id = agent and a.external_id = ext and a.answered_at is null
       returning a.* into row;
     else
+      if ext like '%,%' then raise exception 'ask %: its id can''t contain a comma', q; end if;
       url := nullif(btrim(coalesce(item->>'url', '')), '');
       if url is not null and url !~* '^https?://\S+$' then raise exception 'ask %: url must be an http(s) URL', q; end if;
       expires := public.read_timestamp(item->'expires_at', null);
@@ -172,10 +180,26 @@ begin
     out := out || jsonb_build_array(public.ask_reply(row));
     row := null;
   end loop;
+  perform public.prune_asks();
+  return out;
+end $$;
+
+-- Closed asks (answered, withdrawn or run out) more than 30 days ago go.
+-- Called by ingest_asks, and by the ingest function after every push of any
+-- feed, so they go even when no agent asks anything for a while. Returns how
+-- many went.
+create function public.prune_asks()
+returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+begin
+  if not public.is_platform_admin() then raise exception 'admin only'; end if;
   delete from public.asks a
    where coalesce(a.answered_at, a.withdrawn_at, case when a.expires_at <= now() then a.expires_at end)
          < now() - interval '30 days';
-  return out;
+  get diagnostics n = row_count;
+  return n;
 end $$;
 
 -- An agent's own asks, newest first: `ids` (its own ids) picks some, else
@@ -199,11 +223,18 @@ $$;
 -- label is stored). A paired display, the person (an admin), or McFly when
 -- asked (the service role) may. `via` says which of the person's screens
 -- answered, the app (the default) or the console; it counts only for an
--- admin's own sign-in. The same answer again changes nothing; a different
--- one fails with "already answered: <label>", as does a withdrawn or
--- run-out ask with its own sentence. Two screens answering at once: one
--- wins, the other hears which.
-create function public.answer_ask(ask uuid, choice text, via text default null)
+-- admin's own sign-in. `question` is the question as the screen showed it,
+-- sent as it came (compared with each run of white space made one space):
+-- when the agent has changed it since, the answer is refused, since the
+-- person answered the question they saw. Left out, nothing is compared.
+--
+-- The row is locked first, so a re-push of the same ask waits for the
+-- answer, or the answer for the re-push, and the checks below see the
+-- question and choices that are stored. The same answer again changes
+-- nothing; a different one fails with "already answered: <label>", as does
+-- a withdrawn or run-out ask with its own sentence. Two screens answering
+-- at once: one wins, the other hears which.
+create function public.answer_ask(ask uuid, choice text, via text default null, question text default null)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -223,8 +254,20 @@ begin
     raise exception 'only a paired display or an admin can answer';
   end if;
 
-  select x.* into a from public.asks x where x.id = ask;
+  select x.* into a from public.asks x where x.id = ask for update;
   if a.id is null then raise exception 'ask not found'; end if;
+  if a.answered_at is not null then
+    if lower(a.answer) = lower(btrim(coalesce(choice, ''))) then
+      return public.ask_reply(a) || jsonb_build_object('ask', a.id);
+    end if;
+    raise exception 'already answered: %', a.answer;
+  end if;
+  if a.withdrawn_at is not null then raise exception 'the agent took this question back'; end if;
+  if a.expires_at is not null and a.expires_at <= now() then raise exception 'this question ran out'; end if;
+  if answer_ask.question is not null
+     and regexp_replace(btrim(answer_ask.question), '\s+', ' ', 'g') <> regexp_replace(btrim(a.question), '\s+', ' ', 'g') then
+    raise exception 'the agent changed this question; look again';
+  end if;
   select e into label from jsonb_array_elements_text(a.choices) e
    where lower(e) = lower(btrim(coalesce(choice, '')));
   if label is null then
@@ -233,21 +276,13 @@ begin
 
   update public.asks x
      set answer = label, answered_at = now(), answered_by = auth.uid(), device_id = device, answered_via = channel
-   where x.id = ask and x.answered_at is null and x.withdrawn_at is null
-     and (x.expires_at is null or x.expires_at > now())
+   where x.id = a.id
   returning x.* into a;
-  if found then return public.ask_reply(a) || jsonb_build_object('ask', a.id); end if;
-
-  select x.* into a from public.asks x where x.id = ask;
-  if a.answered_at is not null and a.answer = label then
-    return public.ask_reply(a) || jsonb_build_object('ask', a.id);
-  end if;
-  if a.answered_at is not null then raise exception 'already answered: %', a.answer; end if;
-  if a.withdrawn_at is not null then raise exception 'the agent took this question back'; end if;
-  raise exception 'this question ran out';
+  return public.ask_reply(a) || jsonb_build_object('ask', a.id);
 end $$;
 
 revoke execute on function public.ingest_asks(uuid, jsonb) from public, anon, authenticated;
 revoke execute on function public.agent_read_asks(uuid, text[], boolean) from public, anon, authenticated;
-revoke execute on function public.answer_ask(uuid, text, text) from public, anon;
-grant execute on function public.answer_ask(uuid, text, text) to authenticated;
+revoke execute on function public.prune_asks() from public, anon, authenticated;
+revoke execute on function public.answer_ask(uuid, text, text, text) from public, anon;
+grant execute on function public.answer_ask(uuid, text, text, text) to authenticated;

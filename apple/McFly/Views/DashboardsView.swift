@@ -1159,7 +1159,8 @@ struct FeedQuestionSheet: View {
         let provider = app.feeds.settings?.assistantProvider
         task = Task {
             do {
-                try await app.answer(question, .read, [], provider) { event in
+                // The app wrote this question, not the person: it never answers an agent's.
+                try await app.answer(question, .read, [], provider, true) { event in
                     guard round == current else { return }
                     switch event {
                     case .delta(let piece):

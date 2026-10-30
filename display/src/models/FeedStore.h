@@ -103,12 +103,15 @@ class FeedStore : public QObject
     // The dismissal waiting out its undo: { id, label }, or empty.
     Q_PROPERTY(QVariantMap pendingDismissal READ pendingDismissal NOTIFY pendingDismissalChanged)
     // Questions agents asked that are still open (the asks table, oldest
-    // first), less one being answered here: { id, question, detail, choices
-    // (2 to 4 labels, the first the main one), url, agentName, agentColor,
-    // askedLabel ("12 min ago"), expiresLabel ("until 6:00 PM", or "") }.
-    // One that runs out leaves on the minute.
+    // first), less one being answered here: { id, question (tidied for the
+    // card), rawQuestion (as the server has it, for answer_ask), detail,
+    // choices (2 to 4 labels exactly as the server has them, the first the
+    // main one), url, agentName, agentColor, askedLabel ("12 min ago"),
+    // expiresLabel ("until 6:00 PM", or "") }. One that runs out leaves on
+    // the minute.
     Q_PROPERTY(QVariantList asks READ asks NOTIFY asksChanged)
-    // The answer waiting out its undo: { id, choice, agentName }, or empty.
+    // The answer waiting out its undo: { id, choice, agentName, question (the
+    // raw one it answers) }, or empty.
     Q_PROPERTY(QVariantMap pendingAnswer READ pendingAnswer NOTIFY pendingAnswerChanged)
     // How the quotes moved today: { up, down, flat, total, label }.
     Q_PROPERTY(QVariantMap marketBreadth READ marketBreadth NOTIFY dataChanged)
@@ -200,9 +203,11 @@ public:
     Q_INVOKABLE void undoDismiss();
     Q_INVOKABLE bool isDismissed(const QString &id) const;
     // Answer an ask (an id from `asks`) with one of its choices: it leaves
-    // `asks` at once and reaches the server (answer_ask) after a few seconds
-    // unless undoAnswer() takes it back. Answered on another screen in the
-    // meantime: a note says with what. A second answer sends the first now.
+    // `asks` at once and reaches the server (answer_ask, with the question as
+    // shown) after a few seconds unless undoAnswer() takes it back. Answered
+    // on another screen in the meantime: a note says with what. Changed by
+    // the agent meantime, or not sent at all (no session, signed out): it
+    // comes back, with a note. A second answer sends the first now.
     Q_INVOKABLE void answer(const QString &id, const QString &choice);
     Q_INVOKABLE void undoAnswer();
     // Forgets this display's session and shows a new pairing code (Settings → Re-pair).
@@ -278,7 +283,10 @@ private:
     void setOnline(bool online, const QString &error = {});
     void loadDemo();
     void loadLive();
-    void withSession(std::function<void()> fn);
+    // Runs fn with a session, refreshing it first when there is none.
+    // onFail runs instead when fn won't: the refresh failed, or the display
+    // was re-paired (or signed out) meanwhile.
+    void withSession(std::function<void()> fn, std::function<void()> onFail = {});
     void retrySoon();
     void stopRetrying();
     void checkIn();

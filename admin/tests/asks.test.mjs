@@ -1,8 +1,9 @@
-// Questions agents wait on (lib/asks.ts): the open ones, oldest first, and
-// answer_ask's refusal when another screen got there first.
+// Questions agents wait on (lib/asks.ts): the open ones, oldest first, the
+// query's filter for run-out ones, and answer_ask's refusals when another
+// screen got there first or the agent changed the question.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { answeredElsewhere, demoAsks, openAsks } from "../lib/asks.ts";
+import { answeredElsewhere, demoAsks, notRunOut, openAsks, questionChanged } from "../lib/asks.ts";
 
 const NOW = Date.parse("2026-10-29T20:00:00Z");
 const ask = (id, created, extra = {}) => ({
@@ -28,10 +29,25 @@ test("the open ones, oldest first", () => {
   assert.deepEqual(openAsks(rows, NOW).map((a) => a.id), ["older", "newer"]);
 });
 
+test("the query leaves out the run-out ones, so they can't fill its limit", () => {
+  // PostgREST's or=(…): no expiry, or one still ahead, in UTC.
+  assert.equal(notRunOut(NOW), "expires_at.is.null,expires_at.gt.2026-10-29T20:00:00.000Z");
+});
+
 test("answered on another screen first", () => {
   assert.equal(answeredElsewhere("already answered: Hold"), "Hold");
   assert.equal(answeredElsewhere("Already answered: Ship it."), "Ship it");
   assert.equal(answeredElsewhere("This question ran out."), null);
+  assert.equal(answeredElsewhere("The agent changed this question; look again."), null);
+});
+
+test("the agent changed the question after it was shown", () => {
+  // As answer_ask says it, and as the console's action passes it on.
+  assert.equal(questionChanged("the agent changed this question; look again"), true);
+  assert.equal(questionChanged("The agent changed this question; look again."), true);
+  for (const other of ["Already answered: Hold.", "The agent took this question back.", "This question ran out.", "Answer with one of: Ship it, Hold."]) {
+    assert.equal(questionChanged(other), false, other);
+  }
 });
 
 test("the demo asks the display's two", () => {

@@ -70,10 +70,13 @@ export function eventDays(search: string): number {
 }
 
 // Which of its asks an agent reads back: ?id=a,b (or id=a&id=b), at most 50,
-// and ?open=1 for the ones still waiting.
+// and ?open=1 for the ones still waiting. Ids can't hold a comma (parse.ts
+// refuses one) and are cut to 200 characters as a push cuts them, so each
+// reads back the ask pushed with it. An id param that leaves no id still
+// picks: it reads none, never the agent's last 100 in its place.
 export function askQuery(search: string): { ids: string[] | null; open_only: boolean } {
   const q = new URLSearchParams(search);
-  const ids = q.getAll("id").flatMap((v) => v.split(",")).map((v) => v.trim()).filter((v) => v && v.length <= 200).slice(0, 50);
+  const ids = q.getAll("id").flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean).map((v) => v.slice(0, 200)).slice(0, 50);
   const open = (q.get("open") ?? "").toLowerCase();
-  return { ids: ids.length ? ids : null, open_only: open === "1" || open === "true" };
+  return { ids: q.has("id") ? ids : null, open_only: open === "1" || open === "true" };
 }

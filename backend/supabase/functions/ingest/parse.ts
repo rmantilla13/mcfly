@@ -117,13 +117,14 @@ export type Todo = {
 };
 
 // A question for the person, with two to four choices (Yes and No when none
-// are sent). A field sent as null is cleared on a re-push; one left out
-// stays. { id, withdrawn } alone takes an ask back, or asks it again.
+// are sent). A field sent as null is cleared on a re-push (choices: null puts
+// Yes and No back); one left out stays. { id, withdrawn } alone takes an ask
+// back, or asks it again.
 export type Ask = {
   id?: string;
   question?: string;
   detail?: string | null;
-  choices?: string[];
+  choices?: string[] | null;
   url?: string | null;
   expires_at?: string | null;
   withdrawn?: boolean;
@@ -207,6 +208,16 @@ function str(v: unknown, max: number): string | undefined {
   if (typeof v !== "string") return undefined;
   const s = v.trim();
   return s ? s.slice(0, max) : undefined;
+}
+
+// Whether text holds a control character (U+0000 to U+001F, or U+007F), the
+// same set ask_choices refuses.
+function hasControl(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
 }
 
 // An ISO-8601 timestamp, normalized, or an error for anything Date can't read.
@@ -712,6 +723,9 @@ export function parseAsks(body: unknown): { asks: Ask[] } | Fail {
   for (const [i, raw] of items.entries()) {
     if (!isObject(raw)) return { error: `ask ${i + 1} must be an object` };
     const id = str(raw.id ?? raw.external_id, 200);
+    // GET /ingest/asks?id=a,b splits on commas, so an id with one could never
+    // be read back.
+    if (id?.includes(",")) return { error: `ask ${id}: its id can't contain a comma` };
     if (raw.withdrawn != null && typeof raw.withdrawn !== "boolean") return { error: `ask ${id ?? i + 1}: withdrawn must be true or false` };
     const question = str(raw.question ?? raw.title, 300);
     if (!question) {
@@ -723,6 +737,8 @@ export function parseAsks(body: unknown): { asks: Ask[] } | Fail {
     }
     const ask: Ask = { ...(id ? { id } : {}), question };
     const given = raw.choices ?? raw.options;
+    // An explicit null goes through: ingest_asks then puts Yes and No back.
+    if (given == null && ("choices" in raw || "options" in raw)) ask.choices = null;
     if (given != null) {
       if (!Array.isArray(given)) return { error: `ask ${question}: choices must be a list of 2 to 4 labels` };
       if (given.length < 2 || given.length > 4) return { error: `ask ${question}: give 2 to 4 choices` };
@@ -730,6 +746,9 @@ export function parseAsks(body: unknown): { asks: Ask[] } | Fail {
       for (const c of given) {
         const label = typeof c === "string" ? c.trim() : "";
         if (!label || label.length > MAX_CHOICE) return { error: `ask ${question}: each choice must be a label of 1 to ${MAX_CHOICE} characters` };
+        // A label is a button and a line in the assistant's prompt: a newline
+        // or another control character would start a line of its own.
+        if (hasControl(label)) return { error: `ask ${question}: each choice must be one line` };
         if (choices.some((x) => x.toLowerCase() === label.toLowerCase())) return { error: `ask ${question}: choice ${label} is there twice` };
         choices.push(label);
       }

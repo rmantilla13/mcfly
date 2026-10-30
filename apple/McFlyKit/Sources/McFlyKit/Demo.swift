@@ -177,7 +177,7 @@ public actor DemoAdminService: AdminService {
     }
 
     /// The demo's answers stay on this device (`FeedStore.answeredHere`).
-    public func answerAsk(_ id: UUID, choice: String) async throws -> String { choice }
+    public func answerAsk(_ id: UUID, choice: String, question: String) async throws -> String { choice }
 
     public func renameDevice(_ id: UUID, name: String) async throws {
         guard let i = devices.firstIndex(where: { $0.id == id }) else { throw McFlyError.message("Device not found") }

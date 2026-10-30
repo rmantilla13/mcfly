@@ -33,6 +33,15 @@ Item {
         Behavior on y { NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
     }
 
+    // The card takes every touch on it: a tap on its words or between its
+    // buttons, a drag or a wheel would otherwise reach the page underneath
+    // (it sits over the page, not in a Layer). The buttons are above this.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        onWheel: wheel => wheel.accepted = true
+    }
+
     // A soft shadow under the card.
     Rectangle {
         anchors.fill: face

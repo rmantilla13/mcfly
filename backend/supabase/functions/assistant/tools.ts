@@ -371,23 +371,83 @@ export function todoWhenLocal(t: Pick<TodoItem, "due_at" | "all_day">, tz: strin
 // ───────────────────────────── Answering an ask ─────────────────────────────
 
 // Words that say yes or no, for a question whose choices are Yes and No.
-const YES = ["yes", "yeah", "yep", "yup", "sure", "ok", "okay", "go ahead", "do it", "approve", "approved", "sounds good"];
-const NO = ["no", "nope", "nah", "don't", "do not", "not now", "hold off", "decline", "skip it"];
+// Filler that says neither ("ok", "sure") isn't one, nor is a negation alone
+// ("don't" in "I don't know"). A bare "no" counts only as the whole message
+// or its first word ("no, hold off"), never inside one ("I have no idea").
+const YES = ["yes", "yeah", "yep", "yup", "go ahead", "do it", "approve", "approved", "sounds good", "affirmative"];
+const NO = ["nope", "nah", "decline", "skip it", "hold off", "not now"];
+// A choice right after one of these isn't chosen: "don't ship it". Any
+// "n't" word counts ("won't", "can't"), and "dont" as it's often typed.
+const NEGATIONS = new Set(["not", "never", "dont"]);
+// A message that opens with one of these (or "what's", "shouldn't") is
+// asking, not answering, even spoken without its "?": "should I ship it or
+// hold". "Don't" opens an order more often than a question, so it isn't one.
+const QUESTION_WORDS = new Set(["should", "what", "which", "is", "are", "do", "does", "did", "can", "could", "would", "will", "how", "why", "when", "where", "who"]);
 
-const words = (s: string) =>
-  ` ${s.toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9']+/g, " ").replace(/\s+/g, " ").trim()} `;
+// The words of `s`, for matching what the person said against a label: lower
+// case, accents and other marks dropped ("Sí" is "si"), curly apostrophes
+// straightened, and anything but letters, digits and apostrophes a break, in
+// any script. Quotes at a word's ends go ("'ship it'"); an emoji has no words.
+export function wordsOf(s: string): string[] {
+  return s.toLowerCase().normalize("NFKD").replace(/\p{M}+/gu, "").replace(/[’‘ʼ]/g, "'")
+    .split(/[^\p{L}\p{N}']+/u).map((w) => w.replace(/^'+|'+$/g, "")).filter(Boolean);
+}
 
-// Whether the person's own message names `label`: the label's words as a
-// phrase ("ship it" in "ok, ship it"), or for Yes and No, a word that says
-// it ("go ahead", "nope"). The model picks the ask and the choice; this is
-// the check it can't be talked around, since text an agent pushed never
-// reaches the person's message.
-export function saidChoice(said: string, label: string): boolean {
-  const heard = words(said);
-  const want = words(label);
-  if (want.trim() && heard.includes(want)) return true;
-  const synonyms = want === " yes " ? YES : want === " no " ? NO : [];
-  return synonyms.some((w) => heard.includes(words(w)));
+// Where `phrase` starts in `words`, as whole words.
+function starts(words: string[], phrase: string[]): number[] {
+  const at: number[] = [];
+  if (!phrase.length) return at;
+  for (let i = 0; i + phrase.length <= words.length; i++) {
+    if (phrase.every((w, j) => words[i + j] === w)) at.push(i);
+  }
+  return at;
+}
+
+const negates = (w: string | undefined) => w !== undefined && (NEGATIONS.has(w) || w.endsWith("n't"));
+
+// Where the person names `choice` in `heard` ([start, end) word spans): its
+// words as a phrase, or for Yes and No a word that says it, but not right
+// after a negation. A bare "no" names No as the first word; `anywhere` (to
+// look for a choice they didn't pick) takes it wherever it is, so "yes and
+// no" names both.
+function named(heard: string[], choice: string, anywhere = false): [number, number][] {
+  const key = wordsOf(choice).join(" ");
+  const phrases = (key === "yes" ? YES : key === "no" ? (anywhere ? ["no", ...NO] : NO) : [key]).map(wordsOf);
+  const spans: [number, number][] = [];
+  for (const p of phrases) {
+    for (const i of starts(heard, p)) if (!negates(heard[i - 1])) spans.push([i, i + p.length]);
+  }
+  if (key === "no" && !anywhere && heard[0] === "no") spans.push([0, 1]);
+  return spans;
+}
+
+// Whether the person's own message answers with `label`, one of `choices`.
+// It must name the label (its words as a phrase: "ship it" in "OK, ship it";
+// for Yes and No, a word that says it: "go ahead", "nope"), not right after
+// "not" or "don't", and name none of the other choices (one it turns down,
+// "hold, don't ship it", isn't named); and it mustn't be a question
+// ("should I ship it or hold?"). The model picks the ask and the choice;
+// this is the check it can't be talked around. The words are the person's
+// own: a message they didn't type or say (a chip, an insight, a link)
+// reaches here empty.
+export function saidChoice(said: string, label: string, choices: string[]): boolean {
+  const heard = wordsOf(said);
+  const mine = named(heard, label);
+  if (!mine.length) return false;
+  // "do it" opens with "do", but it's an answer, not a question. A
+  // contraction asks as its verb does: "can't we", "won't you", "isn't it".
+  const first = heard[0];
+  const opener = first === "don't" ? "" : first === "can't" ? "can" : first === "won't" ? "will"
+    : first.replace(/n't$/, "").replace(/'(s|re|d|ll)$/, "");
+  // A "?" with only punctuation, spaces or emoji after it ("yes?!", "ship it? 🙂").
+  const asks = /[?？][^\p{L}\p{N}]*$/u.test(said) || (QUESTION_WORDS.has(opener) && !mine.some(([s]) => s === 0));
+  if (asks) return false;
+  // Another choice inside the one named ("ship it" in "ship it later") isn't
+  // a second choice. One on the very same words is: "skip it" says No and
+  // "Skip it" alike, and they may mean different things to the agent.
+  const key = wordsOf(label).join(" ");
+  const inMine = ([s, e]: [number, number]) => mine.some(([ms, me]) => s >= ms && e <= me && e - s < me - ms);
+  return !choices.some((c) => wordsOf(c).join(" ") !== key && named(heard, c, true).some((span) => !inMine(span)));
 }
 
 // ───────────────────────────── Running ─────────────────────────────
@@ -399,9 +459,10 @@ export interface Store {
   addEvent(agent: string, event: EventItem): Promise<void>;
   addTodo(agent: string, todo: TodoItem): Promise<string>;
   setDone(id: string): Promise<void>;
-  // Answers an ask as McFly (answer_ask under the service role). Throws with
-  // the SQL's sentence ("already answered: Hold") when it can't.
-  answerAsk(id: string, choice: string): Promise<{ answer: string }>;
+  // Answers an ask as McFly (answer_ask under the service role), with the
+  // question as the snapshot read it. Throws with the SQL's sentence
+  // ("already answered: Hold") when it can't.
+  answerAsk(id: string, choice: string, question: string): Promise<{ answer: string }>;
   log(agent: string, feed: Changed, ok: boolean, message?: string): Promise<void>;
 }
 
@@ -411,13 +472,20 @@ export interface OpenTodo {
   title: string;
 }
 
-// The open asks the snapshot showed: answer_ask may only answer these.
+// The open asks the snapshot showed: answer_ask may only answer these. The
+// question and the choices are as stored, since answer_ask is sent them
+// back; anything shown to the model goes through oneLine first.
 export interface OpenAsk {
   id: string;
   question: string;
   choices: string[];
   agent: string;
 }
+
+// A label as the snapshot shows it, and whether the model's choice is it
+// (the model sends what it saw: one line, any case).
+const shown = (label: string) => oneLine(label, 32);
+const sameLabel = (a: string, b: string) => oneLine(a, 64).toLowerCase() === oneLine(b, 64).toLowerCase();
 
 export interface ToolResult {
   content: string;
@@ -433,6 +501,8 @@ export class ToolRunner {
   #added = new Set<string>();
   readonly #open: Map<string, string>;
   #asks = new Map<string, OpenAsk>();
+  // The asks answered in this request, and the label each was given.
+  #answered = new Map<string, string>();
   #said = "";
 
   constructor(
@@ -450,7 +520,7 @@ export class ToolRunner {
   }
 
   // The asks answer_ask may answer, and what the person just said, which
-  // the choice must be in.
+  // the choice must be in ("" when they didn't say it themselves).
   offerAsks(asks: OpenAsk[], said: string): this {
     this.#asks = new Map(asks.map((a) => [a.id, a]));
     this.#said = said;
@@ -475,11 +545,11 @@ export class ToolRunner {
     if (this.#writes >= MAX_WRITES) {
       return fail(`Not saved: at most ${MAX_WRITES} changes per question. Tell them what was saved and ask them to say the rest again.`);
     }
+    if (action.tool === "answer_ask") return await this.#answerAsk(action.id, action.choice);
+
     // The same thing twice in one answer (a retry, a repeat) is saved once.
     const key = action.tool === "complete_todo"
       ? `done:${action.id}`
-      : action.tool === "answer_ask"
-      ? `ask:${action.id}`
       : action.tool === "add_event"
       ? `event:${action.event.title.toLowerCase()}@${action.event.starts_at}`
       : `${action.todo.kind}:${action.todo.title.toLowerCase()}@${action.todo.due_at ?? ""}`;
@@ -501,33 +571,6 @@ export class ToolRunner {
       this.#open.delete(action.id);
       this.changed.add("todos");
       return { content: `Checked off: "${title}".`, isError: false };
-    }
-
-    if (action.tool === "answer_ask") {
-      const ask = this.#asks.get(action.id);
-      if (!ask) return fail("Not answered: no open question has that id. Use an id from the snapshot's \"Waiting on them\" list.");
-      const label = ask.choices.find((c) => c.toLowerCase() === action.choice.toLowerCase());
-      const options = ask.choices.map((c) => `"${c}"`).join(" or ");
-      if (!label) return fail(`Not answered: the choices are ${options}.`);
-      if (!saidChoice(this.#said, label)) {
-        return fail(`Not answered: they didn't say "${label}" themselves. Ask them to say ${options}.`);
-      }
-      let answer: string;
-      try {
-        answer = (await this.store.answerAsk(action.id, label)).answer;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        const taken = /^already answered: (.+)$/.exec(message);
-        if (taken) return fail(`Not answered: it was already answered "${taken[1]}", on another screen.`);
-        if (/took this question back|ran out/.test(message)) return fail(`Not answered: ${message}.`);
-        console.error("answer_ask failed:", message);
-        return fail("Not answered: it couldn't be saved just now. Say so, and that they can try again in a moment.");
-      }
-      this.#writes++;
-      this.#added.add(key);
-      this.#asks.delete(action.id);
-      this.changed.add("asks");
-      return { content: `Answered ${ask.agent}'s question "${ask.question}": ${answer}. ${ask.agent} will read it when it next checks.`, isError: false };
     }
 
     const feed: Changed = action.tool === "add_event" ? "events" : "todos";
@@ -558,6 +601,75 @@ export class ToolRunner {
     }
     const due = todoWhenLocal(t, this.tz);
     return { content: `Saved. Todo "${t.title}"${due ? `, due ${due}` : ""}.`, isError: false };
+  }
+
+  // answer_ask: one of the offered asks, with one of its labels, and only
+  // when the person's own message says it.
+  async #answerAsk(id: string, choice: string): Promise<ToolResult> {
+    const fail = (content: string): ToolResult => ({ content, isError: true });
+    // The same answer again (a retry, a repeat) is saved once; a different
+    // one would be a change, and an answer can't be changed.
+    const saved = this.#answered.get(id);
+    if (saved !== undefined) {
+      if (sameLabel(saved, choice)) return { content: "Already saved in this answer; nothing more to do.", isError: false };
+      return fail(`Not answered: "${shown(saved)}" was already given for this question in this answer, and it can't be changed. Tell them it was answered "${shown(saved)}".`);
+    }
+    const ask = this.#asks.get(id);
+    if (!ask) return fail("Not answered: no open question has that id. Use an id from the snapshot's \"Waiting on them\" list.");
+    const label = ask.choices.find((c) => sameLabel(c, choice));
+    const options = ask.choices.map((c) => `"${shown(c)}"`).join(" or ");
+    if (!label) return fail(`Not answered: the choices are ${options}.`);
+    // A label with no words to say ("👍"), or the same words as another
+    // ("Sí" and "Si"), can't be told apart by what someone says.
+    const key = wordsOf(label).join(" ");
+    if (!key || ask.choices.some((c) => c !== label && wordsOf(c).join(" ") === key)) {
+      return fail(`Not answered: "${shown(label)}" can only be answered with a tap on a screen (the display, the app or the console). Tell them so.`);
+    }
+    if (!saidChoice(this.#said, label, ask.choices)) {
+      return fail(`Not answered: they didn't say "${shown(label)}" themselves. Ask them to say ${options}.`);
+    }
+    // Which question the message means. One that names an agent ("yes for
+    // Ops") means that agent's, even for the first answer, so a detail
+    // can't steer the model to another agent's question. And one "yes" is
+    // one answer: a second question answered from the same message must be
+    // named by its agent, or it's unclear which was meant.
+    const heard = wordsOf(this.#said);
+    const names = (agent: string) => starts(heard, wordsOf(agent)).length > 0;
+    if (!names(ask.agent)) {
+      if (this.#answered.size) {
+        return fail(`Not answered: their message already answered another question and doesn't name ${ask.agent}. Ask them which question they meant.`);
+      }
+      if ([...this.#asks.values()].some((a) => names(a.agent))) {
+        return fail(`Not answered: their message is about another agent's question and doesn't name ${ask.agent}. Ask them which question they meant.`);
+      }
+    }
+    let answer: string;
+    try {
+      // The raw label and question: answer_ask matches them as stored.
+      answer = (await this.store.answerAsk(id, label, ask.question)).answer;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const taken = /^already answered: (.+)$/s.exec(message);
+      if (taken) return fail(`Not answered: it was already answered "${shown(taken[1])}", on another screen.`);
+      if (/took this question back|ran out/.test(message)) return fail(`Not answered: ${message}.`);
+      // The agent changed the question, or only its choices, since the
+      // snapshot was read: the person answered something that's gone.
+      if (/changed this question/.test(message)) {
+        return fail(`Not answered: ${ask.agent} changed this question just now. Tell them it changed and to look at it again before answering.`);
+      }
+      if (/^answer with one of: /.test(message)) {
+        return fail(`Not answered: ${ask.agent} changed this question's choices just now. Tell them they changed and to look at it again before answering.`);
+      }
+      console.error("answer_ask failed:", message);
+      return fail("Not answered: it couldn't be saved just now. Say so, and that they can try again in a moment.");
+    }
+    this.#writes++;
+    this.#answered.set(id, answer);
+    this.changed.add("asks");
+    return {
+      content: `Answered ${ask.agent}'s question "${oneLine(ask.question, 300)}": ${shown(answer)}. ${ask.agent} will read it when it next checks.`,
+      isError: false,
+    };
   }
 }
 

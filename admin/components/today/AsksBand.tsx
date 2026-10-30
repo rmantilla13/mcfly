@@ -1,11 +1,13 @@
 "use client";
 
 import { LinkIcon, MessageCircleQuestionIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { answerAskAction } from "@/app/(console)/actions";
 import { Button } from "@/components/ui/button";
-import { answeredElsewhere, openAsks, type OpenAsk } from "@/lib/asks";
+import type { ActionResult } from "@/lib/action-result";
+import { answeredElsewhere, openAsks, questionChanged, type OpenAsk } from "@/lib/asks";
 import { dateFormat } from "@/lib/events";
 import { agoLabel } from "@/lib/insights";
 import { Tile } from "./Tile";
@@ -14,15 +16,24 @@ import { useNow } from "./TodayView";
 // What the agents are waiting on (lib/asks.ts), over every Today layout: a
 // tile per question with a button per choice, the first the main one. A
 // click hides it at once and answers it six seconds later unless Undo (on
-// the toast) takes it back, as on the display; leaving the page sends what's
-// waiting straight away. Another screen got there first: the toast says
-// with what.
+// the toast) takes it back, as on the display. The toast goes when the
+// answer does, and an Undo that comes too late says it was already sent.
+// Going to another console page sends what's waiting straight away; a
+// reload, a closed tab or a link out of the console asks first, then tries
+// to send it as the page goes (that request may not outlive the page, and
+// then the question is still waiting next time). The answer goes with the
+// question as it was shown, and a refusal says why: another screen got there
+// first (with what), the question was taken back or ran out, or the agent
+// changed it, and then the page reads its data again and shows it as it now
+// stands. An answer that couldn't be sent brings its question back.
 
 const UNDO_MS = 6000;
 
 export function AsksBand({ asks, nowMs, timeZone }: { asks: OpenAsk[]; nowMs: number; timeZone: string }) {
   const now = useNow(nowMs, 60_000);
+  const router = useRouter();
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  // The answers waiting out their undo, by ask; `send` sends one now.
   const waiting = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; send: () => void }>());
   const [, startTransition] = useTransition();
 
@@ -34,49 +45,95 @@ export function AsksBand({ asks, nowMs, timeZone }: { asks: OpenAsk[]; nowMs: nu
       return next;
     });
 
-  // Anything still waiting out its undo goes when the page does.
+  // Anything still waiting out its undo goes when the band does. A reload or
+  // a closed tab doesn't unmount it, so while an answer waits the browser
+  // asks before leaving, and if the page goes anyway it is sent on the way
+  // out, as well as a request can be from a page that is closing.
   useEffect(() => {
     const pending = waiting.current;
+    const flush = () => {
+      for (const { send } of [...pending.values()]) send();
+    };
+    const warn = (e: BeforeUnloadEvent) => {
+      if (pending.size === 0) return;
+      e.preventDefault();
+      e.returnValue = ""; // what Safari and older browsers look for
+    };
+    window.addEventListener("beforeunload", warn);
+    window.addEventListener("pagehide", flush);
     return () => {
-      for (const { timer, send } of pending.values()) {
-        clearTimeout(timer);
-        send();
-      }
-      pending.clear();
+      window.removeEventListener("beforeunload", warn);
+      window.removeEventListener("pagehide", flush);
+      flush();
     };
   }, []);
 
+  // Sends an answer whose undo is over, and says so if it didn't land.
+  const deliver = (id: string, choice: string, question: string) =>
+    startTransition(async () => {
+      let result: ActionResult;
+      try {
+        result = await answerAskAction(id, choice, question);
+      } catch {
+        // The request never got an answer (offline, a dropped connection):
+        // the question comes back rather than the page failing.
+        show(id, true);
+        toast.error("Couldn't send that answer, so the question is back.");
+        return;
+      }
+      if (result?.ok) return;
+      const error = result?.error ?? "";
+      const first = answeredElsewhere(error);
+      if (first) toast(`Already answered on another screen: ${first}`);
+      else if (questionChanged(error)) {
+        // Back with the page's data read again, so it shows the question as
+        // the agent has it now.
+        startTransition(() => {
+          show(id, true);
+          router.refresh();
+        });
+        toast("The agent changed that question, so here it is again.");
+      } else if (/took this question back|ran out/i.test(error)) toast("That question was taken back.");
+      else {
+        show(id, true);
+        toast.error(error || "Couldn't send that answer, so the question is back.");
+      }
+    });
+
   const answer = (ask: OpenAsk, choice: string) => {
     show(ask.id, false);
-    const send = () => {
-      waiting.current.delete(ask.id);
-      startTransition(async () => {
-        const result = await answerAskAction(ask.id, choice);
-        if (result?.ok) return;
-        const error = result?.error ?? "";
-        const first = answeredElsewhere(error);
-        if (first) toast(`Already answered on another screen: ${first}`);
-        else if (/took this question back|ran out/i.test(error)) toast("That question was taken back.");
-        else {
-          show(ask.id, true);
-          toast.error(error || "Couldn't send that answer, so the question is back.");
-        }
-      });
-    };
-    waiting.current.set(ask.id, { timer: setTimeout(send, UNDO_MS), send });
-    toast(ask.agent_name ? `Told ${ask.agent_name}: ${choice}` : `Answered: ${choice}`, {
+    const toastId = toast(ask.agent_name ? `Told ${ask.agent_name}: ${choice}` : `Answered: ${choice}`, {
       duration: UNDO_MS,
       action: {
         label: "Undo",
         onClick: () => {
           const w = waiting.current.get(ask.id);
-          if (!w) return;
+          if (w?.send !== send) {
+            // It went as the toast was leaving: say so rather than seem to
+            // have taken it back.
+            toast("Already sent, so it can't be undone.");
+            return;
+          }
           clearTimeout(w.timer);
           waiting.current.delete(ask.id);
           show(ask.id, true);
         },
       },
     });
+    // The question as the person saw it: answer_ask refuses the answer if the
+    // agent has changed it since. The toast goes with the answer, so its Undo
+    // is never left up after it can't undo anything (sonner holds a toast
+    // open while it's hovered or the tab is hidden; this timer doesn't wait).
+    const question = ask.question;
+    const send = () => {
+      const w = waiting.current.get(ask.id);
+      if (w?.send !== send) return; // sent already, or undone
+      clearTimeout(w.timer);
+      waiting.current.delete(ask.id);
+      toast.dismiss(toastId);
+      deliver(ask.id, choice, question);
+    };
+    waiting.current.set(ask.id, { timer: setTimeout(send, UNDO_MS), send });
   };
 
   const shown = openAsks(asks, now).filter((a) => !hidden.has(a.id));

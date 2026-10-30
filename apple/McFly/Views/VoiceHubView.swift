@@ -107,6 +107,9 @@ struct AskView: View {
     @State private var failure: String?
     @State private var copied: Int?
     @State private var replyTask: Task<Void, Never>?
+    /// Whether the last question came from a suggestion rather than the
+    /// person's typing, so Try again asks it the same way.
+    @State private var lastSuggested = false
     /// New chat starts another; a reply still finishing from the old one is dropped.
     @State private var chat = UUID()
     /// Which model answers this chat. Starts from the platform's default.
@@ -264,7 +267,7 @@ struct AskView: View {
                 .padding(.top, 8)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 12)], spacing: 12) {
                 ForEach(Self.suggestions, id: \.self) { text in
-                    Button { send(text) } label: {
+                    Button { send(text, suggested: true) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(text)
                                 .font(.callout.weight(.medium))
@@ -424,12 +427,15 @@ struct AskView: View {
     private func retry() {
         guard let question = turns.last(where: { $0.role == .user })?.text else { return }
         if turns.last?.role == .user { turns.removeLast() }
-        send(question)
+        send(question, suggested: lastSuggested)
     }
 
-    private func send(_ text: String) {
+    /// Asks `text`. `suggested`: one of the welcome's suggestions, not typed,
+    /// so the assistant answers no agent's question with it.
+    private func send(_ text: String, suggested: Bool = false) {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, !isReplying else { return }
+        lastSuggested = suggested
         draft = ""
         failure = nil
         // The answer gets the screen.
@@ -443,7 +449,7 @@ struct AskView: View {
             var reply = ""
             var problem: String?
             do {
-                try await app.answer(question, .read, history, provider) { event in
+                try await app.answer(question, .read, history, provider, suggested) { event in
                     switch event {
                     case .delta(let piece):
                         if chat == current { streaming += piece }
