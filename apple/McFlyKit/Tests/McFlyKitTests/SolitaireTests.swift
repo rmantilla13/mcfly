@@ -80,8 +80,9 @@ final class SolitaireTests: XCTestCase {
 
     func testTheRestGoHomeAndAWinIsKept() {
         var game = Solitaire(seed: 1)
-        game.set(stock: [], waste: [], foundations: [[], [], [], []],
-                 tableau: (0..<4).map { s in (0..<13).map { s * 13 + 12 - $0 } } + [[], [], []],
+        // Each suit in a column, king down to ace.
+        let suits: [[Int]] = (0..<4).map { s in (0..<13).map { s * 13 + 12 - $0 } }
+        game.set(stock: [], waste: [], foundations: [[], [], [], []], tableau: suits + [[], [], []],
                  hidden: [0, 0, 0, 0, 0, 0, 0], moves: 40)
         XCTAssertTrue(game.finishing)
         XCTAssertFalse(game.draw())

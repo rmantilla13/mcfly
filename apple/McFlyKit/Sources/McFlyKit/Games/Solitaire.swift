@@ -61,7 +61,8 @@ public struct Solitaire: Sendable, Codable, Equatable {
     /// Every card once, each pile the right shape: a saved game worth loading.
     public var isValid: Bool {
         guard foundations.count == 4, tableau.count == 7, hidden.count == 7 else { return false }
-        let all = stock + waste + foundations.joined() + tableau.joined()
+        var all = stock + waste
+        for pile in foundations + tableau { all += pile }
         guard all.count == 52, Set(all) == Set(0..<52) else { return false }
         return tableau.indices.allSatisfy { c in
             hidden[c] >= 0 && (tableau[c].isEmpty ? hidden[c] == 0 : hidden[c] < tableau[c].count)
