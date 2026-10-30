@@ -210,6 +210,38 @@ class TestGames : public QObject
         return ok.toBool();
     }
 
+    // Where the item `id` sits in `game`, from its x, y, width and height.
+    QRectF rectOf(QObject *game, const QString &id)
+    {
+        return QRectF(eval(game, id + QStringLiteral(".x")).toReal(), eval(game, id + QStringLiteral(".y")).toReal(),
+                      eval(game, id + QStringLiteral(".width")).toReal(), eval(game, id + QStringLiteral(".height")).toReal());
+    }
+
+    // A board game's board inside the stage, and its controls either in a
+    // column beside it (`stack`, wide stages) or over it with `button` under
+    // it (`header`, upright ones), none of them wider than their place.
+    void checkSides(QQuickItem *game, const QString &button, const QString &where)
+    {
+        const QRectF stage = QRectF(0, 0, game->width(), game->height()).adjusted(-0.5, -0.5, 0.5, 0.5);
+        const QRectF board = rectOf(game, QStringLiteral("board"));
+        QVERIFY2(stage.contains(board), qPrintable(where));
+        if (game->property("side").toBool()) {
+            const QRectF stack = rectOf(game, QStringLiteral("stack"));
+            QVERIFY2(stage.contains(stack) && stack.left() >= board.right() - 0.5, qPrintable(where));
+            QVERIFY2(eval(game, QStringLiteral("stack.childrenRect.width <= stack.width + 0.5 && stack.childrenRect.height <= height + 0.5")).toBool(),
+                     qPrintable(where));
+        } else {
+            const QRectF header = rectOf(game, QStringLiteral("header"));
+            QVERIFY2(eval(game, QStringLiteral("header.childrenRect.width <= header.width + 0.5")).toBool(), qPrintable(where));
+            QVERIFY2(header.bottom() <= board.top() + 0.5, qPrintable(where));
+            const QRectF under = rectOf(game, button);
+            QVERIFY2(stage.contains(under) && board.bottom() <= under.top() + 0.5, qPrintable(where));
+        }
+    }
+
+    // The full-screen stages: the 7" panel, the 10.1" one, portrait and a TV.
+    static QList<QSize> stages() { return {{768, 372}, {1152, 752}, {680, 1160}, {1752, 1000}}; }
+
 private slots:
     void initTestCase()
     {
@@ -246,7 +278,7 @@ private slots:
         QScopedPointer<QQuickItem> screen(create(QStringLiteral("qml/screens/GamesScreen.qml"), {1180, 800}));
         QVERIFY(screen);
         const int count = eval(screen.get(), QStringLiteral("catalog.length")).toInt();
-        QCOMPARE(count, 9);
+        QCOMPARE(count, 12);
         for (int i = 0; i < count; ++i) {
             QVERIFY(QMetaObject::invokeMethod(screen.get(), "open", Q_ARG(QVariant, i)));
             QTRY_VERIFY2(eval(screen.get(), QStringLiteral("game !== null")).toBool(),
@@ -1430,6 +1462,389 @@ private slots:
                 return;
             eval(game.get(), QStringLiteral("board.clear()"));
         }
+    }
+
+    // Pairs alone: every picture twice, each from another shelf; a pair
+    // stays up, a miss turns back (at once on the next tap), the turns are
+    // counted and the fewest kept for the size of board.
+    void pairsSoloFindsAndRemembers()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/Pairs.qml"), {1152, 752}));
+        QVERIFY(game);
+        game->setProperty("hideMs", 20);
+        game->setProperty("size", 12);
+        QCOMPARE(eval(game.get(), QStringLiteral("faces.length")).toInt(), 12);
+        QVERIFY(eval(game.get(), QStringLiteral("faces.every(f => faces.filter(g => g === f).length === 2)")).toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("new Set(faces.map(f => { library.picture = f; return library.category })).size")).toInt(), 6);
+
+        // A pair: both stay up, and that's a turn. A card that's up takes no tap.
+        const int b = eval(game.get(), QStringLiteral("faces.indexOf(faces[0], 1)")).toInt();
+        QVERIFY(eval(game.get(), QStringLiteral("play(0) && play(%1)").arg(b)).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("found[0] === 'S' && found[%1] === 'S' && up.length === 0 && moves === 1").arg(b)).toBool());
+        QVERIFY(!eval(game.get(), QStringLiteral("play(0)")).toBool());
+        // A miss: both up, then down again.
+        const QString miss = QStringLiteral("(() => { const i = found.indexOf(''); const j = faces.findIndex((f, k) => found[k] === '' && f !== faces[i]); return play(i) && play(j) })()");
+        QVERIFY(eval(game.get(), miss).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("missed && moves === 2")).toBool());
+        QTRY_VERIFY(eval(game.get(), QStringLiteral("up.length === 0")).toBool());
+        // Missed again: the next tap turns them back at once, and turns its card.
+        game->setProperty("hideMs", 60000);
+        QVERIFY(eval(game.get(), miss).toBool());
+        const int next = eval(game.get(), QStringLiteral("faces.findIndex((f, i) => found[i] === '' && up.indexOf(i) < 0)")).toInt();
+        QVERIFY(eval(game.get(), QStringLiteral("play(%1)").arg(next)).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("up.length === 1 && up[0] === %1 && moves === 3").arg(next)).toBool());
+        // The rest without a miss: five turns, eight in all, the best for 12.
+        const QString clear = QStringLiteral("(() => { hideNow(); if (up.length) play(faces.findIndex((f, k) => k !== up[0] && f === faces[up[0]]));"
+                                             " for (let i = 0; i < faces.length; ++i) { if (found[i] !== '') continue;"
+                                             " const j = faces.findIndex((f, k) => k !== i && f === faces[i]); play(i); play(j) } return over })()");
+        QVERIFY(eval(game.get(), clear).toBool());
+        QCOMPARE(game->property("moves").toInt(), 8);
+        QCOMPARE(eval(game.get(), QStringLiteral("best[12]")).toInt(), 8);
+        QCOMPARE(game->property("statusText").toString(), QStringLiteral("All found in 8 turns"));
+        QVERIFY(!eval(game.get(), QStringLiteral("play(0)")).toBool()); // over
+
+        // Kept: a better game replaces it, a worse one doesn't.
+        QScopedPointer<QQuickItem> again(create(QStringLiteral("qml/games/Pairs.qml"), {1152, 752}));
+        QVERIFY(again);
+        QCOMPARE(eval(again.get(), QStringLiteral("best[12]")).toInt(), 8);
+        again->setProperty("hideMs", 60000);
+        again->setProperty("size", 12);
+        QVERIFY(eval(again.get(), clear).toBool());
+        QCOMPARE(eval(again.get(), QStringLiteral("best[12]")).toInt(), 6);
+        eval(again.get(), QStringLiteral("deal()"));
+        for (int i = 0; i < 3; ++i)
+            QVERIFY(eval(again.get(), miss).toBool());
+        QVERIFY(eval(again.get(), clear).toBool());
+        QCOMPARE(again->property("moves").toInt(), 9);
+        QCOMPARE(eval(again.get(), QStringLiteral("best[12]")).toInt(), 6);
+        QCOMPARE(eval(again.get(), QStringLiteral("best[16] === undefined")).toBool(), true);
+    }
+
+    // Two at the screen take turns, a pair scoring and going again; McFly
+    // turns the partner of a card it has seen, and a Hard McFly that has
+    // seen every card clears the board on its turn.
+    void pairsTakeTurnsAndMcFly()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/Pairs.qml"), {1152, 752}));
+        QVERIFY(game);
+        game->setProperty("hideMs", 20);
+        game->setProperty("thinkMs", 10);
+        game->setProperty("mode", QStringLiteral("two"));
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("X"));
+        QVERIFY(eval(game.get(), QStringLiteral("play(0) && play(faces.indexOf(faces[0], 1))")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("score.X === 1 && score.O === 0 && turn === 'X' && found[0] === 'X'")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("(() => { const i = found.indexOf(''); const j = faces.findIndex((f, k) => found[k] === '' && f !== faces[i]); return play(i) && play(j) })()")).toBool());
+        QTRY_COMPARE(game->property("turn").toString(), QStringLiteral("O"));
+        QCOMPARE(game->property("moves").toInt(), 0); // turns are counted alone only
+        // The next round, the other player starts.
+        eval(game.get(), QStringLiteral("deal()"));
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("O"));
+        QVERIFY(eval(game.get(), QStringLiteral("score.X === 0 && found.every(f => f === '')")).toBool());
+
+        game->setProperty("hard", true);
+        game->setProperty("mode", QStringLiteral("mcfly"));
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("X")); // you first
+        QVERIFY(!game->property("computerTurn").toBool());
+        // The partner of the card it just turned, when it has seen it.
+        const int partner = eval(game.get(), QStringLiteral("faces.indexOf(faces[0], 1)")).toInt();
+        eval(game.get(), QStringLiteral("(() => { const s = {}; s[%1] = faces[%1]; seen = s; up = [0] })()").arg(partner));
+        QCOMPARE(eval(game.get(), QStringLiteral("computerPick()")).toInt(), partner);
+        eval(game.get(), QStringLiteral("up = []"));
+        // With every card seen, McFly finds every pair; you can't play meanwhile.
+        eval(game.get(), QStringLiteral("(() => { const s = {}; faces.forEach((f, i) => s[i] = f); seen = s; turn = 'O' })()"));
+        QVERIFY(game->property("computerTurn").toBool());
+        QVERIFY(!eval(game.get(), QStringLiteral("play(1)")).toBool());
+        QTRY_VERIFY(game->property("over").toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("score.O === faces.length / 2 && winner === 'O'")).toBool());
+        QCOMPARE(game->property("statusText").toString(), QStringLiteral("McFly wins!"));
+        // Easy McFly starts the next round, and hands the turn back on a miss.
+        game->setProperty("hard", false);
+        QVERIFY(eval(game.get(), QStringLiteral("turn === 'O' && !over && found.every(f => f === '')")).toBool());
+        QTRY_COMPARE(game->property("turn").toString(), QStringLiteral("X"));
+        QVERIFY(!game->property("over").toBool());
+    }
+
+    // Every card at least 64 px, in the stage, on every panel, every size of
+    // board and every mode; the controls beside the cards or over them.
+    void pairsFitsEveryPanel()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/Pairs.qml"), {768, 372}));
+        QVERIFY(game);
+        game->setProperty("thinkMs", 60000);
+        for (const QSize size : stages()) {
+            game->setSize(size);
+            for (const char *mode : {"solo", "two", "mcfly"}) {
+                game->setProperty("mode", QLatin1String(mode));
+                for (int cards : {12, 16, 20}) {
+                    game->setProperty("size", cards);
+                    QTest::qWait(20);
+                    const QString where = QStringLiteral("%1x%2 %3 %4").arg(size.width()).arg(size.height())
+                                              .arg(QLatin1String(mode)).arg(cards);
+                    checkTargets(game.get(), cards);
+                    checkSides(game.get(), QStringLiteral("newGameButton"), where);
+                    if (QTest::currentTestFailed())
+                        return;
+                }
+            }
+        }
+    }
+
+    // Dots and boxes: the fourth side claims a box and goes again, a line
+    // between two boxes can close both, the most boxes wins, and a tap draws
+    // the line nearest it.
+    void dotsAndBoxesClaimsBoxes()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/DotsAndBoxes.qml"), {1152, 752}));
+        QVERIFY(game);
+        game->setProperty("size", 3);
+        QCOMPARE(game->property("lineCount").toInt(), 24);
+        QCOMPARE(eval(game.get(), QStringLiteral("lines.length + ',' + boxes.length")).toString(), QStringLiteral("24,9"));
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("X"));
+        QVERIFY(eval(game.get(), QStringLiteral("(() => { const s = sidesOf(0); return play(s[0]) && play(s[1]) && play(s[2]) })()")).toBool());
+        QCOMPARE(game->property("turn").toString(), QStringLiteral("O"));
+        QVERIFY(eval(game.get(), QStringLiteral("play(sidesOf(0)[3])")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("boxes[0] === 'O' && turn === 'O' && oBoxes === 1")).toBool());
+        QVERIFY(!eval(game.get(), QStringLiteral("play(sidesOf(0)[0])")).toBool());
+        // The line between two boxes closes both.
+        eval(game.get(), QStringLiteral("sidesOf(4).concat(sidesOf(5)).filter(l => l !== downLine(1, 2)).forEach(l => place(l))"));
+        const QString closer = game->property("turn").toString();
+        QVERIFY(eval(game.get(), QStringLiteral("place(downLine(1, 2))")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("boxes[4] === '%1' && boxes[5] === '%1' && turn === '%1'").arg(closer)).toBool());
+        // The rest of the lines: the game is over and the winner scores.
+        eval(game.get(), QStringLiteral("for (let l = 0; l < lineCount; ++l) place(l)"));
+        QVERIFY(game->property("over").toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("xBoxes + oBoxes === 9 && score[winner] === 1 && winner !== 'draw'")).toBool());
+
+        // By touch: just under the first dot's line across, then beside the
+        // left edge of the second row.
+        eval(game.get(), QStringLiteral("newRound(); turn = 'X'"));
+        QQuickItem *board = find(game.get(), QStringLiteral("tap:board"));
+        QVERIFY(board);
+        const qreal pad = game->property("pad").toReal(), box = game->property("box").toReal();
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, board->mapToScene(QPointF(pad + box * 0.5, pad + box * 0.2)).toPoint());
+        QVERIFY(eval(game.get(), QStringLiteral("lines[acrossLine(0, 0)] === 'X' && lastLine === acrossLine(0, 0)")).toBool());
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, board->mapToScene(QPointF(pad * 0.5, pad + box * 1.5)).toPoint());
+        QVERIFY(eval(game.get(), QStringLiteral("lines[downLine(1, 0)] === 'O'")).toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("lines.filter(l => l !== '').length")).toInt(), 2);
+    }
+
+    // Hard McFly takes every box it can while there are safe lines, never
+    // gives a box its third side while it has a choice, beats a player who
+    // draws at random, and at the end gives a chain of two away to keep the
+    // long one that's left.
+    void dotsAndBoxesHardMcFly()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/DotsAndBoxes.qml"), {1152, 752}));
+        QVERIFY(game);
+        game->setProperty("thinkMs", 60000);
+        game->setProperty("size", 3);
+        game->setProperty("hard", true);
+        game->setProperty("vsComputer", true);
+        // Thirty games against random lines, McFly checked at every move.
+        const QVariant result = eval(game.get(), QStringLiteral(
+            "(() => { let bad = 0, won = 0; for (let g = 0; g < 30; ++g) { newRound(); while (!over) { const s = sortLines(lines);"
+            " if (turn === 'O') { const l = bestLine();"
+            " if (s.closing.length && s.safe.length && s.closing.indexOf(l) < 0) ++bad;"
+            " if (!s.closing.length && s.safe.length && s.safe.indexOf(l) < 0) ++bad; place(l) }"
+            " else { const free = []; for (let l = 0; l < lineCount; ++l) if (lines[l] === '') free.push(l);"
+            " place(free[Math.floor(Math.random() * free.length)]) } } if (winner === 'O') ++won } return bad + ',' + won })()"));
+        const QStringList counts = result.toString().split(QLatin1Char(','));
+        QCOMPARE(counts.value(0), QStringLiteral("0"));
+        QVERIFY2(counts.value(1).toInt() >= 24, qPrintable(result.toString()));
+
+        // Box 0 closes into box 1 (the rest of box 1 open to the edge), and
+        // the six other open boxes make one long chain; box 4 is taken.
+        eval(game.get(), QStringLiteral(
+            "(() => { const L = emptyLines(); [acrossLine(0, 0), downLine(0, 0), acrossLine(1, 0), acrossLine(1, 1), downLine(0, 2), downLine(0, 3),"
+            " downLine(1, 1), downLine(1, 2), acrossLine(2, 1), downLine(1, 3), downLine(2, 0), acrossLine(3, 0), acrossLine(3, 1),"
+            " downLine(2, 3), acrossLine(3, 2)].forEach(l => L[l] = 'X'); const B = emptyBoxes(); B[4] = 'X'; lines = L; boxes = B; turn = 'X' })()"));
+        QVERIFY(eval(game.get(), QStringLiteral("(() => { const s = sortLines(lines); return s.safe.length === 0 && s.closing.length === 1 })()")).toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("bestLine()")).toInt(), eval(game.get(), QStringLiteral("acrossLine(0, 1)")).toInt());
+        // With nothing left after them, it takes the two.
+        eval(game.get(), QStringLiteral(
+            "(() => { const L = lines.slice(); for (let l = 0; l < lineCount; ++l) if (L[l] === '' && l !== downLine(0, 1) && l !== acrossLine(0, 1)) L[l] = 'X';"
+            " lines = L; boxes = boxes.map((o, i) => i === 0 || i === 1 ? '' : 'X') })()"));
+        QCOMPARE(eval(game.get(), QStringLiteral("bestLine()")).toInt(), eval(game.get(), QStringLiteral("downLine(0, 1)")).toInt());
+        // Easy McFly draws its lines too, and hands the turn back.
+        game->setProperty("thinkMs", 10);
+        game->setProperty("hard", false);
+        eval(game.get(), QStringLiteral("turn = 'O'"));
+        QTRY_VERIFY(eval(game.get(), QStringLiteral("turn === 'X' || over")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("lines.some(l => l === 'O')")).toBool());
+    }
+
+    // A box at least 64 px on every panel, every size and both modes, the
+    // board in the stage, the controls beside it or over it.
+    void dotsAndBoxesFitsEveryPanel()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/DotsAndBoxes.qml"), {768, 372}));
+        QVERIFY(game);
+        game->setProperty("thinkMs", 60000);
+        // Two digits of wins on the chips.
+        eval(game.get(), QStringLiteral("score = { X: 12, O: 10, draw: 0 }"));
+        for (const QSize size : stages()) {
+            game->setSize(size);
+            for (bool vsComputer : {false, true}) {
+                game->setProperty("vsComputer", vsComputer);
+                eval(game.get(), QStringLiteral("score = { X: 12, O: 10, draw: 0 }"));
+                for (int boxes : {3, 4, 5}) {
+                    game->setProperty("size", boxes);
+                    eval(game.get(), QStringLiteral("score = { X: 12, O: 10, draw: 0 }"));
+                    QTest::qWait(20);
+                    const QString where = QStringLiteral("%1x%2 %3x%3%4").arg(size.width()).arg(size.height()).arg(boxes)
+                                              .arg(vsComputer ? QStringLiteral(" vs McFly") : QString());
+                    QVERIFY2(game->property("box").toReal() >= 64, qPrintable(where));
+                    checkTargets(game.get(), 1);
+                    checkSides(game.get(), QStringLiteral("newRoundButton"), where);
+                    if (QTest::currentTestFailed())
+                        return;
+                }
+            }
+        }
+    }
+
+    // Solitaire: the deal, the deck one card or three at a time and turned
+    // back over, the rules a tap moves by, Undo, the cards going home on
+    // their own, and the wins, the fewest moves and the game kept.
+    void solitaireDealsAndPlays()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/Solitaire.qml"), {1152, 752}));
+        QVERIFY(game);
+        game->setProperty("drawThree", false);
+        eval(game.get(), QStringLiteral("deal(7)"));
+        QCOMPARE(eval(game.get(), QStringLiteral("tableau.map(t => t.length).join() + '/' + hidden.join()")).toString(),
+                 QStringLiteral("1,2,3,4,5,6,7/0,1,2,3,4,5,6"));
+        QVERIFY(eval(game.get(), QStringLiteral("stock.length === 24 && waste.length === 0 && moves === 0 && home === 0")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("validGame({ stock: stock, waste: waste, foundations: foundations, tableau: tableau, hidden: hidden })")).toBool());
+        const QString dealt = eval(game.get(), QStringLiteral("JSON.stringify(tableau)")).toString();
+        // The app's SolitaireTests hold its deal for seed 7 to this one.
+        QCOMPARE(dealt, QStringLiteral("[[39],[0,51],[8,32,15],[33,19,6,5],[49,25,7,43,17],[26,1,13,31,20,27],[37,10,29,24,4,9,23]]"));
+        eval(game.get(), QStringLiteral("deal(7)"));
+        QCOMPARE(eval(game.get(), QStringLiteral("JSON.stringify(tableau)")).toString(), dealt); // the same seed, the same deal
+
+        // The deck, a card at a time; empty, a tap turns the waste back over.
+        QVERIFY(eval(game.get(), QStringLiteral("draw() && waste.length === 1 && stock.length === 23 && moves === 1")).toBool());
+        eval(game.get(), QStringLiteral("while (stock.length) draw()"));
+        const int first = eval(game.get(), QStringLiteral("waste[0]")).toInt();
+        QVERIFY(eval(game.get(), QStringLiteral("draw() && stock.length === 24 && waste.length === 0")).toBool());
+        QCOMPARE(eval(game.get(), QStringLiteral("stock[stock.length - 1]")).toInt(), first);
+        // Three at a time: a new game.
+        game->setProperty("drawThree", true);
+        QVERIFY(eval(game.get(), QStringLiteral("moves === 0 && draw() && waste.length === 3 && stock.length === 21")).toBool());
+        game->setProperty("drawThree", false);
+
+        // The ace of spades on the waste; the king of spades alone in the
+        // first column; the queen of hearts on a face-down card in the
+        // second; the king of hearts on one in the fourth.
+        eval(game.get(), QStringLiteral("stock = [40, 41]; waste = [0]; foundations = [[], [], [], []];"
+                                        " tableau = [[12], [5, 24], [], [7, 25], [], [], []]; hidden = [0, 1, 0, 1, 0, 0, 0]; history = []; moves = 0"));
+        QVERIFY(eval(game.get(), QStringLiteral("tapWaste() && foundations[0].join() === '0' && waste.length === 0")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("tapColumn(1, 1) && tableau[0].join() === '12,24' && tableau[1].join() === '5' && hidden[1] === 0")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("undo() && tableau[0].join() === '12' && tableau[1].join() === '5,24' && hidden[1] === 1 && moves === 1")).toBool());
+        // A tap on a face-down card moves the face-up one on it.
+        QVERIFY(eval(game.get(), QStringLiteral("tapColumn(1, 0) && tableau[0].join() === '12,24'")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("undo()")).toBool());
+        // A king to an empty column, from on a face-down card; not when it's
+        // the whole of a column already.
+        QVERIFY(eval(game.get(), QStringLiteral("tapColumn(3, 1) && tableau[2].join() === '25' && tableau[3].join() === '7' && hidden[3] === 0")).toBool());
+        QVERIFY(!eval(game.get(), QStringLiteral("tapColumn(2, 0)")).toBool());
+        // A red card on a red one, or a card a rank too low, stays put.
+        QVERIFY(!eval(game.get(), QStringLiteral("fitsColumn(24, 2) || fitsColumn(23, 0) || fitsColumn(11, 0)")).toBool());
+        QVERIFY(eval(game.get(), QStringLiteral("fitsColumn(24, 0) && fitsColumn(37, 0)")).toBool());
+        // A home card comes back down onto a column.
+        eval(game.get(), QStringLiteral("foundations = [[], [13, 14], [], []]; tableau = [[2], [], [], [], [], [], []]; hidden = [0, 0, 0, 0, 0, 0, 0]"));
+        QVERIFY(eval(game.get(), QStringLiteral("tapHome(1) && tableau[0].join() === '2,14' && foundations[1].join() === '13'")).toBool());
+
+        // Every card face up and the deck gone: they go home on their own,
+        // which isn't a move, and the win is counted.
+        const int wins = game->property("wins").toInt();
+        game->setProperty("finishMs", 5);
+        eval(game.get(), QStringLiteral("history = []; moves = 40; foundations = [[], [], [], []]; waste = []; stock = [];"
+                                        " tableau = [0, 1, 2, 3].map(s => Array.from({ length: 13 }, (_, i) => s * 13 + 12 - i)).concat([[], [], []]);"
+                                        " hidden = [0, 0, 0, 0, 0, 0, 0]"));
+        QVERIFY(game->property("finishing").toBool());
+        QTRY_VERIFY(game->property("won").toBool());
+        QCOMPARE(game->property("moves").toInt(), 40);
+        QCOMPARE(game->property("wins").toInt(), wins + 1);
+        QVERIFY(game->property("fewest").toInt() > 0 && game->property("fewest").toInt() <= 40);
+        QCOMPARE(game->property("statusText").toString(), QStringLiteral("You win!"));
+        QVERIFY(!eval(game.get(), QStringLiteral("undo() || draw()")).toBool());
+
+        // Opened again: the wins kept, and a new game after a win.
+        QScopedPointer<QQuickItem> again(create(QStringLiteral("qml/games/Solitaire.qml"), {1152, 752}));
+        QVERIFY(again);
+        QCOMPARE(again->property("wins").toInt(), wins + 1);
+        QCOMPARE(again->property("fewest").toInt(), game->property("fewest").toInt());
+        QVERIFY(eval(again.get(), QStringLiteral("stock.length === 24 && home === 0 && !won")).toBool());
+        // A game in progress, as it was left; draw three too.
+        again->setProperty("drawThree", true);
+        eval(again.get(), QStringLiteral("deal(3); draw(); draw()"));
+        const QString left = eval(again.get(), QStringLiteral("JSON.stringify([stock, waste, foundations, tableau, hidden, moves])")).toString();
+        QScopedPointer<QQuickItem> later(create(QStringLiteral("qml/games/Solitaire.qml"), {1152, 752}));
+        QVERIFY(later);
+        QCOMPARE(eval(later.get(), QStringLiteral("JSON.stringify([stock, waste, foundations, tableau, hidden, moves])")).toString(), left);
+        QVERIFY(later->property("drawThree").toBool());
+        later->setProperty("drawThree", false);
+        // A saved game that's not a whole deck isn't loaded.
+        QVERIFY(!eval(later.get(), QStringLiteral("validGame({ stock: [1, 1], waste: [], foundations: [[], [], [], []], tableau: [[], [], [], [], [], [], []], hidden: [0, 0, 0, 0, 0, 0, 0] })")).toBool());
+    }
+
+    // The deck, the waste, four home piles and seven columns: thirteen tap
+    // targets at least 64 px on every panel; a long column still fits; the
+    // controls beside the table or over it; taps move cards.
+    void solitaireFitsAndPlaysByTouch()
+    {
+        QScopedPointer<QQuickItem> game(create(QStringLiteral("qml/games/Solitaire.qml"), {768, 372}));
+        QVERIFY(game);
+        game->setProperty("glide", false);
+        for (const QSize size : stages()) {
+            game->setSize(size);
+            for (bool three : {false, true}) {
+                game->setProperty("drawThree", three);
+                // Six face down and twelve face up in the last column.
+                eval(game.get(), QStringLiteral("(() => { deal(11); const all = stock.concat(...tableau);"
+                                                " tableau = [all.slice(0, 1), all.slice(1, 3), all.slice(3, 6), all.slice(6, 10), all.slice(10, 15), all.slice(15, 21), all.slice(21, 39)];"
+                                                " stock = all.slice(39, 49); waste = all.slice(49); hidden = [0, 1, 2, 3, 4, 5, 6] })()"));
+                QTest::qWait(20);
+                const QString where = QStringLiteral("%1x%2%3").arg(size.width()).arg(size.height()).arg(three ? QStringLiteral(" draw 3") : QString());
+                checkTargets(game.get(), 13);
+                if (QTest::currentTestFailed())
+                    return;
+                QVERIFY2(eval(game.get(), QStringLiteral("places[tableau[6][17]].y + cardHeight <= height + 0.5")).toBool(), qPrintable(where));
+                QVERIFY2(eval(game.get(), QStringLiteral("spacing(6).open >= cardHeight * 0.12")).toBool(), qPrintable(where));
+                QVERIFY2(eval(game.get(), QStringLiteral("places[waste[waste.length - 1]].x + cardWidth <= tableLeft + 3 * slot")).toBool(), qPrintable(where));
+                if (game->property("side").toBool()) {
+                    QVERIFY2(eval(game.get(), QStringLiteral("tableLeft + 7 * slot <= stack.x + 0.5 && stack.childrenRect.width <= stack.width + 0.5"
+                                                             " && stack.childrenRect.height <= height + 0.5")).toBool(), qPrintable(where));
+                } else {
+                    QVERIFY2(eval(game.get(), QStringLiteral("header.y + header.height <= tableY && header.childrenRect.width <= header.width + 0.5"
+                                                             " && tableLeft >= 0 && tableLeft + 7 * slot <= width + 0.5")).toBool(), qPrintable(where));
+                }
+            }
+        }
+        game->setProperty("drawThree", false);
+
+        // By touch, on the 7" panel: the deck, then a card in a column.
+        game->setSize(QSizeF(768, 372));
+        eval(game.get(), QStringLiteral("deal(5)"));
+        QQuickItem *stock = find(game.get(), QStringLiteral("tap:stock"));
+        QVERIFY(stock);
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, stock->mapToScene(QPointF(stock->width() / 2, stock->height() / 2)).toPoint());
+        QCOMPARE(eval(game.get(), QStringLiteral("waste.length")).toInt(), 1);
+        eval(game.get(), QStringLiteral("stock = [40, 41]; waste = [0]; foundations = [[], [], [], []]; history = [];"
+                                        " tableau = [[12], [5, 24], [1, 2, 3, 4, 6, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25],"
+                                        " [26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38], [39, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51], [7], []];"
+                                        " hidden = [0, 1, 20, 12, 10, 0, 0]"));
+        QTest::qWait(20);
+        // The queen of hearts, a tap on its band.
+        const QPointF queen = game->mapToScene(QPointF(eval(game.get(), QStringLiteral("places[24].x + cardWidth / 2")).toReal(),
+                                                       eval(game.get(), QStringLiteral("places[24].y + cardHeight * 0.1")).toReal()));
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, queen.toPoint());
+        QCOMPARE(eval(game.get(), QStringLiteral("tableau[0].join()")).toString(), QStringLiteral("12,24"));
+        // The waste's ace, home.
+        QQuickItem *waste = find(game.get(), QStringLiteral("tap:waste"));
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, waste->mapToScene(QPointF(game->property("slot").toReal() / 2, waste->height() / 2)).toPoint());
+        QCOMPARE(eval(game.get(), QStringLiteral("foundations[0].join()")).toString(), QStringLiteral("0"));
     }
 
     // A button laid out smaller than its padding and label hands Scoop

@@ -223,6 +223,11 @@ qt_add_qml_module(mcfly-display
         qml/games/ScoopAwning.qml
         qml/games/ScoopStock.qml
         qml/games/scoops.js
+        qml/games/Pairs.qml
+        qml/games/DotsAndBoxes.qml
+        qml/games/Solitaire.qml
+        qml/games/SolitaireCard.qml
+        qml/games/CardSuit.qml
     RESOURCES
         resources/demo/feed.json
         resources/fonts/Exo2-BlackItalic.ttf

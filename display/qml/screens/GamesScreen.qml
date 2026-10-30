@@ -21,7 +21,9 @@ import McFly.Core
 // Number after Araib Karim's iOS game, none of its code or pictures). Scoop
 // Shop and Penguin March run against the clock: a game
 // with a pause() function is paused while how to play or the assistant
-// panel covers it.
+// panel covers it. Solitaire (Klondike), Pairs and Dots and Boxes are
+// traditional games written for McFly; Pairs plays with Color by Number's
+// pictures.
 Item {
     id: games
     property bool shown: true
@@ -122,6 +124,33 @@ Item {
             credit: qsTr("Made for McFly, after Araib Karim's Color by Number for iOS. The pictures are ours."),
             source: "../games/ColorByNumber.qml",
             art: artColors
+        },
+        {
+            title: qsTr("Solitaire"),
+            tagline: qsTr("The classic patience, a tap a move."),
+            howTo: qsTr("Build each suit up from the ace to the king on the four piles at the top right. In the seven columns, a card goes on one a rank higher in the other colour, and only a king, or a run under one, goes in an empty column. Tap a card to move it, and every card on it, to the best place it can go. Tap the deck to turn over one card, or three; when it runs out, tap it to turn the pile back over. Undo takes back a move. Once every card is face up, the rest go home on their own. Your game is saved as you go."),
+            players: qsTr("1 player"),
+            credit: qsTr("Klondike, a traditional card game. Made for McFly, the cards too."),
+            source: "../games/Solitaire.qml",
+            art: artSolitaire
+        },
+        {
+            title: qsTr("Pairs"),
+            tagline: qsTr("Turn two cards over and find the pairs."),
+            howTo: qsTr("Every picture is on two cards, face down. Turn two over: a pair stays up and you go again, and two that don't match turn back, so remember where they were. Play alone and clear the board in as few turns as you can, take turns with someone at the screen, or play McFly: Easy forgets, Hard remembers everything it has seen. Pick 12, 16 or 20 cards."),
+            players: qsTr("1–2 players"),
+            credit: qsTr("A traditional memory game. Made for McFly, with Color by Number's pictures."),
+            source: "../games/Pairs.qml",
+            art: artPairs
+        },
+        {
+            title: qsTr("Dots and Boxes"),
+            tagline: qsTr("Close a box to claim it."),
+            howTo: qsTr("Take turns drawing a line between two dots side by side: tap near where it should go. Draw the fourth side of a box to claim it, then go again. The most boxes wins. Play someone at the screen, or play McFly: Easy is beatable, Hard knows how to play the chains."),
+            players: qsTr("1–2 players"),
+            credit: qsTr("A traditional pencil-and-paper game. Made for McFly."),
+            source: "../games/DotsAndBoxes.qml",
+            art: artDots
         }
     ]
 
@@ -537,6 +566,142 @@ Item {
                     y: scene.height * 0.7 - height * 26 / 28 - (modelData.up || 0) * scene.unit
                     kind: modelData.kind
                     dark: Theme.dark
+                }
+            }
+        }
+    }
+
+    Component {
+        id: artSolitaire
+        Rectangle {
+            id: felt
+            radius: Theme.radiusSm
+            color: Theme.sunken
+            readonly property real cardHeight: Math.min(height * 0.7, width / 4.2 * 1.4)
+            // A hand of five, fanned: a run down from the king, as the
+            // columns build.
+            Repeater {
+                model: [[12, -18], [24, -9], [49, 0], [35, 9], [8, 18]]
+                delegate: SolitaireCard {
+                    required property var modelData
+                    required property int index
+                    card: modelData[0]
+                    width: felt.cardHeight / 1.4
+                    height: felt.cardHeight
+                    x: (felt.width - width) / 2 + (index - 2) * width * 0.38
+                    y: (felt.height - height) / 2 + Math.abs(index - 2) * height * 0.05
+                    rotation: modelData[1]
+                    transformOrigin: Item.Bottom
+                }
+            }
+        }
+    }
+    Component {
+        id: artPairs
+        Rectangle {
+            radius: Theme.radiusSm
+            color: Theme.sunken
+            Grid {
+                id: pairsGrid
+                readonly property real cell: Math.min(parent.width / 4.6, parent.height / 2.4)
+                anchors.centerIn: parent
+                columns: 4
+                spacing: cell * 0.1
+                // Two of the same picture face up, the rest face down.
+                Repeater {
+                    model: [false, true, false, false, false, false, true, false]
+                    delegate: Rectangle {
+                        required property bool modelData
+                        width: pairsGrid.cell
+                        height: width
+                        radius: Math.min(Theme.radiusSm, width * 0.18)
+                        color: Theme.dark ? "#2C2C31" : "#FFFFFF"
+                        Rectangle {
+                            visible: !parent.modelData
+                            anchors.fill: parent
+                            radius: parent.radius
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: Qt.lighter(Theme.accent, 1.15) }
+                                GradientStop { position: 1; color: Theme.accent }
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: parent.width * 0.42
+                                height: width
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: Math.max(2, parent.width * 0.05)
+                                border.color: Qt.rgba(1, 1, 1, 0.55)
+                            }
+                        }
+                        Loader {
+                            active: parent.modelData
+                            anchors.fill: parent
+                            anchors.margins: parent.width * 0.12
+                            sourceComponent: ColorByNumberBoard {
+                                picture: indexOf("pip")
+                                preview: true
+                                dark: Theme.dark
+                                saved: "1".repeat(total)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Component {
+        id: artDots
+        Rectangle {
+            radius: Theme.radiusSm
+            color: Theme.sunken
+            Item {
+                id: dots
+                readonly property real box: Math.min(parent.width, parent.height) * 0.78 / 3
+                readonly property real thick: Math.max(3, box * 0.09)
+                width: box * 3
+                height: box * 3
+                anchors.centerIn: parent
+                // Two boxes claimed, one each.
+                Repeater {
+                    model: [[0, 0, "#F07F5A"], [1, 1, "#4F7CF7"]]
+                    delegate: Rectangle {
+                        required property var modelData
+                        x: modelData[0] * dots.box + dots.thick / 2
+                        y: modelData[1] * dots.box + dots.thick / 2
+                        width: dots.box - dots.thick
+                        height: width
+                        radius: width * 0.15
+                        color: modelData[2]
+                        opacity: 0.3
+                    }
+                }
+                // [column, row, across, colour]: the lines drawn so far.
+                Repeater {
+                    model: [[0, 0, true, "#F07F5A"], [0, 1, true, "#4F7CF7"], [0, 0, false, "#4F7CF7"], [1, 0, false, "#F07F5A"],
+                            [1, 1, true, "#F07F5A"], [1, 2, true, "#4F7CF7"], [1, 1, false, "#F07F5A"], [2, 1, false, "#4F7CF7"],
+                            [2, 0, true, "#4F7CF7"], [2, 3, true, "#F07F5A"], [0, 2, false, "#4F7CF7"], [3, 2, false, "#F07F5A"]]
+                    delegate: Rectangle {
+                        required property var modelData
+                        x: modelData[0] * dots.box - (modelData[2] ? 0 : dots.thick / 2)
+                        y: modelData[1] * dots.box - (modelData[2] ? dots.thick / 2 : 0)
+                        width: modelData[2] ? dots.box : dots.thick
+                        height: modelData[2] ? dots.thick : dots.box
+                        radius: dots.thick / 2
+                        color: modelData[3]
+                    }
+                }
+                Repeater {
+                    model: 16
+                    delegate: Rectangle {
+                        required property int index
+                        x: (index % 4) * dots.box - width / 2
+                        y: Math.floor(index / 4) * dots.box - height / 2
+                        width: Math.max(8, dots.box * 0.16)
+                        height: width
+                        radius: width / 2
+                        color: Theme.text
+                    }
                 }
             }
         }

@@ -64,6 +64,17 @@ the build turns into a string in the app. `tests/tst_colors.cpp` checks
 every one: the shape, the legend, at most nine colours, any two far enough
 apart to tell their swatches apart, and the edges filled.
 
+Solitaire (`qml/games/Solitaire.qml`, its cards drawn by
+`SolitaireCard.qml` and `CardSuit.qml`), Pairs (`qml/games/Pairs.qml`) and
+Dots and Boxes (`qml/games/DotsAndBoxes.qml`) are traditional games, the
+rules nobody's, written for this app: Klondike patience, played a tap a
+move with Undo; a memory game with Color by Number's pictures, alone or
+against someone or McFly; and the pencil-and-paper game, against someone or
+McFly, whose Hard play keeps control of the chains. The cards, the suits and
+the boards are QML shapes drawn for McFly. None of the three runs a clock
+between moves: a timer only while a missed pair waits, McFly plays, or
+Solitaire's last cards go home.
+
 The iPhone and Mac app has all of these but Same Game and Maroon, written
 again in Swift (`apple/McFlyKit/Sources/McFlyKit/Games` for the rules,
 `apple/McFly/Games` for the screens), with the same rules, levels and
@@ -72,8 +83,10 @@ the file, and the app shows them under how to play. `apple/McFlyKit/Tests`
 hold the Swift to the display: Four in a Row's search against
 `FourInARowEngine`'s node counts, Scoop Shop's orders against `scoops.js`,
 Penguin March's terrain and solution replays, cell for cell and tick for
-tick, against `PenguinSim`, and Color by Number's pictures, zoom, pan and
-sweeps against `ColorByNumber.cpp`; the app reads a copy of
+tick, against `PenguinSim`, Color by Number's pictures, zoom, pan and
+sweeps against `ColorByNumber.cpp`, Solitaire's deal for a seed against
+`Solitaire.qml`'s, and Dots and Boxes' Hard play in the position
+`tst_games` sets up; the app reads a copy of
 `colorbynumber.txt` that its tests hold to this one byte for byte. Scoop
 Shop's parlour (the awning, the ticket rail, the freezer case and shelves,
 the prep bench) is drawn again in SwiftUI from the same shapes and colours.
@@ -82,8 +95,9 @@ the prep bench) is drawn again in SwiftUI from the same shapes and colours.
 
 Same Game, 2048, Traffic Jam, Scoop Shop and Penguin March keep high scores,
 the 2048 game in progress, Traffic Jam and Penguin March progress, Scoop
-Shop's last shopkeeper and every Color by Number picture as far as it's
-painted in Qt's LocalStorage (SQLite), under
+Shop's last shopkeeper, every Color by Number picture as far as it's
+painted, the Solitaire game in progress with its wins and fewest moves, and
+Pairs' fewest turns for each size of board in Qt's LocalStorage (SQLite), under
 `~/.local/share/McFly/display/QML/OfflineStorage` on the Pi
 (`~/Library/Application Support/McFly/display/...` on a Mac). This needs the
 `qml6-module-qtquick-localstorage` and `libqt6sql6-sqlite` packages;
