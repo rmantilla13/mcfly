@@ -36,9 +36,9 @@ in `backend/tests/*_test.sql` are the executable version of this section.
 
 | Table | Notes |
 |---|---|
-| `profiles` | One per person with an account: `id` (= auth user), `display_name`. A person reads and updates their own; admins read all. Not created for device accounts (`raw_app_meta_data.kind = 'device'`) |
+| `profiles` | One per person with an account: `id` (= auth user), `display_name`, `message_name` (what the household calls them on Messages, 1–24 characters, one line; null until set with `set_message_name`). A person reads and updates their own; admins read all. Not created for device accounts (`raw_app_meta_data.kind = 'device'`) |
 | `platform_admins` | Who runs McFly. **The first person to sign up becomes an admin** (`handle_new_user` trigger); later people are added with `admin_set_admin`. Read-only to admins |
-| `platform_settings` | One row: `display_name` ('McFly'), `timezone` ('America/Chicago'), `briefs_keep_days` (30), `quotes_keep_days` (90), `news_keep_reports` (14). Readable by displays and admins; written by `admin_update_settings` |
+| `platform_settings` | One row: `display_name` ('McFly'), `timezone` ('America/Chicago'), `briefs_keep_days` (30), `quotes_keep_days` (90), `news_keep_reports` (14), `message_names` (who writes from the displays, at most 8, no two alike; `admin_set_message_names`). Readable by displays and admins; written by `admin_update_settings` |
 
 Helpers: `is_service_role()`, `is_platform_admin()` (true for the service
 role too), `is_device()`, `can_read()` (= device or admin).
@@ -50,6 +50,7 @@ role too), `is_device()`, `can_read()` (= device or admin).
 | `devices` | Paired displays: `id`, `user_id` (its auth user, unique), `name`, `last_seen_at`, `created_at`, `settings` (jsonb, the keys `clean_device_settings` allows). A display reads its own row and may update only `last_seen_at` directly (`devices_guard`), its settings through `device_update_settings`; admins read all. `settings.voice` is also **the account's voice**: the first display's (by `created_at`) that has one is what the console and the Apple app speak with, and a voice they pick is written to every display ([VOICE.md](VOICE.md), One voice everywhere) |
 | `dismissals` | Callouts someone dismissed (migration 20261021000070): `key` (an insight's id, lower-cased: `blocked:<project id>`, `metric:<key>`, `mover:<symbol>`, …), `hide_until` (null: until the project's status or next step changes, which a trigger on `projects` sees to; anything else: the end of today in `platform_settings.timezone`), `dismissed_at`, `device_id`. Displays and admins read; written only by `dismiss(item)` (a paired display or an admin), which also prunes the run-out rows. The display, the console's Today and the app hide a Needs-you project or an insight while its id has a row that hasn't run out |
 | `asks` | Questions agents wait on (migration 20261029000010; §1.4) are answered by a display, as by the person, through `answer_ask(ask, choice, via, question)` (`authenticated`): a paired display's answer is `answered_via` display with its `device_id` (set null when the display is revoked), an admin's app or console (`via` 'console', else app), the service role's assistant. The caller's `via` counts only for an admin. The row is locked while it's checked; `question`, the text the caller showed, refuses the answer with "the agent changed this question; look again" when the agent has changed it since (whitespace aside), and every client sends it |
+| `messages` | The household thread (migration 20261103000010; §1.8): a display writes to it through `send_message(body, sender_name)` and marks the person's replies read through `read_messages(up_to)` (`authenticated`), the fifth and sixth things a display may write |
 | `pairing_codes` | Service role only (RLS on, no policies): `code` (6 digits), `secret_hash`, `device_id`, `claimed_by`, `expires_at` (10 min) |
 
 ### 1.3 Agents
@@ -143,7 +144,8 @@ delete_agent, delete_brief, set_symbol, delete_symbol, delete_news_report,
 rename_device, revoke_device, pair_device (written by pair-device),
 update_settings, set_admin, add_calendar_source, update_calendar_source,
 delete_calendar_source, connect_google_account (written by google-calendar,
-as the admin who began the sign-in), disconnect_google_account.
+as the admin who began the sign-in), disconnect_google_account,
+set_message_names, set_message_name (§1.8).
 
 Service role only, for the functions: `calendar_sources_due(source)` (the
 enabled subscriptions with each Google calendar's account and token),
@@ -182,6 +184,32 @@ written only when their widgets change. A made board belongs to
 
 Audit actions: create_dashboard, edit_dashboard (with set_dashboard and
 delete_dashboard, which treat a made board like any other).
+
+### 1.8 Messages
+
+The people at home write to the person from a display, and the person
+replies from the app or the console (migration 20261103000010). One thread
+for the household. Not an agent feed: there is no `ingest_messages` and
+nothing in AGENTS.md.
+
+| Table | Notes |
+|---|---|
+| `messages` | `id`, `sender_kind` ∈ display (written on a display) · person (the person's reply), `sender_name` (≤40: one of `platform_settings.message_names` in the list's spelling, else the display's own name; for the person their `message_name`, else "Parent"), `body` (1–500 characters, lines but no other control characters), `device_id` (the display; set null when it's revoked), `author` (the auth user, no reference), `via` ∈ display · app · console, `created_at`, `updated_at` (moved by a read and a notification too: screens poll by it), `read_at` (the other side read it), `notified_at` / `notify_error` (a display's message: Apple took its notification for a phone, or why none went). Displays and admins read (`can_read()`). Messages over a year old go (pruned by `send_message`) |
+| `push_tokens` | Service role only (RLS on, no policies): `token` (hex, Apple's), `user_id`, `environment` ∈ sandbox · production (which of Apple's hosts: a debug build's token is a sandbox one), `bundle_id`, `platform` ∈ ios · macos, `created_at`, `updated_at` |
+
+| Function | Who | Does |
+|---|---|---|
+| `send_message(body, sender_name, via)` | a paired display, or an admin's own sign-in | Sends to the thread; the server says who (`sender_kind`, `device_id`, `via`: an admin's `via` is console or app). A display's `sender_name` must be one of the names when names are listed ("pick who is writing: Mia, Leo"); none given, it's the display's name. At most 10 a minute and 60 an hour from one display. The body is trimmed, `\r\n` made `\n`, tabs spaces, runs of blank lines one. Returns the row |
+| `read_messages(up_to)` | the same | Marks the other side's messages read up to and including that one (null: all): a display the person's, the person the displays'. Returns how many |
+| `register_push_token(token, environment, bundle_id, platform)` / `unregister_push_token(token)` | an admin's own sign-in, never a display | The phone that gets notifications; a kept token moves to whoever registers it |
+| `set_message_name(name)` | an admin's own sign-in | Their `profiles.message_name`; blank clears it |
+| `admin_set_message_names(names)` | admins | `platform_settings.message_names`, trimmed, blanks out, at most 8, no two alike (audit `set_message_names`) |
+| `message_push(message)`, `message_notified(message, error)`, `push_token_gone(token)` | service role | For `notify` (§2.7): a display's message as its notification says it with the unread count and every admin's tokens; its outcome; a dead token forgotten |
+
+A display's message is posted to `notify` by the `messages_notify` trigger
+through pg_net, with the project URL and the cron secret from Vault, once
+the insert commits. Without Vault or pg_net (the local test run) nothing is
+sent, and a failure there is only a warning: it never blocks the message.
 
 ## 2. Edge functions
 
@@ -363,6 +391,30 @@ after 10 minutes. After a new picture, ones whose story is gone are removed
 (`orphaned_illustrations()`, service role). Errors: 400 bad body, 401 no
 session, 403 not a reader, 404 no such story.
 
+### 2.7 `notify`
+
+A message from home on the person's phones, through Apple's push service
+(HTTP/2, a provider token signed ES256 with the team's key and kept 50
+minutes). Secrets: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` (the .p8
+file's text; `\n` for its line breaks, or the whole file in base64, also do).
+
+```
+POST { message }          x-mcfly-cron (the messages_notify trigger) → { ok, sent, failed, gone }
+POST { action: "test" }   an admin's JWT → { ok, results: [{ token (its end), environment, status, reason, outcome, message }] }
+```
+
+The notification: the writer as the title, the display under it when
+there's more than one, the message, the unread count from home as the
+badge, `thread-id` mcfly-messages, category `MCFLY_MESSAGE` (the app's Reply
+action), and `message_id`. Each token goes to its own environment's host
+with its own bundle id as the topic. A token Apple calls no good (410,
+BadDeviceToken, DeviceTokenNotForTopic) is forgotten; an expired provider
+token is made anew once. The outcome is kept on the message
+(`message_notified`): "notifications aren't set up on the server yet"
+without the secrets, "no phone has turned on notifications yet" without a
+token. Errors: 400 bad body, 401 not the scheduler (or no session for
+`test`), 403 not an admin, 404 no phone of yours (`test`), 503 not set up.
+
 ## 3. Pi display
 
 Qt 6 app (`display/`). Settings: `MCFLY_SUPABASE_URL`, `MCFLY_SUPABASE_ANON_KEY`
@@ -389,6 +441,23 @@ shown on Home's timeline; when a reminder's time comes (or came in the last
 5 minutes), a card at the top of the screen and the voice service read it out
 once (`FeedStore.reminderDue`). After an answer whose `done` has `changed`, it
 syncs at once.
+
+Messages (the ninth screen, `--screen messages`; optional, so an older
+backend shows "Messages aren't set up yet"): `MessageStore` reads the
+thread once, then only what changed (`updated_at` after the newest seen
+less 30 s, rows de-duplicated by id), every 5 s while Messages is open or
+for five minutes after a send, else every 30 s; `message_names` with the
+first read and every tenth. Who's writing is a button a name (a name stays
+picked until the screen goes idle); a message is typed, said (the mic fills
+the box through the voice service, never the assistant) or tapped from the
+quick row. It shows at once ("Sending…") and stays with why it didn't go,
+a tap to try again. Under home's newest: Sent, "On Dad's phone"
+(`notified_at`), "Seen by Dad" (`read_at`). On screen and uncovered, the
+person's replies are marked read (`read_messages`). A reply seen for the
+first time elsewhere is a card at the top of the screen with Reply, read out
+once; it wakes the screen unless the screen is asleep, where it waits under
+the sleep cover. The rail's Messages carries the unread count. Asks never
+show on Messages.
 
 ## 4. Apple app
 
@@ -423,6 +492,18 @@ person's account (email + password or magic link, supabase-swift) and then:
 - shows the open `asks` at the top of Home, a button per choice, and answers
   one with `answer_ask` (`via` app) after a five-second undo, as the
   display does;
+- Messages (Home's card when home wrote, More on the iPhone, the sidebar on
+  the Mac): the thread read once, then polled every 5 s while open; a reply
+  goes through `send_message` (`via` app) and shows at once, with Retry if
+  it didn't go; home's messages are marked read as the thread shows (the
+  badge follows). Who writes: what the household calls you
+  (`set_message_name`) and the displays' names (`admin_set_message_names`),
+  and a test notification. On the iPhone, after sign-in, McFly asks to
+  notify, registers its token (`register_push_token`, sandbox for a debug
+  build, else production; again each launch, dropped on sign-out); a
+  notification's tap opens Messages, its Reply sends from the lock screen.
+  The Mac has no pushes: while open it polls every 30 s and notifies for
+  itself;
 - plays the display's games (Games), but for Same Game and Maroon in
   Trouble: on the device only, scores and progress in `UserDefaults`, nothing
   sent to the server.

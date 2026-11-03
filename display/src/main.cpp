@@ -28,6 +28,7 @@
 #include "models/Assistant.h"
 #include "models/ArticleReader.h"
 #include "models/FeedStore.h"
+#include "models/MessageStore.h"
 #include "models/SettingsBridge.h"
 #include "models/HomeGlance.h"
 #include "models/QrImageProvider.h"
@@ -133,7 +134,7 @@ int main(int argc, char *argv[])
     QCommandLineOption demo("demo", "Ignore backend settings and show sample data.");
     // Read by Main.qml; registered here so the parser doesn't reject it.
     QCommandLineOption noKeyboard("no-keyboard", "Don't load the on-screen keyboard.");
-    QCommandLineOption screen("screen", "Open on this screen: home, briefs, markets, news, projects, boards, calendar, games, setup, saver, ask, settings, "
+    QCommandLineOption screen("screen", "Open on this screen: home, briefs, markets, news, projects, boards, calendar, games, messages, setup, saver, ask, settings, "
                                       "settings/<tab> (screen, voice, wifi, account, system, admin) or admin.", "name");
     QCommandLineOption screenshot("screenshot", "Save a picture of the window to <file> after a moment and quit.", "file");
     QCommandLineOption size("size", "Window size for --windowed, like 800x480 (default 1280x800).", "WxH");
@@ -160,6 +161,7 @@ int main(int argc, char *argv[])
 
     FeedStore store(&client, parser.isSet(demo));
     ArticleReader reader(&client, parser.isSet(demo));
+    MessageStore messages(&client, &store); // the household thread (Messages)
 
     // The on-device voice service (wake word, speech in and out) is optional.
     QString voiceUrl = setting(settings, "MCFLY_VOICE_URL", "voice/url");
@@ -187,6 +189,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Voice", &voice);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", &glance);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Reader", &reader);
+    qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Messages", &messages);
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Perf", &perf);
     FourInARowEngine fourInARow; // McFly's look-ahead in the Games tab's Four in a Row
     qmlRegisterSingletonInstance("McFly.Core", 1, 0, "FourInARowEngine", &fourInARow);

@@ -72,6 +72,15 @@ export function BackendStatusCard({ status }: { status: BackendStatus }) {
               <>Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET under Edge Functions → Secrets{dash("functions/secrets")} How to get them: docs/ADMIN.md, Google Calendar.</>
             )}
           </Row>
+          <Row ok={status.secrets ? secret("APNS_KEY_ID") && secret("APNS_TEAM_ID") && secret("APNS_PRIVATE_KEY") : null} title="iPhone notifications (Messages)">
+            {status.secrets == null ? (
+              "Couldn't check."
+            ) : secret("APNS_KEY_ID") && secret("APNS_TEAM_ID") && secret("APNS_PRIVATE_KEY") ? (
+              "APNS_KEY_ID, APNS_TEAM_ID and APNS_PRIVATE_KEY are set."
+            ) : (
+              <>Add APNS_KEY_ID, APNS_TEAM_ID and APNS_PRIVATE_KEY under Edge Functions → Secrets{dash("functions/secrets")} How to get them: docs/ADMIN.md, Messages and notifications.</>
+            )}
+          </Row>
           <Row ok={!!scheduled} title="Schedules (calendars every 15 min, bots every 5)">
             {scheduled ? (
               <>

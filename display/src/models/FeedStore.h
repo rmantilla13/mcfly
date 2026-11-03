@@ -139,6 +139,11 @@ public:
     // Sends a patch of this display's settings to the server
     // (device_update_settings). Live mode only.
     void pushDeviceSettings(const QVariantMap &patch);
+    // Runs fn with a session, refreshing it first when there is none.
+    // onFail runs instead when fn won't: the refresh failed, or the display
+    // was re-paired (or signed out) meanwhile. MessageStore reads and writes
+    // the thread through it too.
+    void withSession(std::function<void()> fn, std::function<void()> onFail = {});
     QVariantList briefs() const { return m_briefs; }
     QVariantMap latestBrief() const { return m_latestBrief; }
     QVariantList quotes() const { return m_quotes; }
@@ -283,10 +288,6 @@ private:
     void setOnline(bool online, const QString &error = {});
     void loadDemo();
     void loadLive();
-    // Runs fn with a session, refreshing it first when there is none.
-    // onFail runs instead when fn won't: the refresh failed, or the display
-    // was re-paired (or signed out) meanwhile.
-    void withSession(std::function<void()> fn, std::function<void()> onFail = {});
     void retrySoon();
     void stopRetrying();
     void checkIn();

@@ -38,6 +38,7 @@ The same account signs in on the iPhone and the Mac app.
 | Page | What you do |
 |---|---|
 | Today | The display's Home on the web: what the agents are asking you first (a tile per question with a button per choice; a click answers it after six seconds unless the toast's Undo takes it back, as on the display), then the greeting and clock, what's up next, anything blocked, the markets, and today in time order (the Pulse, briefs, project updates and events), scrolled to now. Same rules as the display (`lib/today.ts`, tested in `tests/today.test.mjs`); refreshes every minute |
+| Messages | The household thread: what the family wrote on the display (left, under their names) and your replies (right, signed with your name, "Seen at home" once a display showed them). Polled every 5 seconds while the tab is in front; home's messages are marked read as they show. **Who writes**: the names on the display's "Who's writing?" buttons (none: messages carry the display's name) and what they call you. **Notifications**: send a test one to your phones. See [Messages and notifications](#messages-and-notifications) |
 | Ambient (`/ambient`) | The display's ambient screen saver full screen, for a spare monitor or a tablet: the display's backdrop (the moving gradient with an aurora at night, or the sky chosen under Displays → Customize) with its weather over it (snow, petals, fireflies or leaves, by the season where the display is, or one all year), the clock, what's next, and a rail of cards. Any click or key goes back to Today |
 | Overview | Agents, pushes in the last 24 hours (and errors), briefs, symbols, reports, projects (blocked ones), metrics, dashboards, upcoming events, displays online; the recent pushes with any refusal sentence; the displays and when they were last seen |
 | Voice (`/voice`) | Talk to McFly full screen, with Homestead's voice glow and voice: Kokoro-82M ("Heart" by default; Bella, Michael, Fenrir) runs in the browser (a one-time ~90 MB download, then cached; the browser's own voice speaks until it's ready). Tap the mic, or type; "Keep talking" listens again after each answer. Also from Ask's Talk button |
@@ -135,6 +136,40 @@ select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'mcfl
 
 Until both are there the jobs do nothing; Settings → Backend says which is missing.
 
+## Messages and notifications
+
+A message written on the display reaches your iPhone as a notification (the
+`notify` function, through Apple's push service); reply on the notification,
+in the app or here, and the display shows it within seconds and reads it
+out. The thread works without notifications; they need, once:
+
+1. **An APNs key.** developer.apple.com → Certificates, Identifiers & Profiles
+   → Keys → +, tick *Apple Push Notification service (APNs)*, register, and
+   download `AuthKey_<KEY ID>.p8` (Apple lets you download it once). One key
+   serves every app of the team, sandbox and production.
+2. **Push on the app's ID.** Identifiers → `com.bot.mcfly` → tick *Push
+   Notifications* and save. (Xcode's automatic signing usually does this the
+   first time it builds with the push entitlement.)
+3. **The secrets**, from the folder with the key:
+
+   ```bash
+   supabase secrets set APNS_KEY_ID=<KEY ID> APNS_TEAM_ID=<team id> --project-ref <ref>
+   supabase secrets set APNS_PRIVATE_KEY="$(cat AuthKey_<KEY ID>.p8)" --project-ref <ref>
+   ```
+
+4. **Vault** as for the schedules above (`mcfly_project_url` and
+   `mcfly_cron_secret`): the `messages_notify` trigger uses them to call
+   `notify`. Then deploy it: `supabase functions deploy notify`.
+5. **The app**: open it on the iPhone, sign in and allow notifications.
+   Messages → Who writes → *Send a test notification* (or the card on this
+   page) says whether Apple took it, and why not.
+
+A build run from Xcode registers a sandbox token, TestFlight and the App
+Store a production one; `notify` sends each to its own host. Under each
+message from home this page says when no notification went, and why
+("notifications aren't set up on the server yet", "no phone has turned on
+notifications yet", or Apple's reason).
+
 ## Keys and secrets
 
 - Agent keys: `mcf_` and 40 hex characters, hashed in the database; see
@@ -143,7 +178,10 @@ Until both are there the jobs do nothing; Settings → Backend says which is mis
   `ANTHROPIC_API_KEY` for Claude, `XAI_API_KEY` for Grok, optional
   `ASSISTANT_MODEL` / `GROK_MODEL`; `GOOGLE_CLIENT_ID` and
   `GOOGLE_CLIENT_SECRET` for the Google Calendar sign-in (optional
-  `GOOGLE_REDIRECT_URI`, and `GOOGLE_WEBHOOK_URL` for instant updates).
+  `GOOGLE_REDIRECT_URI`, and `GOOGLE_WEBHOOK_URL` for instant updates);
+  `APNS_KEY_ID`, `APNS_TEAM_ID` and `APNS_PRIVATE_KEY` for iPhone
+  notifications (Messages). Phones' tokens live in `push_tokens` (RLS on, no
+  policies).
   Google refresh tokens live in `google_accounts` and notification channels'
   tokens in `google_watch_channels` (RLS on, no policies: the functions alone
   read them).

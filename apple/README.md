@@ -136,6 +136,7 @@ says which.
 |---|---|
 | **Sign in** | Email + password, or **Email me a link** (a magic link that comes back to `mcfly://auth-callback`). After signing in, `is_platform_admin` is checked; a non-admin sees "This account isn't a McFly admin. The first account to sign up becomes the admin." with Sign out. |
 | **Home** | The display's Home in its portrait layout: the greeting and a big clock, **Up next** (the event on now, else the next one, on its colour), the first blocked project (on the Mac; on iPhone and iPad, where the status bar has the time, the date and four glance tiles instead: what's next, the weather here from Open-Meteo once location is allowed on the tile, what needs you from today's alerts and blocked projects, and the top story), **Ask McFly** on the voice glow (tap to type, the mic to talk), the markets in one strip, then **Today**: one stream in time order of today's Pulse reports, briefs, project updates and events (`Timeline` in the kit, the same rules as the display's FeedStore and the web's `lib/today.ts`). Past events fade, the one on now is outlined, the next is marked; each row opens its story, brief, project or event. Pull to refresh; coming back to the app after a minute refreshes too. |
+| **Messages** | The household thread (`messages`, PLATFORM_SPEC §1.8): what the family wrote on the display on the left under their names, your replies on the right, "Seen at home" under the newest once a display showed it. Write in the box (⌘↩ on the Mac); a reply shows at once and keeps **Retry** if it didn't go. Read in full once, then what changed every 5 seconds while it's open; opening it marks home's messages read and clears the badge. **Who writes** (the people button): what the family calls you, the names on the display's buttons, and **Send a test notification**. Home shows a card when home wrote; on the iPhone it's under More with the unread count, on the Mac in the sidebar. |
 | **Ambient** | The moon on Home: the display's ambient screen saver full screen, for a stand or a nightstand. The backdrop the displays show (their Settings → Backdrop, `devices.settings.backdrop`, read from the first display as the voice is: the moving gradient with an aurora over it at night, or one of the display's five skies, `Backdrop`), the clock, the date, what's next and what follows, and a rail of cards (the latest brief, the markets, a blocked project, today's top story, later events). It drifts a few points a minute, keeps the screen awake, and a tap goes back. |
 | **Briefs** | Grouped by day; a reader lays out paragraphs and `- ` bullets. |
 | **Markets** | A tile per visible symbol in the console's order, with a sparkline from the history. A symbol's detail is the display's: on a gradient tile, green when it's up and coral when it's down, the price, the change, the sparkline, the note and who sent it; then the history on a card. The **Metrics** segment: a tile per visible metric (`metrics` history + `metric_settings` for label, group, order and hidden), grouped by the console's group, with the same sparklines; a metric's detail is on the same tile, green when the move is good news (down is, for latency, errors or open orders), then its history. |
@@ -153,7 +154,7 @@ says which.
 | **Settings** | Account email and Sign out, display name and timezone (**Use my location** fills it from where the device is: one approximate position, the same the weather tile uses, turned into a zone by the system geocoder; Save still writes it), **Answers from** (Claude or Grok, `assistant_provider`), all through `admin_get_settings` / `admin_update_settings`; app version, which speech engine this system uses. |
 
 On the iPhone, Home, Briefs, Markets and News are tabs, the display's first
-four, and the rest (Projects, Dashboards, Calendar, Voice, Games, Displays,
+four, and the rest (Messages, Projects, Dashboards, Calendar, Voice, Games, Displays,
 Agents, Settings) sit behind **More**, Games in a **Play** section of its
 own: five tabs in all, as many as an iPhone's tab bar shows. Voice is also
 Home's Ask bar. On the Mac they're a sidebar, with the same Play section.
@@ -163,6 +164,20 @@ Home's Ask bar. On the Mac they're a sidebar, with the same Play section.
 (`-McFlyColorPicture pip` opens Color by Number on a picture), and
 `-McFlyGameClock 0.1` runs Scoop Shop's and Penguin March's clocks at a
 tenth of the speed, for checking them by hand.
+
+## Notifications
+
+A message written on the display arrives on the iPhone as a notification
+(the `notify` function through Apple's push service; set up in
+docs/ADMIN.md, Messages and notifications). After sign-in the app asks to
+notify once, then registers this install's token each launch
+(`register_push_token`: sandbox for a Debug build, production for TestFlight
+and the App Store) and drops it on sign-out. A tap opens Messages; **Reply**
+answers from the notification, even from the lock screen. The badge is the
+unread count from home. `McFly-iOS.entitlements` carries `aps-environment`
+(the export makes it production) and `release-ios.sh` refuses an archive
+without it. The Mac has no pushes: while McFly is open it looks every 30
+seconds and notifies for itself.
 
 ## Look
 

@@ -37,9 +37,10 @@ scale = shortSide < 600 ? s : m     (l is reserved; today m is used above 600)
 | Pictures on pages | yes | yes | no (tinted initials) | yes |
 | Home | fills the screen; only the day list scrolls | same | same, by dropping the ask bar | a feed that scrolls |
 
-A rail needs about 770 px of height for eight items and three buttons at
-64 px targets; that, not taste, is why Mini (480 tall) gets the bar. Tall
-gets it because a rail would eat a fifth of a 720 px width.
+A rail needs about 790 px of height for nine items and three buttons at
+64 px targets (on Compact the items abut); that, not taste, is why Mini
+(480 tall) gets the bar. Tall gets it because a rail would eat a fifth of a
+720 px width.
 
 ## Scale
 
@@ -120,6 +121,7 @@ offline pill moves to the top centre so it never covers a header's controls.
 | Boards | bento of 6: first metric a 2×2 hero tile, statuses in a row one health strip (up to 6 a row, then it wraps a row taller), charts 4×2, progress a ring | bento of 4, same (4 a row) | bento of 2: no hero, charts 2×2, 3 statuses a row; chips scroll | bento of 2, same |
 | Calendar | 14 days \| agenda \| day tile 420: the day's hours with its events, now gliding down them, then its calendars | 10 days \| agenda \| tile 360, same | 7 days; agenda | 7 days; tile 230 (two rows); agenda |
 | Games | cards 3 a row × 380, scrolling \| open: full screen, over the rail: the game as large as fits (Same Game and Maroon scaled from 320 × 480), X and (i) down the right, how to play over the game | cards 3 × 280, same | cards 3 × 128, no taglines \| open: full screen, over the bar; the name, (i) and X along the top (the games keep the full width); the board left, its controls beside it | cards 2 × 300 \| open: full screen, over the bar; the name, (i) and X along the top, the game under them |
+| Messages | who's writing (a chip a name), the thread with home's on the right, quick messages, the box with the mic and Send; the chips and the quick row step aside while the keyboard is up | same | same | same |
 | Assistant | as today | as today | subtitle dropped; bubbles 85 % | bubbles 85 % |
 | QuickAnswer | 880 wide | 760 | page − 32, orb 120×88, 4 lines | 680, 6 lines |
 | Setup | card ≤ 1240, 2 columns | ≤ 1120, 2 columns | page − 32, 2 columns, digits 56×76, QR 120 | page − 40, 1 column, scrolls |

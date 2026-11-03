@@ -11,6 +11,7 @@ import { DataError } from "@/lib/errors";
 import { googleReturnTo } from "@/lib/google-calendars";
 import { isCompleteCode, sanitizeCode } from "@/lib/pairing";
 import { knownTimeZone } from "@/lib/timezones";
+import { MAX_MESSAGE, type Message, parseNames } from "@/lib/messages";
 import type { DisplaySettings } from "@/lib/types";
 import { AGENT_KINDS, AGENT_SCOPES, ASSISTANT_PROVIDERS, type AgentKind, type AgentScope, type AssistantProvider, type SettingsPatch } from "@/lib/types";
 
@@ -672,6 +673,62 @@ export async function runBotAction(_prev: ActionResult, fd: FormData): Promise<A
     if (result.error) throw new DataError(result.error);
     return { ok: true, message: `Done: "${result.title ?? "report"}" is on the display.` };
   });
+}
+
+// ───────────────────────────── Messages ─────────────────────────────
+
+// The thread, polled by the Messages page: everything (no `since`), or what
+// changed after it. Not a form, and nothing to redraw.
+export async function pollMessagesAction(since: string | null): Promise<{ ok: true; messages: Message[] } | { ok: false; error: string }> {
+  await data.requireAdmin();
+  try {
+    const after = typeof since === "string" && !Number.isNaN(Date.parse(since)) ? new Date(since).toISOString() : null;
+    return { ok: true, messages: await data.listMessages(after) };
+  } catch (err) {
+    return { ok: false, error: err instanceof DataError ? sentence(err.message) : "Couldn't read the messages." };
+  }
+}
+
+// The person's reply, from the page's box.
+export async function sendMessageAction(body: string): Promise<{ ok: true; message: Message } | { ok: false; error: string }> {
+  await data.requireAdmin();
+  const text = typeof body === "string" ? body.trim() : "";
+  if (!text) return { ok: false, error: "Write something to send." };
+  if (text.length > MAX_MESSAGE) return { ok: false, error: `A message can be at most ${MAX_MESSAGE} characters.` };
+  try {
+    return { ok: true, message: await data.sendMessage(text) };
+  } catch (err) {
+    if (err instanceof DataError) return { ok: false, error: sentence(err.message) };
+    console.error("send message failed:", err);
+    return { ok: false, error: "Couldn't send that. Try again." };
+  }
+}
+
+// Home's messages seen, up to the newest on the page.
+export async function readMessagesAction(upTo: string): Promise<ActionResult> {
+  return mutate(
+    async () => {
+      if (typeof upTo !== "string" || !UUID.test(upTo)) throw new DataError("That message is out of date. Reload the page.");
+      await data.readMessages(upTo.toLowerCase());
+    },
+    { rerender: false },
+  );
+}
+
+// Who writes from the displays (a line or a comma each), and what the
+// household calls you.
+export async function saveMessageNamesAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const household = parseNames(text(fd, "household", 400));
+    if (household.length > 8) throw new DataError("At most 8 names.");
+    const mine = text(fd, "mine", 40) || null;
+    await data.setMessageNames(household, mine);
+    return { ok: true, message: "Saved. The displays show the names within a few minutes." };
+  });
+}
+
+export async function testNotificationAction(): Promise<ActionResult> {
+  return mutate(async () => ({ ok: true, message: await data.sendTestNotification() }), { rerender: false });
 }
 
 // ───────────────────────────── Asks ─────────────────────────────

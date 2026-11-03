@@ -16,6 +16,7 @@
 #include "models/Assistant.h"
 #include "models/FeedStore.h"
 #include "models/HomeGlance.h"
+#include "models/MessageStore.h"
 #include "voice/VoiceClient.h"
 
 // Stands in for DisplayController, with Settings → Animated tiles to turn off.
@@ -121,6 +122,7 @@ class TestScreens : public QObject
     VoiceClient *m_voice = nullptr;
     Assistant *m_ai = nullptr;
     HomeGlance *m_glance = nullptr;
+    MessageStore *m_messages = nullptr;
     FakeDevice m_device;
     FakeSystem m_system;
     QDateTime m_fake;
@@ -190,6 +192,8 @@ private slots:
         m_voice = new VoiceClient(QUrl(QStringLiteral("ws://127.0.0.1:9")), this); // never started: no voice
         m_ai = new Assistant(m_client, m_store, m_voice, this);
         m_glance = new HomeGlance(m_store, this);
+        m_messages = new MessageStore(m_client, m_store, this); // the demo's thread
+        m_messages->setDemoReplyMs(60 * 60 * 1000);
 
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Store", m_store);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "AI", m_ai);
@@ -197,6 +201,7 @@ private slots:
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Device", &m_device);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "System", &m_system);
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Glance", m_glance);
+        qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Messages", m_messages);
         qmlRegisterType<ScaledShader>("McFly.Core", 1, 0, "ScaledShader");
         // One engine for them all: an instance singleton belongs to one.
         m_engine = new QQmlEngine(this);
@@ -416,6 +421,69 @@ private slots:
                 cleanup();
             }
         }
+    }
+
+    // Messages on each panel: the box and Send inside the page, the thread
+    // with room to read; and with names listed, a message waits for who's
+    // writing, then goes as them.
+    void messagesScreenFitsAndWaitsForAWriter()
+    {
+        struct Panel
+        {
+            int w, h;
+            const char *tier;
+            int thread;
+        };
+        for (const Panel &p : {Panel{1180, 800, "compact", 300}, Panel{1796, 1080, "wide", 500}, Panel{800, 404, "mini", 80},
+                               Panel{720, 1196, "tall", 600}}) {
+            const QString where = QString::fromLatin1(p.tier);
+            QVERIFY(show("MessagesScreen { }", p.w, p.h, where));
+            QQuickItem *send = find("messageSend");
+            QQuickItem *input = find("messageInput");
+            QQuickItem *thread = find("messageThread");
+            QQuickItem *writers = find("messageWriters");
+            QVERIFY(send && input && thread && writers);
+            const auto box = [](QQuickItem *b) { return b->mapRectToScene(QRectF(0, 0, b->width(), b->height())); };
+            QVERIFY2(box(send).bottom() <= p.h && box(send).right() <= p.w, qPrintable(where));
+            QVERIFY2(writers->height() >= 64, qPrintable(where));
+            QVERIFY2(thread->height() >= p.thread, qPrintable(QStringLiteral("%1: the thread is %2 tall").arg(where).arg(thread->height())));
+            shoot(QStringLiteral("messages-%1").arg(where));
+            cleanup();
+        }
+
+        QVERIFY(show("MessagesScreen { }", 1180, 800, QStringLiteral("compact")));
+        m_messages->setWriter(QString());
+        const int before = m_messages->thread().size();
+        QMetaObject::invokeMethod(m_screen, "send", Q_ARG(QVariant, QStringLiteral("I'm home!")), Q_ARG(QVariant, false));
+        QCOMPARE(m_screen->property("waiting").toString(), QStringLiteral("I'm home!"));
+        QCOMPARE(m_messages->thread().size(), before);
+        m_messages->setWriter(QStringLiteral("Mia"));
+        QCOMPARE(m_messages->thread().size(), before + 1);
+        QCOMPARE(m_messages->thread().last().toMap().value("name").toString(), QStringLiteral("Mia"));
+        QCOMPARE(m_screen->property("waiting").toString(), QString());
+        QTRY_VERIFY(!m_messages->thread().last().toMap().value("pending").toBool());
+        m_messages->setWriter(QString());
+    }
+
+    // A reply from the person: the card shows who and what, and Reply asks for Messages.
+    void messageCardShowsAReply()
+    {
+        QVERIFY(show("MessageCard { width: 680; height: implicitHeight }", 1280, 800, QStringLiteral("compact")));
+        QSignalSpy replied(m_screen, SIGNAL(reply()));
+        const QVariantMap message{{"id", "m9"}, {"name", "Dad"}, {"body", "On my way home, see you at 6!"}, {"timeLabel", "5:42 pm"}};
+        QMetaObject::invokeMethod(m_screen, "show", Q_ARG(QVariant, message));
+        QTRY_COMPARE(m_screen->property("opacity").toReal(), 1.0);
+        QVERIFY(m_screen->property("shown").toBool());
+        shoot(QStringLiteral("message-card"));
+        QList<QQuickItem *> buttons;
+        collect(qobject_cast<QQuickItem *>(m_screen), QString(), buttons);
+        QQuickItem *reply = nullptr;
+        for (QQuickItem *b : std::as_const(buttons))
+            if (b->property("text").toString() == QLatin1String("Reply"))
+                reply = b;
+        QVERIFY(reply);
+        QTest::mouseClick(m_window, Qt::LeftButton, {}, reply->mapToScene(QPointF(reply->width() / 2, reply->height() / 2)).toPoint());
+        QCOMPARE(replied.count(), 1);
     }
 
     // A question's card on each panel: its choices whole inside it, each a
@@ -1035,7 +1103,7 @@ private slots:
             QVERIFY2(box(sleep).center().y() + slot / 2 <= r.h, qPrintable(where));
             QList<QQuickItem *> items;
             collect(qobject_cast<QQuickItem *>(m_screen), QStringLiteral("navItem"), items);
-            QCOMPARE(items.size(), 8);
+            QCOMPARE(items.size(), 9);
             QVERIFY2(box(items.last()).bottom() <= box(ask).center().y() - slot / 2, qPrintable(where));
 
             QSignalSpy asks(m_screen, SIGNAL(askRequested()));

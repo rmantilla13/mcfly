@@ -92,6 +92,7 @@ qt_add_executable(mcfly-display
     src/models/SettingsBridge.h    src/models/SettingsBridge.cpp
     src/models/HomeGlance.h        src/models/HomeGlance.cpp
     src/models/ArticleReader.h     src/models/ArticleReader.cpp
+    src/models/MessageStore.h      src/models/MessageStore.cpp
     src/hardware/DisplayController.h src/hardware/DisplayController.cpp
     src/hardware/SystemController.h src/hardware/SystemController.cpp
     src/hardware/PanelPower.h      src/hardware/PanelPower.cpp
@@ -202,6 +203,8 @@ qt_add_qml_module(mcfly-display
         qml/screens/QuickAnswer.qml
         qml/screens/ReminderCard.qml
         qml/screens/AskCard.qml
+        qml/screens/MessagesScreen.qml
+        qml/screens/MessageCard.qml
         qml/screens/SettingsSheet.qml
         qml/screensaver/ScreenSaver.qml
         qml/screensaver/ClockSaver.qml

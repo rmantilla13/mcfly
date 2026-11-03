@@ -9,9 +9,9 @@ A voice assistant (Claude or Grok) answers questions about all of it.
 
 | Part | What it is |
 |---|---|
-| `backend/` | Supabase: Postgres with row-level security, the feed tables, agent keys, and the edge functions (`ingest`, `pair-device`, `admin`, `assistant`, `calendar-sync`, `google-calendar`, `bots`) |
-| `display/` | The wall screen: a Qt 6 / QML / C++ kiosk for a Raspberry Pi 5 with a touchscreen. Home, Briefs, Markets (and Metrics), News, Projects, Boards, Calendar, Games, screen savers, voice |
-| `apple/` | The iPhone and Mac app (SwiftUI): the same feeds, pairing a display, voice with the color-spectrum glow |
+| `backend/` | Supabase: Postgres with row-level security, the feed tables, agent keys, and the edge functions (`ingest`, `pair-device`, `admin`, `assistant`, `calendar-sync`, `google-calendar`, `bots`, `notify`) |
+| `display/` | The wall screen: a Qt 6 / QML / C++ kiosk for a Raspberry Pi 5 with a touchscreen. Home, Briefs, Markets (and Metrics), News, Projects, Boards, Calendar, Games, Messages, screen savers, voice |
+| `apple/` | The iPhone and Mac app (SwiftUI): the same feeds, pairing a display, Messages with notifications, voice with the color-spectrum glow |
 | `admin/` | The console at mcfly.bot (Next.js + shadcn/ui): agents and their keys, the feeds, displays, settings, audit |
 | `voice/` | The on-device voice service for the Pi: wake word, speech in and out |
 | `scripts/` | `mcfly_push.py`, a one-file client any agent box can push with |
@@ -60,6 +60,12 @@ and launch mark from `apple/scripts/flux_mark.py`, and the console's
    announces at its time). It also answers an agent's question with the
    choice you say; or tap the choice on the display, in the app or on the
    console.
+5. **Messages**: whoever is home writes on the display's Messages screen
+   (a button a name, a box with the on-screen keyboard or the mic, quick
+   messages), and it reaches the phone as a notification; reply from the
+   notification, the app or the console, and it shows on the display within
+   seconds, read out. Notifications need an APNs key ([ADMIN.md](docs/ADMIN.md),
+   Messages and notifications).
 
 ## Quick start
 
@@ -68,7 +74,7 @@ and launch mark from `apple/scripts/flux_mark.py`, and the console's
 ```bash
 cd backend && supabase start           # local stack (Docker + Supabase CLI)
 supabase db reset                      # migrations + seed: six agents and sample feeds
-supabase functions deploy ingest pair-device admin assistant calendar-sync google-calendar bots
+supabase functions deploy ingest pair-device admin assistant calendar-sync google-calendar bots notify
 supabase secrets set ANTHROPIC_API_KEY=...   # and/or XAI_API_KEY=... for Grok; GOOGLE_CLIENT_ID/SECRET for Google Calendar (docs/ADMIN.md)
 tests/run.sh                           # SQL tests on a throwaway Postgres
 cd supabase/functions && deno test && deno check */index.ts
@@ -86,7 +92,7 @@ cmake --build build/display -j
 ctest --test-dir build/display
 ```
 
-Useful: `--screen setup|home|briefs|markets|news|projects|boards|calendar|saver|ask`,
+Useful: `--screen setup|home|briefs|markets|news|projects|boards|calendar|games|messages|saver|ask`,
 `--screenshot out.png` (saves a picture and quits), `--size 800x480`,
 `MCFLY_IDLE_SECONDS=30`, `MCFLY_SCREENSAVER=ambient|clock|headlines`,
 `QT_SCALE_FACTOR=1.5` (the 10.1" 1920×1200 panel). To connect it, set

@@ -17,6 +17,8 @@ Rectangle {
     property int currentIndex: 0
     property bool horizontal: false
     property bool thinking: false
+    // A count on an item, by index (Messages' unread replies): a dot with it.
+    property var badges: ({})
     signal selected(int index)
     signal settingsRequested()
     signal askRequested()
@@ -29,7 +31,8 @@ Rectangle {
         { icon: "chores",   label: qsTr("Projects") },
         { icon: "grid",     label: qsTr("Boards") },
         { icon: "calendar", label: qsTr("Calendar") },
-        { icon: "games",    label: qsTr("Games") }
+        { icon: "games",    label: qsTr("Games") },
+        { icon: "chat",     label: qsTr("Messages") }
     ]
     // The bar's slots: 64 px where they fit, narrower where they don't (the
     // 720 px Touch Display 2), so every item, the divider and the three
@@ -109,6 +112,25 @@ Rectangle {
                 Behavior on color { ColorAnimation { duration: Theme.quick } }
             }
         }
+        // The count, on the icon's top right corner.
+        Rectangle {
+            readonly property int count: rail.badges[index] || 0
+            visible: count > 0
+            x: inner.x + (rail.horizontal ? 18 : inner.width / 2 + 6)
+            y: inner.y - 6
+            width: Math.max(height, badgeLabel.implicitWidth + 10)
+            height: 22
+            radius: height / 2
+            color: Theme.danger
+            Label {
+                id: badgeLabel
+                anchors.centerIn: parent
+                text: parent.count > 9 ? "9+" : parent.count
+                color: "white"
+                font.pixelSize: 12
+                font.weight: Font.Bold
+            }
+        }
         TapHandler { id: navTap; onTapped: rail.selected(index) }
     }
 
@@ -177,7 +199,8 @@ Rectangle {
         anchors.fill: parent
         anchors.topMargin: Theme.compact ? 12 : 24
         anchors.bottomMargin: Theme.compact ? 12 : 24
-        spacing: Theme.compact ? 4 : 8
+        // Nine items a touch target tall abut on the 800 px compact panel.
+        spacing: Theme.compact ? 0 : 8
 
         Repeater {
             id: railItems
@@ -185,7 +208,7 @@ Rectangle {
             delegate: NavItem {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Theme.compact ? 80 : 96
-                // Eight items, a touch target tall, and the three buttons fit
+                // Nine items, a touch target tall, and the three buttons fit
                 // the 800 px compact panel; 84 on a 1080 px wall.
                 Layout.preferredHeight: Theme.compact ? 64 : 84
             }

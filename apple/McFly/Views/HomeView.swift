@@ -66,6 +66,16 @@ struct HomeView: View {
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
+                    // What home wrote that hasn't been read: the newest, and Messages a tap away.
+                    if let latest = app.messages.unread.last {
+                        NavigationLink {
+                            MessagesView()
+                        } label: {
+                            MessagesCard(latest: latest, unread: app.messages.unreadCount, now: now)
+                        }
+                        .buttonStyle(PressableStyle())
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                     if let pending = app.pendingAnswer {
                         AnsweredBar(text: pending.agent.map { "Told \($0): \(pending.choice)" } ?? "Answered: \(pending.choice)") {
                             withAnimation(.snappy) { app.undoAnswer() }

@@ -15,11 +15,13 @@ ApplicationWindow {
     color: Theme.background
     font.family: Theme.fontFamily
 
-    readonly property var screenNames: ["home", "briefs", "markets", "news", "projects", "boards", "calendar", "games"]
+    readonly property var screenNames: ["home", "briefs", "markets", "news", "projects", "boards", "calendar", "games", "messages"]
+    readonly property int messagesScreen: 8
     property int currentScreen: Math.max(0, screenNames.indexOf(startScreen))
     readonly property real keyboardHeight: keyboard.item ? keyboard.item.visibleHeight : 0
-    // "chat" while push-to-talk is feeding the assistant panel; the wake word
-    // and the mic on Home go to the voice card (QuickAnswer) instead.
+    // "chat" while push-to-talk is feeding the assistant panel, "message"
+    // while the mic on Messages fills the message box (never the assistant);
+    // the wake word and the mic on Home go to the voice card (QuickAnswer).
     property string voiceTarget: ""
     // --screen setup / saver / ask / settings (settings/<tab>) / admin: for pictures and checks.
     readonly property bool forceSetup: startScreen === "setup"
@@ -69,6 +71,26 @@ ApplicationWindow {
         pttWatchdog.restart()
         Voice.listen()
         return true
+    }
+    // The mic on Messages: what's said joins the message box. A second tap stops it.
+    function dictate() {
+        if (!Voice.available) {
+            showToast(qsTr("Voice needs the McFly voice service (see docs/VOICE.md)"))
+            return
+        }
+        if (voiceTarget === "message") {
+            Voice.cancel()
+            voiceTarget = ""
+            return
+        }
+        if (!Voice.canTranscribe) {
+            showToast(qsTr("Voice needs a microphone (see docs/VOICE.md)"))
+            return
+        }
+        Voice.stopSpeaking()
+        voiceTarget = "message"
+        pttWatchdog.restart()
+        Voice.listen()
     }
     // The service ends a turn within ~12 s; never leave the mic stuck "on".
     Timer { id: pttWatchdog; interval: 25000; onTriggered: window.voiceTarget = "" }
@@ -121,6 +143,8 @@ ApplicationWindow {
                 assistant.open = false
                 window.closeDetails()
                 window.currentScreen = 0
+                // The next one to write says who they are again; what's typed stays.
+                Messages.writer = ""
             }
         }
     }
@@ -142,7 +166,7 @@ ApplicationWindow {
     Connections {
         target: Voice
         function onWoke(source) {
-            if (window.voiceTarget === "chat" || Store.mode === "pairing")
+            if (window.voiceTarget === "chat" || window.voiceTarget === "message" || Store.mode === "pairing")
                 return
             // A follow-up the card asked for itself: it's already listening.
             if (quick.followingUp && quick.phase === "listening") {
@@ -155,7 +179,11 @@ ApplicationWindow {
             quick.start()
         }
         function onHeard(text) {
-            if (window.voiceTarget === "chat") {
+            if (window.voiceTarget === "message") {
+                window.voiceTarget = ""
+                pttWatchdog.stop()
+                messagesPage.dictated(text) // into the box, to read before it's sent
+            } else if (window.voiceTarget === "chat") {
                 window.voiceTarget = ""
                 pttWatchdog.stop()
                 if (AI.busy)
@@ -166,7 +194,11 @@ ApplicationWindow {
             }
         }
         function onHeardNothing() {
-            if (window.voiceTarget === "chat") {
+            if (window.voiceTarget === "message") {
+                window.voiceTarget = ""
+                pttWatchdog.stop()
+                window.showToast(qsTr("Sorry, I didn't catch that"))
+            } else if (window.voiceTarget === "chat") {
                 window.voiceTarget = ""
                 pttWatchdog.stop()
                 window.showToast(qsTr("Sorry, I didn't catch that"))
@@ -202,6 +234,8 @@ ApplicationWindow {
         width: window.navBar ? window.width : Theme.navWidth
         height: window.navBar ? Theme.navHeight : window.height
         currentIndex: window.currentScreen
+        // Replies from the person not yet seen, on Messages.
+        badges: ({ 8: Messages.unread })
         // McFly is working on an answer nobody is watching (the panel is shut).
         thinking: AI.busy && !assistant.open
         onSelected: index => {
@@ -274,6 +308,24 @@ ApplicationWindow {
             anchors.fill: parent; index: 7; current: window.currentScreen
             GamesScreen { id: games; anchors.fill: parent; shown: window.currentScreen === 7 && !assistant.open; isCurrent: window.currentScreen === 7 }
         }
+        Page {
+            anchors.fill: parent; index: 8; current: window.currentScreen
+            MessagesScreen {
+                id: messagesPage
+                anchors.fill: parent
+                shown: window.currentScreen === 8 && !assistant.open
+                isCurrent: window.currentScreen === 8
+                // The keyboard rises over the bar: only what shows above it counts.
+                keyboardHeight: Math.max(0, window.keyboardHeight - Theme.navHeight)
+                listening: window.voiceTarget === "message"
+                onDictate: window.dictate()
+            }
+        }
+    }
+    // Messages on screen, awake and uncovered: the person's replies count as seen.
+    Binding {
+        target: Messages; property: "open"
+        value: window.currentScreen === window.messagesScreen && !assistant.open && !Device.idle && !window.covered && !window.inSetup
     }
 
     AssistantPanel {
@@ -433,7 +485,9 @@ ApplicationWindow {
             id: askCard
             objectName: "askCard"
             anchors.fill: parent
-            asks: window.inSetup || assistant.open || (window.currentScreen === 7 && games.openIndex >= 0) ? []
+            // Not over a game, nor on Messages, where whoever is writing isn't who the agent asked.
+            asks: window.inSetup || assistant.open || (window.currentScreen === 7 && games.openIndex >= 0)
+                  || window.currentScreen === window.messagesScreen ? []
                   : Store.asks.filter(a => !(window.asksPutOff[a.id] > window.askClock))
             onLater: id => {
                 const putOff = Object.assign({}, window.asksPutOff)
@@ -500,6 +554,45 @@ ApplicationWindow {
         ReminderCard {
             id: reminderCard
             anchors.fill: parent
+        }
+    }
+    // A reply from the person (Messages.arrived): a card at the top, over
+    // everything but the sleep cover, read out once, as a reminder is. It
+    // wakes the screen unless the screen is asleep: then it waits under the
+    // cover, silent, for whoever touches the screen next. On Messages, the
+    // thread shows it already.
+    Layer {
+        z: 5
+        x: Math.round((window.width - width) / 2)
+        y: (Theme.mini ? 16 : 32) + (reminderCard.shown ? reminderCard.height + 16 : 0)
+        width: Math.min(window.width - 2 * Theme.pageMargin, Theme.wide ? 760 : 640)
+        height: messageCard.implicitHeight
+        visible: messageCard.opacity > 0
+        MessageCard {
+            id: messageCard
+            anchors.fill: parent
+            onReply: {
+                messageCard.dismiss()
+                assistant.open = false
+                settings.close()
+                quick.dismiss(true)
+                window.closeDetails()
+                window.currentScreen = window.messagesScreen
+            }
+        }
+    }
+    Connections {
+        target: Messages
+        function onArrived(message) {
+            if (Messages.open)
+                return
+            messageCard.show(message)
+            if (Device.screenOff)
+                return
+            Device.wake()
+            // Not read out at night: the card is enough, and someone may be asleep.
+            if (Voice.available && Device.mood !== "night")
+                Voice.speak(qsTr("Message from %1: %2").arg(message.name).arg(message.body))
         }
     }
     Connections {

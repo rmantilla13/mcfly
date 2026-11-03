@@ -25,6 +25,9 @@
 #     MCFLY_ASC_ISSUER_ID, with the key at
 #     ~/.appstoreconnect/private_keys/AuthKey_<MCFLY_ASC_KEY_ID>.p8 (or MCFLY_ASC_KEY_PATH)
 #   - the app in App Store Connect, for the bundle ID com.bot.mcfly
+#   - Push Notifications on that bundle ID (developer.apple.com → Identifiers), for
+#     Messages: the export signs with it, and the notify function's APNs key
+#     sends to it (docs/ADMIN.md, Messages and notifications)
 #   - brew install xcodegen
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -138,6 +141,12 @@ if [[ ! -d "$APP/McFlyVoice_McFlyVoice.bundle/Kokoro/coreml" ]]; then
 fi
 if ! codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "applinks:mcfly.bot"; then
   echo "The archive is not signed with the associated domain." >&2
+  exit 1
+fi
+# Messages from home arrive as notifications: without the push entitlement
+# the phone never gets a token. The export makes it production.
+if ! codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "aps-environment"; then
+  echo "The archive is not signed with push notifications (aps-environment)." >&2
   exit 1
 fi
 # The APIs Apple wants a reason for, as the linked binary uses them (its own

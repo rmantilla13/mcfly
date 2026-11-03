@@ -1154,8 +1154,9 @@ export function demoAsk(message: string, mode: "chat" | "quick" | "read" = "chat
 export function demoBackendStatus(expected: string): BackendStatus {
   const s = state();
   return {
-    functions: ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar"].map((name) => ({ name, ok: true })),
-    secrets: { ANTHROPIC_API_KEY: true, XAI_API_KEY: false, MCFLY_CRON_SECRET: true, GOOGLE_CLIENT_ID: true, GOOGLE_CLIENT_SECRET: true },
+    functions: ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar", "notify"].map((name) => ({ name, ok: true })),
+    secrets: { ANTHROPIC_API_KEY: true, XAI_API_KEY: false, MCFLY_CRON_SECRET: true, GOOGLE_CLIENT_ID: true, GOOGLE_CLIENT_SECRET: true,
+               APNS_KEY_ID: false, APNS_TEAM_ID: false, APNS_PRIVATE_KEY: false },
     latestMigration: expected,
     expectedMigration: expected,
     cron: [

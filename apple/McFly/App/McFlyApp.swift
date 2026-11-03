@@ -4,6 +4,10 @@ import SwiftUI
 @main
 struct McFlyApp: App {
     @State private var app = AppModel()
+    #if os(iOS)
+    /// Apple's push token arrives here (Notifications.swift).
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
 
     #if os(iOS)
     init() { BackButtons.install() }
@@ -115,13 +119,14 @@ private struct UnreachableView: View {
 
 /// The screens, in sidebar order on the Mac and tab order on the iPhone.
 enum Screen: String, CaseIterable, Identifiable, Hashable {
-    case home, briefs, markets, news, voice, projects, dashboards, calendar, games, displays, agents, settings
+    case home, messages, briefs, markets, news, voice, projects, dashboards, calendar, games, displays, agents, settings
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .home: return "Home"
+        case .messages: return "Messages"
         case .briefs: return "Briefs"
         case .markets: return "Markets"
         case .news: return "News"
@@ -139,6 +144,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
     var icon: String {
         switch self {
         case .home: return "house.fill"
+        case .messages: return "bubble.left.and.bubble.right.fill"
         case .briefs: return "text.alignleft"
         case .markets: return "chart.line.uptrend.xyaxis"
         case .news: return "newspaper.fill"
@@ -155,12 +161,12 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
 
     /// The iPhone's tabs, the display's first four; the rest sit behind More,
     /// which makes five, as many as an iPhone's tab bar shows. Voice is also
-    /// Home's Ask bar.
+    /// Home's Ask bar; Messages is also Home's card and a notification's tap.
     static let tabs: [Screen] = [.home, .briefs, .markets, .news]
-    static let more: [Screen] = [.projects, .dashboards, .calendar, .voice, .games, .displays, .agents, .settings]
+    static let more: [Screen] = [.messages, .projects, .dashboards, .calendar, .voice, .games, .displays, .agents, .settings]
     /// The Mac sidebar's groups, and More's on the iPhone: the feeds, the
     /// display's Games tab, and managing the account.
-    static let feedScreens: [Screen] = [.home, .briefs, .markets, .news, .projects, .dashboards, .calendar, .voice]
+    static let feedScreens: [Screen] = [.home, .messages, .briefs, .markets, .news, .projects, .dashboards, .calendar, .voice]
     static let playScreens: [Screen] = [.games]
     static let manageScreens: [Screen] = [.displays, .agents, .settings]
 
@@ -168,6 +174,7 @@ enum Screen: String, CaseIterable, Identifiable, Hashable {
     var view: some View {
         switch self {
         case .home: HomeView()
+        case .messages: MessagesView()
         case .briefs: BriefsView()
         case .markets: MarketsView()
         case .news: NewsView()
@@ -201,6 +208,28 @@ struct MainView: View {
         .onChange(of: app.pendingPairCode) { _, code in
             if code != nil { selection = .displays }
         }
+        // A message's notification, tapped: Messages, over whatever was open
+        // on the iPhone, in the sidebar on the Mac.
+        #if os(iOS)
+        .sheet(isPresented: Binding(get: { PushCenter.shared.openMessages }, set: { PushCenter.shared.openMessages = $0 })) {
+            NavigationStack {
+                MessagesView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { PushCenter.shared.openMessages = false }
+                        }
+                    }
+            }
+            .environment(app)
+        }
+        #else
+        .onChange(of: PushCenter.shared.openMessages) { _, open in
+            if open {
+                selection = .messages
+                PushCenter.shared.openMessages = false
+            }
+        }
+        #endif
         // Back in front after a while: what the agents pushed meanwhile. The
         // display syncs every minute; the phone catches up when it's looked at.
         .onChange(of: scenePhase) { _, phase in
@@ -211,6 +240,7 @@ struct MainView: View {
             guard phase == .active else { return }
             // The voice too: picked on the display or the web, it's this device's as well.
             Task { await app.syncVoice() }
+            Task { await app.messagesBecameActive() }
             guard let loaded = app.feeds.loadedAt, Date.now.timeIntervalSince(loaded) > 60 else { return }
             Task { await app.feeds.refresh() }
         }
@@ -231,6 +261,8 @@ struct MainView: View {
                 MoreView(selection: $selection)
             }
             .tabItem { Label("More", systemImage: "ellipsis.circle") }
+            // Messages lives behind More: its unread count shows there.
+            .badge(app.messages.unreadCount)
             .tag(Screen.projects)
         }
     }
@@ -240,7 +272,9 @@ struct MainView: View {
             List(selection: Binding(get: { Optional(selection) }, set: { selection = $0 ?? .home })) {
                 Section("Feeds") {
                     ForEach(Screen.feedScreens) { screen in
-                        Label(screen.title, systemImage: screen.icon).tag(screen)
+                        Label(screen.title, systemImage: screen.icon)
+                            .badge(screen == .messages ? app.messages.unreadCount : 0)
+                            .tag(screen)
                     }
                 }
                 Section("Play") {
@@ -273,7 +307,10 @@ struct MoreView: View {
         List {
             Section("Feeds") {
                 ForEach(Screen.more.filter { Screen.feedScreens.contains($0) }) { screen in
-                    NavigationLink(value: screen) { Label(screen.title, systemImage: screen.icon) }
+                    NavigationLink(value: screen) {
+                        Label(screen.title, systemImage: screen.icon)
+                            .badge(screen == .messages ? app.messages.unreadCount : 0)
+                    }
                 }
             }
             Section("Play") {

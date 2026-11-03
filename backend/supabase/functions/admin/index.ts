@@ -68,6 +68,9 @@ Deno.serve(async (req) => {
             MCFLY_CRON_SECRET: has("MCFLY_CRON_SECRET"),
             GOOGLE_CLIENT_ID: has("GOOGLE_CLIENT_ID"),
             GOOGLE_CLIENT_SECRET: has("GOOGLE_CLIENT_SECRET"),
+            APNS_KEY_ID: has("APNS_KEY_ID"),
+            APNS_TEAM_ID: has("APNS_TEAM_ID"),
+            APNS_PRIVATE_KEY: has("APNS_PRIVATE_KEY"),
           },
           models: {
             assistant: Deno.env.get("ASSISTANT_MODEL") ?? null,

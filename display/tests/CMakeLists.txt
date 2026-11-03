@@ -73,6 +73,20 @@ foreach(name tst_feedstore tst_assistant)
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
 endforeach()
 
+# The household thread (MessageStore) against the same fake Supabase.
+qt_add_executable(tst_messages tst_messages.cpp FakeServer.h
+    ../src/models/FeedStore.h     ../src/models/FeedStore.cpp
+    ../src/models/MessageStore.h  ../src/models/MessageStore.cpp
+)
+target_compile_options(tst_messages PRIVATE ${MCFLY_WARNINGS})
+target_link_libraries(tst_messages PRIVATE mcfly-core Qt6::Gui Qt6::Test)
+qt_add_resources(tst_messages "demo_data_tst_messages"
+    PREFIX /McFly
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES ${PROJECT_SOURCE_DIR}/resources/demo/feed.json)
+add_test(NAME tst_messages COMMAND tst_messages)
+set_tests_properties(tst_messages PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
 # QML tests copy the files they use into a McFly module directory of their
 # own (<dir>/McFly), since the app's module is built into the binary.
 function(mcfly_test_qml_module dir)
@@ -156,11 +170,12 @@ mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     components/QrPanel.qml components/EmptyState.qml components/ScreenHeader.qml components/ChipRow.qml
     components/MasterDetail.qml components/Tag.qml components/NavRail.qml components/FluxMark.qml components/Wordmark.qml components/FormField.qml
     screens/HomeScreen.qml screens/DashboardsScreen.qml screens/BriefsScreen.qml screens/HomeAssistant.qml
-    screens/SetupScreen.qml screens/AskCard.qml screens/AssistantPanel.qml
+    screens/SetupScreen.qml screens/AskCard.qml screens/AssistantPanel.qml screens/MessagesScreen.qml screens/MessageCard.qml
     screensaver/ScreenSaver.qml screensaver/AmbientSaver.qml screensaver/ClockSaver.qml screensaver/HeadlinesSaver.qml
     components/Backdrop.qml components/AuroraGlow.qml components/Weather.qml)
 qt_add_executable(tst_screens tst_screens.cpp
     ../src/models/FeedStore.h  ../src/models/FeedStore.cpp
+    ../src/models/MessageStore.h ../src/models/MessageStore.cpp
     ../src/models/Assistant.h  ../src/models/Assistant.cpp
     ../src/models/HomeGlance.h ../src/models/HomeGlance.cpp
 )

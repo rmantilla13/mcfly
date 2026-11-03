@@ -1,6 +1,7 @@
 import Foundation
 import McFlyKit
 import Observation
+import UserNotifications
 #if os(iOS)
 import UIKit
 #endif
@@ -34,6 +35,8 @@ final class AppModel {
     var errorMessage: String?
     let feeds: FeedStore
     let admin: any AdminService
+    /// The household thread (Messages).
+    let messages: MessagesStore
     let isDemo: Bool
     /// A pairing code from a link or QR code, waiting for the pairing sheet.
     var pendingPairCode: String?
@@ -76,6 +79,7 @@ final class AppModel {
             let demo = try! DemoData.load().rebased()
             feeds = FeedStore(source: DemoFeedSource(data: demo))
             admin = DemoAdminService(data: demo)
+            messages = MessagesStore(service: DemoMessageService())
         } else {
             isDemo = false
             let client = McFlyClient(supabaseURL: Config.supabaseURL, anonKey: Config.supabaseAnonKey,
@@ -84,6 +88,15 @@ final class AppModel {
             pairingClient = client.pairing
             feeds = FeedStore(source: client.feeds)
             admin = client.admin
+            messages = MessagesStore(service: client.messages)
+        }
+        // Before launch finishes, so a tap or a Reply that launched the app is heard.
+        NotificationDelegate.shared.install()
+        PushCenter.shared.onToken = { [weak self] token in self?.registerPush(token) }
+        PushCenter.shared.onReply = { [weak self] text in await self?.reply(fromNotification: text) }
+        PushCenter.shared.onMessage = { [weak self] in
+            guard let self else { return }
+            Task { await self.messages.refresh() }
         }
     }
 
@@ -94,7 +107,9 @@ final class AppModel {
     func start() async {
         if isDemo {
             phase = .ready
+            async let thread: Void = startMessages()
             await feeds.refresh()
+            await thread
             return
         }
         guard let client, Config.isConfigured else {
@@ -123,10 +138,12 @@ final class AppModel {
                 async let voiceSynced: Void = syncVoice()
                 async let backdropSynced: Void = syncBackdrop()
                 async let weatherSynced: Void = syncWeather()
+                async let thread: Void = startMessages()
                 await feeds.refresh()
                 await voiceSynced
                 await backdropSynced
                 await weatherSynced
+                await thread
             } else {
                 phase = .notAdmin
             }
@@ -163,7 +180,12 @@ final class AppModel {
 
     func signOut() async {
         guard !isDemo else { return }
+        // While still signed in: only the person may drop their phone's token.
+        if let token = PushCenter.shared.token { await messages.unregisterPushToken(token) }
+        messagePoll?.cancel()
         await client?.signOut()
+        messages.reset()
+        updateBadge()
         magicLinkSentTo = nil
     }
 
@@ -234,6 +256,121 @@ final class AppModel {
         guard Config.pinnedWeather == nil, let account = try? await admin.accountWeather() else { return }
         weather = account
     }
+
+    // MARK: Messages
+
+    @ObservationIgnored private var messagePoll: Task<Void, Never>?
+
+    /// Which of Apple's hosts this build's token is for: a debug build's is a
+    /// sandbox one; TestFlight and the App Store are production.
+    static var pushEnvironment: String {
+        #if DEBUG
+        return "sandbox"
+        #else
+        return "production"
+        #endif
+    }
+
+    /// Signed in: the thread, the names, and notifications. The first time,
+    /// iOS asks whether McFly may notify; either way the phone's token is
+    /// asked for again (it can change) and registered when it comes. The Mac
+    /// has no pushes: while it's open it polls, and notifies for itself.
+    func startMessages() async {
+        await messages.loadNames()
+        await messages.refresh()
+        updateBadge()
+        guard !isDemo else { return }
+        let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        #if os(iOS)
+        if granted { UIApplication.shared.registerForRemoteNotifications() }
+        if let token = PushCenter.shared.token { registerPush(token) }
+        #else
+        if granted { pollMessages() }
+        #endif
+    }
+
+    /// Back in front: what home wrote meanwhile, and the badge to match.
+    func messagesBecameActive() async {
+        guard phase == .ready else { return }
+        await messages.refresh()
+        updateBadge()
+    }
+
+    /// The app icon's badge: home's unread messages.
+    func updateBadge() {
+        let count = messages.unreadCount
+        Task { try? await UNUserNotificationCenter.current().setBadgeCount(count) }
+    }
+
+    private func registerPush(_ token: String) {
+        guard phase == .ready, !isDemo else { return }
+        let messages = messages
+        Task {
+            do {
+                try await messages.registerPushToken(token, environment: Self.pushEnvironment,
+                                                     bundleId: Bundle.main.bundleIdentifier ?? "com.bot.mcfly", platform: "ios")
+            } catch {
+                print("McFly: couldn't register for notifications:", McFlyError.describe(error))
+            }
+        }
+    }
+
+    /// Reply on a message's notification: sent as from the app, and what
+    /// home wrote counts as read. The app may have been launched just for
+    /// this, in the background, before `start()`: the client signs in from
+    /// its saved session on the way (kept readable after the first unlock,
+    /// so this works on a locked phone). One that didn't go says so in a
+    /// notification of its own, with Reply to try again.
+    private func reply(fromNotification text: String) async {
+        #if os(iOS)
+        let time = BackgroundTime("Send a reply")
+        defer { time.end() }
+        #endif
+        if !messages.hasLoaded { await messages.refresh() }
+        if await messages.send(text) {
+            await messages.markRead()
+            updateBadge()
+            return
+        }
+        let why = messages.pending.last?.failure ?? "McFly couldn't be reached."
+        let content = UNMutableNotificationContent()
+        content.title = "Your reply didn't go"
+        content.body = "\u{201C}\(text)\u{201D}: \(why) Reply to try again."
+        content.categoryIdentifier = NotificationDelegate.messageCategory
+        content.threadIdentifier = NotificationDelegate.messageThread
+        content.userInfo = ["message_id": "unsent"]
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    #if os(macOS)
+    /// The Mac's own notifications: every 30 seconds while signed in, what
+    /// home wrote since, unless Messages is on screen.
+    private func pollMessages() {
+        messagePoll?.cancel()
+        messagePoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard let self, self.phase == .ready else { continue }
+                let news = await self.messages.refresh()
+                if !PushCenter.shared.showingMessages {
+                    for message in news { await Self.notify(message) }
+                }
+                self.updateBadge()
+            }
+        }
+    }
+
+    private static func notify(_ message: Message) async {
+        let content = UNMutableNotificationContent()
+        content.title = message.senderName
+        content.body = message.body
+        content.sound = .default
+        content.categoryIdentifier = NotificationDelegate.messageCategory
+        content.threadIdentifier = NotificationDelegate.messageThread
+        content.userInfo = ["message_id": message.id.uuidString.lowercased()]
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: message.id.uuidString, content: content, trigger: nil))
+    }
+    #endif
 
     // MARK: Services
 

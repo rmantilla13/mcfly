@@ -1,6 +1,7 @@
 import type { Dismissal } from "@/lib/dismissals";
 import "server-only";
 import { demoAsks, notRunOut, openAsks, type OpenAsk } from "@/lib/asks";
+import { demoMessages, MESSAGE_COLUMNS, type Message, type MessageNames } from "@/lib/messages";
 import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -343,6 +344,103 @@ export async function answerAsk(id: string, choice: string, question: string): P
   }
   const row = record<{ answer?: unknown }>(await rpc(src.db, "answer_ask", { ask: id, choice, via: "console", question }), "answer_ask");
   return typeof row.answer === "string" ? row.answer : choice;
+}
+
+// ───────────────────────────── Messages ─────────────────────────────
+
+// The household thread (lib/messages.ts): the newest 200, or with `since`
+// what changed after it (sent, read, notified). The demo keeps its own until
+// the server restarts.
+const demoThread: { rows: Message[] | null; names: MessageNames } = { rows: null, names: { household: ["Mia", "Leo"], mine: null } };
+const demoRows = () => (demoThread.rows ??= demoMessages(Date.now()));
+
+export async function listMessages(since?: string | null): Promise<Message[]> {
+  const src = await source();
+  if (src.demo) return since ? demoRows().filter((m) => m.updated_at > since) : demoRows();
+  const base = src.db.from("messages").select(MESSAGE_COLUMNS);
+  const { data, error } = since
+    ? await base.gt("updated_at", since).order("updated_at").limit(200)
+    : await base.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(200);
+  if (error) {
+    console.error("messages failed:", error.message);
+    throw new DataError(error.code === "PGRST205" ? "Messages need the latest migrations: run supabase db push." : error.message);
+  }
+  return (Array.isArray(data) ? data : []) as unknown as Message[];
+}
+
+// The person's reply (send_message, `via` console), as stored.
+export async function sendMessage(body: string): Promise<Message> {
+  const src = await source();
+  if (src.demo) {
+    const now = new Date().toISOString();
+    const row: Message = {
+      id: crypto.randomUUID(), sender_kind: "person", sender_name: demoThread.names.mine ?? "Parent", body, device_id: null,
+      via: "console", created_at: now, updated_at: now, read_at: null, notified_at: null, notify_error: null,
+    };
+    demoRows().push(row);
+    return row;
+  }
+  return record<Message>(await rpc(src.db, "send_message", { body, via: "console" }), "send_message");
+}
+
+// Home's messages read, up to `upTo` (read_messages).
+export async function readMessages(upTo: string): Promise<number> {
+  const src = await source();
+  if (src.demo) {
+    const until = demoRows().find((m) => m.id === upTo)?.created_at ?? "";
+    const now = new Date().toISOString();
+    let n = 0;
+    for (const m of demoRows()) {
+      if (m.sender_kind === "display" && !m.read_at && m.created_at <= until) {
+        m.read_at = now;
+        m.updated_at = now;
+        n++;
+      }
+    }
+    return n;
+  }
+  return num(await rpc(src.db, "read_messages", { up_to: upTo }));
+}
+
+// Who writes from the displays, and what the household calls the signed-in person.
+export async function getMessageNames(): Promise<MessageNames> {
+  const src = await source();
+  if (src.demo) return demoThread.names;
+  const { data: claims } = await src.db.auth.getClaims();
+  const [settings, profile] = await Promise.all([
+    src.db.from("platform_settings").select("message_names").limit(1).maybeSingle(),
+    claims?.claims?.sub ? src.db.from("profiles").select("message_name").eq("id", claims.claims.sub).maybeSingle() : null,
+  ]);
+  const names = (settings.data as { message_names?: unknown } | null)?.message_names;
+  const mine = (profile?.data as { message_name?: unknown } | null)?.message_name;
+  return {
+    household: Array.isArray(names) ? names.filter((n): n is string => typeof n === "string") : [],
+    mine: typeof mine === "string" && mine ? mine : null,
+  };
+}
+
+export async function setMessageNames(household: string[], mine: string | null): Promise<MessageNames> {
+  const src = await source();
+  if (src.demo) {
+    demoThread.names = { household, mine };
+    return demoThread.names;
+  }
+  const kept = list<string>(await rpc(src.db, "admin_set_message_names", { names: household }), "admin_set_message_names");
+  const name = await rpc<string | null>(src.db, "set_message_name", { name: mine });
+  return { household: kept, mine: typeof name === "string" && name ? name : null };
+}
+
+// A test notification on each of the signed-in person's phones (`notify`, test).
+export async function sendTestNotification(): Promise<string> {
+  const src = await source();
+  if (src.demo) return "The demo sends no notifications.";
+  type Result = { outcome: string; message: string | null };
+  const res = await invokeFunction<{ results?: Result[] }>(src.db, "notify", { action: "test" });
+  const results = res.results ?? [];
+  const sent = results.filter((r) => r.outcome === "sent").length;
+  if (sent === results.length) return sent === 1 ? "Sent to your phone." : `Sent to ${sent} phones.`;
+  const why = results.find((r) => r.message)?.message ?? "Apple didn't take it";
+  return sent ? `Sent to ${sent} of ${results.length} phones. ${why}.` : `${why}.`;
 }
 
 export async function listNewsReports(lim = 30): Promise<NewsReportRow[]> {
@@ -1105,8 +1203,8 @@ export async function askAssistant(message: string, history: AskTurn[], mode: As
 // ───────────────────────────── Backend status ─────────────────────────────
 
 // The newest migration this console was built for (backend/supabase/migrations).
-export const EXPECTED_MIGRATION = "20261016000011";
-const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar"];
+export const EXPECTED_MIGRATION = "20261103000010";
+const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar", "notify"];
 
 export async function getBackendStatus(): Promise<BackendStatus> {
   const src = await source();
