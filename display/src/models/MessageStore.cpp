@@ -195,7 +195,9 @@ void MessageStore::poll()
             QUrlQuery q;
             q.addQueryItem("select", kColumns);
             const bool first = !m_loaded;
-            if (first) {
+            // Nothing seen yet (an empty thread): the whole thread again,
+            // which is cheap, until there's a change to read from.
+            if (!m_cursor.isValid()) {
                 q.addQueryItem("order", "created_at.desc,id.desc");
             } else {
                 q.addQueryItem("updated_at", "gt." + m_cursor.addMSecs(-kOverlapMs).toUTC().toString(Qt::ISODateWithMs));

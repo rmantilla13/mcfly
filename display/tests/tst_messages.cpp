@@ -56,6 +56,9 @@ class TestMessages : public QObject
             const QUrlQuery q(QString::fromUtf8(r.path.mid(r.path.indexOf('?') + 1)));
             const QString since = q.queryItemValue("updated_at", QUrl::FullyDecoded);
             QJsonArray out;
+            // As PostgREST: a time it can't read is a 400.
+            if (q.hasQueryItem("updated_at") && !QDateTime::fromString(since.mid(3), Qt::ISODateWithMs).isValid())
+                return json(R"({"message":"invalid input syntax for type timestamp with time zone"})", 400);
             if (since.startsWith("gt.")) {
                 m_sinceAsked << since.mid(3);
                 const QDateTime after = QDateTime::fromString(since.mid(3), Qt::ISODateWithMs);
@@ -135,6 +138,24 @@ private slots:
         // Read again in the overlap: not news twice.
         QTest::qWait(700);
         QCOMPARE(arrived.count(), 1);
+    }
+
+    // The live Pi met this first: no messages at all, so no change to read
+    // from. It reads the whole (empty) thread again rather than send an empty
+    // time, and the person's first message is news.
+    void anEmptyThreadStillHearsTheFirstMessage()
+    {
+        startLive();
+        QSignalSpy arrived(&rig->messages, &MessageStore::arrived);
+        QTRY_VERIFY(m_server.requests("GET", "/rest/v1/messages").size() >= 3);
+        for (const Request &r : m_server.requests("GET", "/rest/v1/messages"))
+            QVERIFY2(!r.path.contains("updated_at=gt.&") && !r.path.endsWith("updated_at=gt."), r.path.constData());
+        QVERIFY(rig->messages.available());
+        m_rows.insert("p1", row("p1", "person", "Dad", "Anyone home?", QDateTime::currentDateTime()));
+        QTRY_COMPARE(arrived.count(), 1);
+        QCOMPARE(rig->messages.thread().size(), 1);
+        // From here it reads only what changed.
+        QTRY_VERIFY(!m_sinceAsked.isEmpty());
     }
 
     void sendsAsTheWriterAndShowsItAtOnce()
