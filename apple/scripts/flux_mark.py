@@ -41,12 +41,24 @@ def _rounded(px, py, x0, y0, side, r):
     return min(1.0, max(0.0, 0.5 - d))
 
 
-def render(canvas: int, side: float, tile: bool) -> list[list[tuple[float, float, float, float]]]:
+def centered_y() -> float:
+    """Where the core goes for the Y's tubes to sit in the middle of the
+    square, top to bottom, as a fraction of its side. On its tile the core
+    sits at CENTER_Y, which leaves the Y low (its tubes run from about 0.29
+    to 0.95): fine on a tile, but an app icon is the whole square."""
+    half = ARM_WIDTH / 2
+    top = min(dy * ARM_TO for (_, dy), _, _ in ARMS) - half
+    bottom = max(dy * ARM_TO for (_, dy), _, _ in ARMS) + half
+    return 0.5 - (top + bottom) / 2
+
+
+def render(canvas: int, side: float, tile: bool, center_y: float = CENTER_Y) -> list[list[tuple[float, float, float, float]]]:
     """Rows of (r, g, b, alpha), 0-255 and 0-1, for a `canvas`-pixel square
-    with the mark `side` pixels across in its middle. Without a tile the
-    mark fills the square edge to edge (an app icon, which the system masks)."""
+    with the mark `side` pixels across in its middle, its core `center_y` of
+    the way down. Without a tile the mark fills the square edge to edge (an
+    app icon, which the system masks)."""
     x0 = y0 = (canvas - side) / 2
-    cx, cy = x0 + side / 2, y0 + side * CENTER_Y
+    cx, cy = x0 + side / 2, y0 + side * center_y
     arms = []
     for (dx, dy), outer, inner in ARMS:
         ax, ay = cx + dx * side * ARM_FROM, cy + dy * side * ARM_FROM

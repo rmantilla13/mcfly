@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Rasterize the McFly app icon: the McFly mark (flux_mark.py), the flux
-capacitor's Y on its dark tile, edge to edge.
+capacitor's Y on its dark tile, edge to edge, with the Y's tubes centred
+top to bottom (flux_mark.centered_y) rather than the core where the tile
+puts it.
 
 Writes AppIcon-<size>.png for every size the asset catalog lists. Pure
 Python (zlib + struct), so it runs anywhere without Pillow. iOS masks the
@@ -28,7 +30,7 @@ def png(rgb: bytes, size: int) -> bytes:
 
 def render() -> bytearray:
     buf = bytearray(SIZE * SIZE * 3)
-    for y, row in enumerate(flux_mark.render(SIZE, SIZE, tile=False)):
+    for y, row in enumerate(flux_mark.render(SIZE, SIZE, tile=False, center_y=flux_mark.centered_y())):
         buf[y * SIZE * 3:(y + 1) * SIZE * 3] = b"".join(bytes((round(r), round(g), round(b))) for r, g, b, _ in row)
     return buf
 

@@ -63,6 +63,9 @@ whole story). The icon and the launch mark are the McFly mark (the flux
 capacitor's Y; `scripts/flux_mark.py` holds its numbers), rendered by
 `scripts/render_app_icon.py` and `scripts/render_launch_mark.py` (pure
 Python) if they ever need regenerating; `FluxMark` draws it in the app. The
+icon is the whole square, so it centres the Y's tubes top to bottom
+(`flux_mark.centered_y()`); on a tile the core sits a little lower, as
+everywhere else. The
 wordmark is Exo 2 Black Italic, bundled from `McFly/Theme/Fonts` (SIL OFL).
 
 **Demo mode.** Without a Supabase project, run with the launch argument
