@@ -359,7 +359,7 @@ public final class MessagesStore {
     public func retry(_ id: UUID) async {
         guard let index = pending.firstIndex(where: { $0.id == id }) else { return }
         pending[index].failure = nil
-        await deliver(pending[index])
+        _ = await deliver(pending[index])
     }
 
     public func discard(_ id: UUID) {
