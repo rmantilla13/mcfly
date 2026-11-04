@@ -182,10 +182,16 @@ Item {
                 model: Messages.thread
                 boundsBehavior: Flickable.StopAtBounds
                 // A short thread sits at the bottom, by the box, as a chat does.
-                topMargin: Math.max(0, height - contentHeight)
+                // Set after layout, not bound: the margin moves the content,
+                // which would ask for the margin again.
+                function fitTop() { topMargin = Math.max(0, height - contentHeight) }
+                onContentHeightChanged: Qt.callLater(fitTop)
                 // New ones (and a keyboard rising) keep the newest in sight.
                 onCountChanged: Qt.callLater(positionViewAtEnd)
-                onHeightChanged: Qt.callLater(positionViewAtEnd)
+                onHeightChanged: {
+                    Qt.callLater(fitTop)
+                    Qt.callLater(positionViewAtEnd)
+                }
                 Component.onCompleted: positionViewAtEnd()
                 readonly property real bubbleMax: Math.min(width * (Theme.mini ? 0.86 : 0.72), 760)
 
