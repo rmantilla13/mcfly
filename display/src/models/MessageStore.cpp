@@ -99,6 +99,8 @@ MessageStore::MessageStore(SupabaseClient *client, FeedStore *store, VoiceClient
     connect(m_store, &FeedStore::modeChanged, this, &MessageStore::onModeChanged);
     // Away mode runs out on its own: look again each minute.
     connect(m_store, &FeedStore::nowAngleChanged, this, &MessageStore::updateAway);
+    m_countdown.setInterval(1000);
+    connect(&m_countdown, &QTimer::timeout, this, &MessageStore::tickCountdown);
     onModeChanged();
 }
 
@@ -143,6 +145,7 @@ void MessageStore::setOpen(bool open)
         return;
     m_open = open;
     emit openChanged();
+    tickCountdown();
     if (open) {
         markRead();
         refresh();
@@ -354,12 +357,12 @@ void MessageStore::setAway(bool away, int minutes)
     const QDateTime until = away && minutes > 0 ? now().addSecs(qint64(minutes) * 60) : QDateTime();
     const QString untilText = until.isValid() ? until.toUTC().toString(Qt::ISODateWithMs) : QString();
     // The setting as device_set_away returns it: { away, since, until, note, name }.
-    const auto apply = [this, away](const QVariantMap &s) {
+    // The screen changing is the answer: no toast over it.
+    const auto apply = [this](const QVariantMap &s) {
         ++m_awayWrites;
         m_settings = {{"away_since", s.value("since")}, {"away_until", s.value("until")},
                       {"away_note", s.value("note")}, {"away_name", s.value("name")}};
         updateAway();
-        emit notice(away ? tr("Away mode is on: the screen opens to Messages") : tr("Welcome home: away mode is off"));
     };
     if (m_mode != QLatin1String("live")) {
         // The demo: here only, as the server would.
@@ -402,10 +405,48 @@ void MessageStore::setAway(bool away, int minutes)
 void MessageStore::updateAway()
 {
     const QVariantMap next = awayState(m_settings, now());
-    if (next == m_away)
+    if (next != m_away) {
+        m_away = next;
+        emit awayChanged();
+    }
+    tickCountdown();
+}
+
+void MessageStore::tickCountdown()
+{
+    const qint64 until = m_away.value("untilMs").toLongLong();
+    const bool counting = away() && until > 0;
+    const qint64 left = until - now().toMSecsSinceEpoch();
+    if (counting && left <= 0) {
+        // Back by now: away mode is over here, without waiting for the minute.
+        m_countdown.stop();
+        updateAway();
         return;
-    m_away = next;
-    emit awayChanged();
+    }
+    const QString text = counting ? countdown(left) : QString();
+    if (text != m_countdownText) {
+        m_countdownText = text;
+        emit awayCountdownChanged();
+    }
+    if (counting && m_open) {
+        if (!m_countdown.isActive())
+            m_countdown.start();
+    } else {
+        m_countdown.stop();
+    }
+}
+
+QString MessageStore::countdown(qint64 msLeft)
+{
+    // Rounded up: "0:01" until it's time, never "0:00" while still away.
+    const qint64 s = qMax<qint64>(0, (msLeft + 999) / 1000);
+    const qint64 days = s / 86400, hours = s % 86400 / 3600, minutes = s % 3600 / 60, seconds = s % 60;
+    if (days > 0) {
+        const QString d = days == 1 ? tr("1 day") : tr("%1 days").arg(days);
+        return hours > 0 ? tr("%1 %2 h").arg(d).arg(hours) : d;
+    }
+    const QString mmss = QStringLiteral("%1:%2").arg(minutes, hours > 0 ? 2 : 1, 10, QLatin1Char('0')).arg(seconds, 2, 10, QLatin1Char('0'));
+    return hours > 0 ? QStringLiteral("%1:%2").arg(hours).arg(mmss) : mmss;
 }
 
 QVariantMap MessageStore::awayState(const QVariantMap &settings, const QDateTime &now)
@@ -418,13 +459,17 @@ QVariantMap MessageStore::awayState(const QVariantMap &settings, const QDateTime
     if (name.isEmpty())
         name = tr("Parent");
     QString label = tr("%1 is out").arg(name);
+    QString back = tr("Out since %1").arg(timeLabel(since));
     if (until.isValid()) {
         const QDateTime local = until.toLocalTime();
-        label = local.date() == now.toLocalTime().date()
-                    ? tr("%1 is out · back around %2").arg(name, timeLabel(until))
-                    : tr("%1 is out · back %2 %3").arg(name, QLocale().toString(local.date(), QStringLiteral("dddd")), timeLabel(until));
+        const bool today = local.date() == now.toLocalTime().date();
+        const QString day = QLocale().toString(local.date(), QStringLiteral("dddd"));
+        label = today ? tr("%1 is out · back around %2").arg(name, timeLabel(until))
+                      : tr("%1 is out · back %2 %3").arg(name, day, timeLabel(until));
+        back = today ? tr("Back around %1").arg(timeLabel(until)) : tr("Back %1 around %2").arg(day, timeLabel(until));
     }
-    return {{"away", true}, {"name", name}, {"label", label}, {"note", settings.value("away_note").toString()}};
+    return {{"away", true}, {"name", name}, {"label", label}, {"note", settings.value("away_note").toString()},
+            {"back", back}, {"untilMs", until.isValid() ? until.toMSecsSinceEpoch() : qint64(0)}};
 }
 
 void MessageStore::merge(const QVariantList &rows, bool announce)

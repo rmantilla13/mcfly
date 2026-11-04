@@ -486,6 +486,63 @@ private slots:
         QVERIFY(!find("awayBanner")->isVisible());
     }
 
+    // Away mode is the whole window: the header counts down, and at every
+    // size the thread has its own room. Nothing (who's writing, the quick
+    // messages, the box) sits over it.
+    void messagesAwayLayoutKeepsTheThreadClear()
+    {
+        struct Panel
+        {
+            int w, h;
+            const char *tier;
+            int thread;
+        };
+        const QDateTime now = m_store->now();
+        m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}},
+                                   {"away_since", now.addSecs(-600).toUTC().toString(Qt::ISODateWithMs)},
+                                   {"away_until", now.addSecs(2 * 3600 + 299).toUTC().toString(Qt::ISODateWithMs)},
+                                   {"away_name", "Dad"}});
+        QVERIFY(m_messages->away());
+        // The rail's gone while away: the page is the window.
+        for (const Panel &p : {Panel{1280, 800, "compact", 300}, Panel{1920, 1080, "wide", 500}, Panel{800, 404, "mini", 60},
+                               Panel{720, 1280, "tall", 500}}) {
+            const QString where = QString::fromLatin1(p.tier);
+            QVERIFY(show("MessagesScreen { }", p.w, p.h, where));
+            m_messages->setOpen(true);
+            const auto box = [](QQuickItem *b) { return b->mapRectToScene(QRectF(0, 0, b->width(), b->height())); };
+            QQuickItem *header = find("awayBanner");
+            QQuickItem *thread = find("messageThread");
+            QQuickItem *quick = find("quickMessages");
+            QQuickItem *send = find("messageSend");
+            QQuickItem *writers = find("messageWriters");
+            QVERIFY2(header && thread && quick && send && writers, qPrintable(where));
+            QTRY_VERIFY2(header->isVisible(), qPrintable(where));
+            QVERIFY2(!find("awayStart")->isVisible(), qPrintable(where));
+            if (where != QLatin1String("mini")) {
+                QQuickItem *countdown = find("awayCountdown");
+                QVERIFY2(countdown && countdown->isVisible(), qPrintable(where));
+                QVERIFY2(countdown->property("text").toString().startsWith(QStringLiteral("2:04:")), qPrintable(countdown->property("text").toString()));
+            }
+            QVERIFY2(thread->height() >= p.thread, qPrintable(QStringLiteral("%1: the thread is %2 tall").arg(where).arg(thread->height())));
+            QVERIFY2(quick->isVisible() && writers->isVisible(), qPrintable(where));
+            const QRectF t = box(thread);
+            for (QQuickItem *other : {header, quick, writers, send})
+                QVERIFY2(!t.intersects(box(other)), qPrintable(QStringLiteral("%1: %2 is over the thread").arg(where, other->objectName())));
+            QVERIFY2(box(send).bottom() <= p.h && box(send).right() <= p.w, qPrintable(where));
+            QVERIFY2(box(quick).bottom() <= p.h && box(quick).right() <= p.w, qPrintable(where));
+            // Landscape: who's writing and the quick messages beside the thread.
+            const bool side = where == QLatin1String("compact") || where == QLatin1String("wide");
+            QCOMPARE(find("messageSide")->isVisible(), side);
+            if (side)
+                QVERIFY2(box(quick).left() >= t.right(), qPrintable(where));
+            QTest::qWait(900); // the screen's reveal
+            shoot(QStringLiteral("messages-away-%1").arg(where));
+            m_messages->setOpen(false);
+            cleanup();
+        }
+        m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}}});
+    }
+
     // Away mode from here: "I'm heading out", how long, then the banner;
     // "I'm home" on it turns it off.
     void messagesScreenTurnsAwayOnAndOff()

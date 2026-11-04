@@ -62,6 +62,13 @@ class MessageStore : public QObject
     Q_PROPERTY(bool away READ away NOTIFY awayChanged)
     Q_PROPERTY(QString awayLabel READ awayLabel NOTIFY awayChanged)
     Q_PROPERTY(QString awayNote READ awayNote NOTIFY awayChanged)
+    // For the away screen's header: who ("Dad"), when they're back ("Back
+    // around 6:00 pm", "Back Thursday around 6:00 pm"; "Out since 3:10 pm"
+    // with no time), and how long till then ("1:42:10", "42:10", "2 days
+    // 4 h"; "" with no time), each second while Messages is open.
+    Q_PROPERTY(QString awayName READ awayName NOTIFY awayChanged)
+    Q_PROPERTY(QString awayBack READ awayBack NOTIFY awayChanged)
+    Q_PROPERTY(QString awayCountdown READ awayCountdown NOTIFY awayCountdownChanged)
     // Voice notes: the voice service can record and play them here.
     Q_PROPERTY(bool canRecord READ canRecord NOTIFY voiceChanged)
     Q_PROPERTY(bool canPlay READ canPlay NOTIFY voiceChanged)
@@ -88,6 +95,9 @@ public:
     bool away() const { return m_away.value("away").toBool(); }
     QString awayLabel() const { return m_away.value("label").toString(); }
     QString awayNote() const { return m_away.value("note").toString(); }
+    QString awayName() const { return m_away.value("name").toString(); }
+    QString awayBack() const { return m_away.value("back").toString(); }
+    QString awayCountdown() const { return m_countdownText; }
     bool canRecord() const;
     bool canPlay() const;
     bool recording() const { return m_recording; }
@@ -129,8 +139,12 @@ public:
     // "Today", "Yesterday", the weekday within a week, else "Oct 12".
     static QString dayLabel(const QDate &day, const QDate &today);
     // Away mode from a platform_settings row at `now`: { away, name, label,
-    // note }. Not away without away_since, or once away_until has passed.
+    // note, back, untilMs }. Not away without away_since, or once
+    // away_until has passed.
     static QVariantMap awayState(const QVariantMap &settings, const QDateTime &now);
+    // What's left, for the countdown: "1:42:10", "42:10", "0:09"; a day or
+    // more "2 days 4 h".
+    static QString countdown(qint64 msLeft);
     // The platform_settings row as read (the names and away mode); tests set it.
     void applySettings(const QVariantMap &settings);
 
@@ -147,6 +161,7 @@ signals:
     void openChanged();
     void availableChanged();
     void awayChanged();
+    void awayCountdownChanged();
     void voiceChanged();
     void recordingChanged();
     void playingChanged();
@@ -162,6 +177,7 @@ private:
     void poll();
     void loadNames();
     void updateAway();
+    void tickCountdown();
     void merge(const QVariantList &rows, bool announce);
     void rebuild();
     void schedule();
@@ -192,6 +208,8 @@ private:
     QVariantMap m_settings; // the away_* columns as read
     int m_awayWrites = 0;   // setAway()s sent and landed: a settings read from before one is older
     QVariantMap m_away;     // awayState(m_settings, now)
+    QString m_countdownText;
+    QTimer m_countdown;     // each second, while away till a time and open
     QString m_writer;
     QString m_draft;
     bool m_open = false;

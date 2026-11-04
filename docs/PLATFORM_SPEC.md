@@ -469,10 +469,15 @@ once; it wakes the screen unless the screen is asleep, where it waits under
 the sleep cover. The rail's Messages carries the unread count. Asks never
 show on Messages. `platform_settings` is read with every poll (`select=*`,
 so an older backend still answers) for the names and away mode: while
-away, whoever wakes the screen finds Messages (going idle sets the screen
-to it), Messages has a banner ("Dad is out · back around 6:00 pm",
-the note, and "I'm home"), and a pill over the screen saver says to tap to
-send a message. "Still away" is checked each minute against `away_until`.
+away, Messages is the whole window, the rail (or bar), the assistant, the
+wake-word card and Settings out of reach, so the chat is all there is;
+whoever wakes the screen finds it, and a pill over the screen saver says to
+tap to send a message. Its header says who's out, counts down to
+`away_until` each second ("2:04:59 till Dad's back", "Back around 6:00
+pm", the note; with no time, "Messages go to Dad's phone"), and has "I'm
+home". "Still away" is checked each minute against `away_until`, and at
+the end of the countdown. On the landscape tiers who's writing and the
+quick messages are a column of their own beside the thread, never over it.
 **Away mode from the screen**: "I'm heading out" beside the title asks how
 long (till they're back, 1, 2, 4 or 8 hours) and turns it on through
 `device_set_away`; "I'm home" on the banner turns it off. The banner

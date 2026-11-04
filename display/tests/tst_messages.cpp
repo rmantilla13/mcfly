@@ -421,6 +421,31 @@ private slots:
         QVERIFY(!rig->messages.away());
     }
 
+    // The away header's countdown: h:mm:ss, m:ss under an hour, days past one,
+    // rounded up so it never reads 0:00 while still away.
+    void countsDown()
+    {
+        QCOMPARE(MessageStore::countdown(2 * 3600 * 1000 + 4 * 60 * 1000 + 59 * 1000), QStringLiteral("2:04:59"));
+        QCOMPARE(MessageStore::countdown(3600 * 1000), QStringLiteral("1:00:00"));
+        QCOMPARE(MessageStore::countdown(3600 * 1000 - 1), QStringLiteral("1:00:00")); // rounded up
+        QCOMPARE(MessageStore::countdown(3599 * 1000), QStringLiteral("59:59"));
+        QCOMPARE(MessageStore::countdown(42 * 60 * 1000 + 10 * 1000), QStringLiteral("42:10"));
+        QCOMPARE(MessageStore::countdown(9 * 1000), QStringLiteral("0:09"));
+        QCOMPARE(MessageStore::countdown(1), QStringLiteral("0:01"));
+        QCOMPARE(MessageStore::countdown(0), QStringLiteral("0:00"));
+        QCOMPARE(MessageStore::countdown(qint64(24) * 3600 * 1000), QStringLiteral("1 day"));
+        QCOMPARE(MessageStore::countdown(qint64(52) * 3600 * 1000 + 1000), QStringLiteral("2 days 4 h"));
+
+        const QDateTime now = QDateTime::currentDateTime();
+        QVariantMap a = MessageStore::awayState({{"away_since", iso(now.addSecs(-60))}, {"away_until", iso(now.addSecs(3600))},
+                                                 {"away_name", "Dad"}}, now);
+        QCOMPARE(a.value("untilMs").toLongLong(), QDateTime::fromString(iso(now.addSecs(3600)), Qt::ISODateWithMs).toMSecsSinceEpoch());
+        QVERIFY2(a.value("back").toString().startsWith(QStringLiteral("Back ")), qPrintable(a.value("back").toString()));
+        a = MessageStore::awayState({{"away_since", iso(now.addSecs(-60))}, {"away_name", "Dad"}}, now);
+        QCOMPARE(a.value("untilMs").toLongLong(), qint64(0));
+        QVERIFY2(a.value("back").toString().startsWith(QStringLiteral("Out since ")), qPrintable(a.value("back").toString()));
+    }
+
     // Away mode from here: device_set_away, the banner once the server has
     // it, the poll agreeing, and a refusal saying why.
     void setsAwayFromHere()
@@ -451,7 +476,16 @@ private slots:
         const QDateTime until = QDateTime::fromString(sent.value("until").toString(), Qt::ISODateWithMs);
         QVERIFY2(qAbs(QDateTime::currentDateTime().secsTo(until) - 7200) < 60, qPrintable(sent.value("until").toString()));
         QVERIFY2(rig->messages.awayLabel().startsWith(QStringLiteral("Dad is out · back")), qPrintable(rig->messages.awayLabel()));
-        QCOMPARE(notices.size(), 1);
+        QCOMPARE(notices.size(), 0); // the screen changing is the answer
+        // The header's countdown, each second while Messages is open.
+        QCOMPARE(rig->messages.awayName(), QStringLiteral("Dad"));
+        QVERIFY2(rig->messages.awayBack().startsWith(QStringLiteral("Back ")), qPrintable(rig->messages.awayBack()));
+        rig->messages.setOpen(true);
+        QVERIFY2(rig->messages.awayCountdown().startsWith(QStringLiteral("1:59:")) || rig->messages.awayCountdown() == QStringLiteral("2:00:00"),
+                 qPrintable(rig->messages.awayCountdown()));
+        QSignalSpy ticks(&rig->messages, &MessageStore::awayCountdownChanged);
+        QTRY_VERIFY_WITH_TIMEOUT(ticks.size() >= 1, 2500);
+        rig->messages.setOpen(false);
         // The polls after it read the same.
         const int polls = m_server.requests("GET", "/rest/v1/platform_settings").size();
         QTRY_VERIFY(m_server.requests("GET", "/rest/v1/platform_settings").size() >= polls + 2);
@@ -465,6 +499,8 @@ private slots:
         QTRY_VERIFY(rig->messages.away());
         QVERIFY(!m_server.requests("POST", "/rest/v1/rpc/device_set_away").last().body.contains("until"));
         QCOMPARE(rig->messages.awayLabel(), QStringLiteral("Dad is out"));
+        QCOMPARE(rig->messages.awayCountdown(), QString()); // nothing to count down to
+        QVERIFY2(rig->messages.awayBack().startsWith(QStringLiteral("Out since ")), qPrintable(rig->messages.awayBack()));
         rig->messages.setAway(false);
         QTRY_VERIFY(!rig->messages.away());
         // A refusal says why, and nothing changes.

@@ -23,7 +23,8 @@ ApplicationWindow {
     // and the mic on Home go to the voice card (QuickAnswer). Messages' mic
     // records a voice note, through MessageStore, not here.
     property string voiceTarget: ""
-    // --screen setup / saver / ask / settings (settings/<tab>) / admin: for pictures and checks.
+    // --screen setup / saver / ask / settings (settings/<tab>) / admin / away (the
+    // demo, away for two hours): for pictures and checks.
     readonly property bool forceSetup: startScreen === "setup"
 
     function showToast(message) {
@@ -112,6 +113,8 @@ ApplicationWindow {
             settings.openTab(startScreen.slice(9))
         else if (startScreen === "admin")
             settings.openAdmin()
+        else if (startScreen === "away" && Store.mode === "demo")
+            Messages.setAway(true, 125)
     }
 
     // Drop back to the home screen after the screen saver has been up.
@@ -147,7 +150,8 @@ ApplicationWindow {
     Connections {
         target: Voice
         function onWoke(source) {
-            if (window.voiceTarget === "chat" || Store.mode === "pairing")
+            // Away mode: the chat is all there is, the voice card too.
+            if (window.voiceTarget === "chat" || Store.mode === "pairing" || window.awayFocus)
                 return
             // A follow-up the card asked for itself: it's already listening.
             if (quick.followingUp && quick.phase === "listening") {
@@ -188,6 +192,20 @@ ApplicationWindow {
 
     readonly property bool inSetup: (Store.mode === "pairing" || window.forceSetup) && !sleepCover.covering
     readonly property bool navBar: Theme.navMode === "bar"
+    // Away mode is the whole window: Messages and nothing else, no rail or
+    // bar, no assistant, no wake-word card, no settings. "I'm home" on its
+    // header (or the phone) gives the rest back.
+    readonly property bool awayFocus: Messages.away && !window.inSetup
+    onAwayFocusChanged: {
+        if (!awayFocus)
+            return
+        dismissKeyboard()
+        assistant.open = false
+        settings.close()
+        quick.dismiss(true)
+        closeDetails()
+        currentScreen = messagesScreen
+    }
     // Under the screen saver (once it has faded all the way in) or the sleep
     // cover nothing of the nav or the pages shows. Opacity 0 leaves them out
     // of every frame the saver draws; `visible` stays as it was, so what
@@ -199,7 +217,7 @@ ApplicationWindow {
     // leave it stuck when the shape changes.
     NavRail {
         id: nav
-        visible: !window.inSetup
+        visible: !window.inSetup && !window.awayFocus
         opacity: window.covered ? 0 : 1
         horizontal: window.navBar
         x: 0
@@ -228,8 +246,8 @@ ApplicationWindow {
         visible: !window.inSetup
         opacity: window.covered ? 0 : 1
         anchors.fill: parent
-        anchors.leftMargin: Theme.navWidth
-        anchors.bottomMargin: Theme.navHeight
+        anchors.leftMargin: window.awayFocus ? 0 : Theme.navWidth
+        anchors.bottomMargin: window.awayFocus ? 0 : Theme.navHeight
 
         Page {
             anchors.fill: parent; index: 0; current: window.currentScreen
@@ -288,8 +306,9 @@ ApplicationWindow {
                 anchors.fill: parent
                 shown: window.currentScreen === 8 && !assistant.open
                 isCurrent: window.currentScreen === 8
-                // The keyboard rises over the bar: only what shows above it counts.
-                keyboardHeight: Math.max(0, window.keyboardHeight - Theme.navHeight)
+                // The keyboard rises over the bar: only what shows above it
+                // counts (away, there's no bar).
+                keyboardHeight: window.awayFocus ? window.keyboardHeight : Math.max(0, window.keyboardHeight - Theme.navHeight)
             }
         }
     }
@@ -582,11 +601,6 @@ ApplicationWindow {
     }
     Connections {
         target: Messages
-        // Turned on while the screen sleeps or idles: it wakes to Messages too.
-        function onAwayChanged() {
-            if (Messages.away && Device.idle)
-                window.currentScreen = window.messagesScreen
-        }
         function onArrived(message) {
             if (Messages.open)
                 return
