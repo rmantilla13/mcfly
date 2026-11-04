@@ -1280,6 +1280,51 @@ private slots:
         }
     }
 
+    // The assistant panel opens voice first: nothing has focus, so the
+    // on-screen keyboard stays down, and Send waits for something typed. A
+    // tap on the field brings the keyboard; sending (Send, or a chip, which
+    // goes through send() too) takes the focus off the field, so the
+    // keyboard goes and a later tap brings it back.
+    void assistantPanelKeepsTheKeyboardDown()
+    {
+        m_ai->reset();
+        QVERIFY(show("AssistantPanel { open: true }", 1180, 800, QStringLiteral("compact")));
+        m_window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(m_window));
+        QQuickItem *field = find("panelInput");
+        QQuickItem *send = find("sendButton");
+        QQuickItem *chips = find("panelChips");
+        QVERIFY(field && send && chips);
+        QVERIFY(!field->hasActiveFocus());
+        QVERIFY(!send->isVisible());
+        shoot(QStringLiteral("assistant-panel-open"));
+
+        const auto tap = [this](QQuickItem *item) {
+            const QPointF c = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+            QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, c.toPoint());
+        };
+        tap(field);
+        QTRY_VERIFY(field->hasActiveFocus());
+        const qreal wide = field->width();
+        field->setProperty("text", QStringLiteral("Summarize my day"));
+        QVERIFY(send->isVisible());
+        QTRY_VERIFY(field->width() < wide); // Send has taken its place in the bar
+        tap(send);
+        QVERIFY(!field->hasActiveFocus());
+        QCOMPARE(field->property("text").toString(), QString());
+        QVERIFY(!send->isVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(!m_ai->busy(), 15000);
+
+        m_ai->reset(); // New chat: the chips are back
+        tap(field);
+        QTRY_VERIFY(field->hasActiveFocus());
+        QMetaObject::invokeMethod(chips, "picked", Q_ARG(QString, QStringLiteral("What's blocking Onyx?")));
+        QVERIFY(!field->hasActiveFocus());
+        QTRY_VERIFY_WITH_TIMEOUT(!m_ai->busy(), 15000);
+        shoot(QStringLiteral("assistant-panel-answered"));
+        m_ai->reset();
+    }
+
     // The picked brief's outline sits on its row, and still does after a
     // sync makes every row again.
     void briefsOutlineSurvivesASync()

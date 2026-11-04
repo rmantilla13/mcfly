@@ -160,8 +160,8 @@ set_tests_properties(tst_motion PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscree
 # The screens' motion and layouts (Home, Boards, Briefs) against the real
 # store at a fixed time of day: the reveal, the insight line, Home's
 # countdown and now marker, board tiles from boardLayout, the Briefs outline,
-# the nav's thinking ring, Setup's ambient loops, the ask card and the Ask
-# panel's chips.
+# the nav's thinking ring, Setup's ambient loops, the ask card, and the Ask
+# panel's chips and keyboard.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-screens
     Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/IconButton.qml components/PillButton.qml
     components/SpectrumGlow.qml components/GradientTile.qml components/Sparkline.qml
