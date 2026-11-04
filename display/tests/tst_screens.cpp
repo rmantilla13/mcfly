@@ -540,6 +540,24 @@ private slots:
             m_messages->setOpen(false);
             cleanup();
         }
+        // As the live display has it: nobody listed. The column is the quick
+        // messages alone, still beside the thread.
+        m_messages->applySettings({{"message_names", QVariantList{}},
+                                   {"away_since", now.addSecs(-600).toUTC().toString(Qt::ISODateWithMs)},
+                                   {"away_until", now.addSecs(2 * 3600 + 299).toUTC().toString(Qt::ISODateWithMs)},
+                                   {"away_name", "Ricky"}});
+        QVERIFY(show("MessagesScreen { }", 1280, 800, QStringLiteral("compact")));
+        QQuickItem *quick = find("quickMessages");
+        QQuickItem *thread = find("messageThread");
+        QTRY_VERIFY(quick && quick->isVisible());
+        QVERIFY(!find("messageWriters") || !find("messageWriters")->isVisible());
+        const auto box = [](QQuickItem *b) { return b->mapRectToScene(QRectF(0, 0, b->width(), b->height())); };
+        QVERIFY(!box(thread).intersects(box(quick)));
+        QVERIFY(box(quick).left() >= box(thread).right());
+        QVERIFY(thread->height() >= 300);
+        QTest::qWait(900);
+        shoot(QStringLiteral("messages-away-nonames"));
+        cleanup();
         m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}}});
     }
 
@@ -573,7 +591,20 @@ private slots:
         QVERIFY(!start->isVisible());
         QQuickItem *end = find("awayEnd");
         QVERIFY(end && end->isVisible() && end->height() >= 64);
-        QMetaObject::invokeMethod(end, "clicked"); // just shown: not laid out yet for a tap
+        QTest::qWait(300); // laid out, so the press lands on it
+        const QPoint at = end->mapToScene(QPointF(end->width() / 2, end->height() / 2)).toPoint();
+        // A tap, or a short press, does nothing: it's held to end.
+        QMetaObject::invokeMethod(end, "clicked");
+        QTest::mousePress(m_window, Qt::LeftButton, {}, at);
+        QTest::qWait(600);
+        QTest::mouseRelease(m_window, Qt::LeftButton, {}, at);
+        QTest::qWait(200);
+        QVERIFY(m_messages->away());
+        QCOMPARE(end->property("progress").toReal(), 0.0);
+        // Held for two seconds: home.
+        QTest::mousePress(m_window, Qt::LeftButton, {}, at);
+        QTRY_VERIFY_WITH_TIMEOUT(!m_messages->away(), 3500);
+        QTest::mouseRelease(m_window, Qt::LeftButton, {}, at);
         QTRY_VERIFY(!banner->isVisible());
         QVERIFY(!m_messages->away());
         QTRY_VERIFY(start->isVisible());

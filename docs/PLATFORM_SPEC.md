@@ -474,8 +474,9 @@ wake-word card and Settings out of reach, so the chat is all there is;
 whoever wakes the screen finds it, and a pill over the screen saver says to
 tap to send a message. Its header says who's out, counts down to
 `away_until` each second ("2:04:59 till Dad's back", "Back around 6:00
-pm", the note; with no time, "Messages go to Dad's phone"), and has "I'm
-home". "Still away" is checked each minute against `away_until`, and at
+pm", the note; with no time, "Messages go to Dad's phone"), and "Hold:
+I'm home", which ends it once held for two seconds (a tap does nothing, so
+a passing kid doesn't get the rest of the display back). "Still away" is checked each minute against `away_until`, and at
 the end of the countdown. On the landscape tiers who's writing and the
 quick messages are a column of their own beside the thread, never over it.
 **Away mode from the screen**: "I'm heading out" beside the title asks how

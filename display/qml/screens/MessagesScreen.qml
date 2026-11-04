@@ -19,7 +19,8 @@ import McFly.Core
 //
 // Away mode is the whole window (Main hides the rail and keeps everything
 // else away): a header says who's out and counts down to when they're back,
-// with "I'm home" to end it, and the chat is all there is. On the landscape
+// with "I'm home" to end it (held for two seconds, so a passing tap doesn't
+// give the rest of the display back), and the chat is all there is. On the landscape
 // tiers who's writing and the quick messages have a column of their own
 // beside the thread, so nothing sits over it; tall and mini keep them in
 // rows above and below it.
@@ -63,6 +64,38 @@ Item {
             NumberAnimation { to: 1; duration: Theme.smooth; easing.type: Easing.InCubic }
         }
         Connections { target: screen; function onNudge() { pulse.restart() } }
+    }
+
+    // "I'm home": held for two seconds, the button filling as it goes; let go
+    // early and nothing happens.
+    component HoldToEnd: PillButton {
+        id: hold
+        property real progress: 0
+        icon.name: "home"
+        text: pressed ? qsTr("Keep holding…") : qsTr("Hold: I'm home")
+        onPressedChanged: {
+            progress = 0
+            if (pressed)
+                fill.restart()
+            else
+                fill.stop()
+        }
+        NumberAnimation {
+            id: fill
+            target: hold
+            property: "progress"
+            from: 0
+            to: 1
+            duration: 2000
+            onFinished: if (hold.pressed) Messages.setAway(false)
+        }
+        Rectangle {
+            width: Math.max(height, parent.width * hold.progress)
+            height: parent.height
+            radius: height / 2
+            visible: hold.progress > 0
+            color: Qt.rgba(1, 1, 1, 0.28)
+        }
     }
 
     // Chips that wrap onto more lines in the side column rather than scroll,
@@ -315,15 +348,12 @@ Item {
                         elide: Text.ElideRight
                     }
                 }
-                PillButton {
+                HoldToEnd {
                     id: awayEnd
                     objectName: "awayEnd"
                     Layout.alignment: Qt.AlignVCenter
-                    icon.name: "home"
-                    text: qsTr("I'm home")
                     fill: awayHeader.glassFill
                     ink: awayHeader.ink
-                    onClicked: Messages.setAway(false)
                 }
             }
 
@@ -346,12 +376,10 @@ Item {
                     font.features: ({ "tnum": 1 })
                     elide: Text.ElideRight
                 }
-                PillButton {
+                HoldToEnd {
                     objectName: "awayEndShort"
-                    text: qsTr("I'm home")
                     fill: awayHeader.glassFill
                     ink: awayHeader.ink
-                    onClicked: Messages.setAway(false)
                 }
             }
         }
