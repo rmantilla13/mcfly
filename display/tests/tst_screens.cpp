@@ -486,6 +486,49 @@ private slots:
         QVERIFY(!find("awayBanner")->isVisible());
     }
 
+    // Away mode from here: "I'm heading out", how long, then the banner;
+    // "I'm home" on it turns it off.
+    void messagesScreenTurnsAwayOnAndOff()
+    {
+        m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}}});
+        QVERIFY(show("MessagesScreen { }", 1180, 800, QStringLiteral("compact")));
+        const auto tap = [this](QQuickItem *item) {
+            QTest::mouseClick(m_window, Qt::LeftButton, {}, item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint());
+        };
+        QQuickItem *start = find("awayStart");
+        QQuickItem *chooser = find("awayChooser");
+        QQuickItem *choices = find("awayChoices");
+        QQuickItem *banner = find("awayBanner");
+        QVERIFY(start && chooser && choices && banner);
+        QTRY_VERIFY(start->isVisible());
+        QVERIFY(start->height() >= 64);
+        QVERIFY(!chooser->isVisible());
+        QTest::qWait(900); // the screen's reveal
+        tap(start);
+        QTRY_VERIFY(chooser->isVisible());
+        QVERIFY(!start->isVisible());
+        shoot(QStringLiteral("messages-away-choose"));
+        QMetaObject::invokeMethod(choices, "picked", Q_ARG(QString, QStringLiteral("120")));
+        QTRY_VERIFY(banner->isVisible());
+        QVERIFY(m_messages->away());
+        QVERIFY2(m_messages->awayLabel().contains(QStringLiteral("back around")), qPrintable(m_messages->awayLabel()));
+        QVERIFY(!chooser->isVisible());
+        QVERIFY(!start->isVisible());
+        QQuickItem *end = find("awayEnd");
+        QVERIFY(end && end->isVisible() && end->height() >= 64);
+        tap(end);
+        QTRY_VERIFY(!banner->isVisible());
+        QVERIFY(!m_messages->away());
+        QTRY_VERIFY(start->isVisible());
+        // × puts the chooser away without turning anything on.
+        tap(start);
+        QTRY_VERIFY(chooser->isVisible());
+        QTest::qWait(200); // laid out, so the tap lands on the ×
+        tap(find("awayChooserClose"));
+        QTRY_VERIFY(!chooser->isVisible());
+        QVERIFY(!m_messages->away());
+    }
+
     // A reply from the person: the card shows who and what, and Reply asks for Messages.
     void messageCardShowsAReply()
     {

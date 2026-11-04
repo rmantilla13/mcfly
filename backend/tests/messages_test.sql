@@ -246,6 +246,46 @@ select set_away(true);
 select tests.ok((select away_since > now() - interval '1 minute' from platform_settings), 'run out: a new start');
 select set_away(false);
 
+-- ───────────────────────────── Away mode from a display (20261104000030) ─────────────────────────────
+select tests.ok(not has_function_privilege('anon', 'device_set_away(boolean, timestamptz)', 'execute'), 'anon cannot set away from a display');
+select tests.login(:'device2');
+select device_set_away(true, now() + interval '2 hours') as d \gset
+select tests.eq((:'d'::jsonb)->>'away', 'true', 'a display turns it on');
+select tests.eq((:'d'::jsonb)->>'name', 'Dad', 'under the person''s name, not the display''s');
+select tests.ok((select away_until > now() + interval '1 hour' from platform_settings), 'until the time it picked');
+select tests.logout();
+select tests.eq((select details->>'display' from admin_audit_log order by created_at desc, id desc limit 1), 'Den', 'audited with the display');
+select tests.login(:'device2');
+select tests.throws($$select device_set_away(true, now() - interval '1 minute')$$, 'pick a time that hasn''t passed', 'a display: a time gone by');
+select tests.throws($$select device_set_away(true, now() + interval '15 days')$$, 'away for at most two weeks at a time', 'a display: too far out');
+select tests.throws($$select device_set_away(null)$$, 'say whether you''re away', 'a display: neither');
+select tests.eq(device_set_away(false)->>'away', 'false', 'and off');
+-- Already away from the phone, with a note: the display changes only how long.
+select tests.login(:'admin');
+select set_away(true, null, 'At the shop');
+select away_since as phone_since from platform_settings \gset
+select tests.login(:'device2');
+select device_set_away(true, now() + interval '1 hour');
+select tests.ok((select away_since = :'phone_since'::timestamptz and away_note = 'At the shop' and away_name = 'Dad' and away_until is not null
+                 from platform_settings), 'on again from a display keeps when, who and the note');
+select device_set_away(false);
+select tests.ok((select away_since is null and away_note is null from platform_settings), 'a display turns the phone''s off too');
+-- Only a paired display: not the person (set_away is theirs), not someone else, not the service role.
+select tests.login(:'admin');
+select tests.throws($$select device_set_away(true)$$, 'not a paired display', 'the person uses set_away');
+select tests.login(:'other');
+select tests.throws($$select device_set_away(true)$$, 'not a paired display', 'nor someone else');
+select tests.login_service();
+select tests.throws($$select device_set_away(true)$$, 'not a paired display', 'nor the service role');
+-- No message name for anyone: "Parent".
+select tests.logout();
+update profiles set message_name = null where id = :'admin';
+select tests.login(:'device2');
+select tests.eq(device_set_away(true)->>'name', 'Parent', 'no name: Parent');
+select device_set_away(false);
+select tests.logout();
+update profiles set message_name = 'Dad' where id = :'admin';
+
 -- ───────────────────────────── Voice notes (20261104000020) ─────────────────────────────
 select tests.ok(to_regprocedure('send_message(text, text, text)') is null, 'no three-argument send_message beside the new one');
 select tests.ok(has_function_privilege('authenticated', 'send_message(text, text, text, text, integer)', 'execute'), 'the new one is callable');

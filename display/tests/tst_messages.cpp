@@ -4,6 +4,7 @@
 #include <QNetworkProxy>
 #include <QSettings>
 #include <QUrlQuery>
+#include <memory>
 
 #include "FakeServer.h"
 #include "backend/SupabaseClient.h"
@@ -418,6 +419,69 @@ private slots:
         // An older backend's row, without the columns, is simply not away.
         rig->messages.applySettings({{"message_names", QVariantList{"Mia"}}});
         QVERIFY(!rig->messages.away());
+    }
+
+    // Away mode from here: device_set_away, the banner once the server has
+    // it, the poll agreeing, and a refusal saying why.
+    void setsAwayFromHere()
+    {
+        auto away = std::make_shared<QJsonObject>(); // the row's away_* (empty: home)
+        m_server.route("/rest/v1/platform_settings", [away](const Request &) {
+            QJsonObject row{{"display_name", "Hill Valley"}, {"message_names", QJsonArray{"Mia"}}};
+            for (auto it = away->begin(); it != away->end(); ++it)
+                row.insert(it.key(), it.value());
+            return FakeServer::json(QJsonDocument(QJsonArray{row}));
+        });
+        m_server.route("/rest/v1/rpc/device_set_away", [away](const Request &r) {
+            if (r.body.value("away").toBool())
+                *away = {{"away_since", iso(QDateTime::currentDateTime())}, {"away_until", r.body.value("until")},
+                         {"away_note", QJsonValue::Null}, {"away_name", "Dad"}};
+            else
+                *away = {};
+            return FakeServer::json(QJsonDocument(QJsonObject{
+                {"away", !away->isEmpty()}, {"since", away->value("away_since")}, {"until", away->value("away_until")},
+                {"note", QJsonValue::Null}, {"name", away->isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue("Dad")}}));
+        });
+        startLive();
+        QSignalSpy notices(&rig->messages, &MessageStore::notice);
+        rig->messages.setAway(true, 120);
+        QTRY_VERIFY(rig->messages.away());
+        const QJsonObject sent = m_server.requests("POST", "/rest/v1/rpc/device_set_away").last().body;
+        QCOMPARE(sent.value("away").toBool(), true);
+        const QDateTime until = QDateTime::fromString(sent.value("until").toString(), Qt::ISODateWithMs);
+        QVERIFY2(qAbs(QDateTime::currentDateTime().secsTo(until) - 7200) < 60, qPrintable(sent.value("until").toString()));
+        QVERIFY2(rig->messages.awayLabel().startsWith(QStringLiteral("Dad is out · back")), qPrintable(rig->messages.awayLabel()));
+        QCOMPARE(notices.size(), 1);
+        // The polls after it read the same.
+        const int polls = m_server.requests("GET", "/rest/v1/platform_settings").size();
+        QTRY_VERIFY(m_server.requests("GET", "/rest/v1/platform_settings").size() >= polls + 2);
+        QVERIFY(rig->messages.away());
+        // Home: off, with no time.
+        rig->messages.setAway(false);
+        QTRY_VERIFY(!rig->messages.away());
+        QVERIFY(!m_server.requests("POST", "/rest/v1/rpc/device_set_away").last().body.contains("until"));
+        // Till they're back: no time either.
+        rig->messages.setAway(true);
+        QTRY_VERIFY(rig->messages.away());
+        QVERIFY(!m_server.requests("POST", "/rest/v1/rpc/device_set_away").last().body.contains("until"));
+        QCOMPARE(rig->messages.awayLabel(), QStringLiteral("Dad is out"));
+        rig->messages.setAway(false);
+        QTRY_VERIFY(!rig->messages.away());
+        // A refusal says why, and nothing changes.
+        m_server.route("/rest/v1/rpc/device_set_away", [](const Request &) { return json(R"({"message":"not a paired display"})", 400); });
+        notices.clear();
+        rig->messages.setAway(true);
+        QTRY_COMPARE(notices.size(), 1);
+        QCOMPARE(notices.first().first().toString(), QStringLiteral("Couldn't change away mode: not a paired display"));
+        QVERIFY(!rig->messages.away());
+        // A backend from before it.
+        m_server.route("/rest/v1/rpc/device_set_away", [](const Request &) {
+            return json(R"({"code":"PGRST202","message":"Could not find the function public.device_set_away"})", 404);
+        });
+        notices.clear();
+        rig->messages.setAway(true);
+        QTRY_COMPARE(notices.size(), 1);
+        QCOMPARE(notices.first().first().toString(), QStringLiteral("Away mode from here needs McFly's newest backend"));
     }
 
     void theDemoAnswersBack()

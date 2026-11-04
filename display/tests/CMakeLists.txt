@@ -129,7 +129,7 @@ set_tests_properties(tst_quickanswer PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=off
 # stacks the on-screen keyboard over dialogs; and closing when the display
 # goes idle.
 mcfly_test_qml_module(${CMAKE_CURRENT_BINARY_DIR}/qml-dialogs
-    Theme.qml Glass.qml components/Lens.qml components/PillButton.qml components/FormField.qml
+    Theme.qml Glass.qml components/Lens.qml components/Icon.qml components/PillButton.qml components/FormField.qml
     components/FocusFlickable.qml components/FormDialog.qml components/Layer.qml)
 qt_add_executable(tst_dialogs tst_dialogs.cpp)
 target_compile_options(tst_dialogs PRIVATE ${MCFLY_WARNINGS})

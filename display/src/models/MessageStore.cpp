@@ -341,6 +341,55 @@ void MessageStore::applySettings(const QVariantMap &settings)
     updateAway();
 }
 
+void MessageStore::setAway(bool away, int minutes)
+{
+    if (!m_available)
+        return;
+    const QDateTime until = away && minutes > 0 ? now().addSecs(qint64(minutes) * 60) : QDateTime();
+    const QString untilText = until.isValid() ? until.toUTC().toString(Qt::ISODateWithMs) : QString();
+    // The setting as device_set_away returns it: { away, since, until, note, name }.
+    const auto apply = [this, away](const QVariantMap &s) {
+        m_settings = {{"away_since", s.value("since")}, {"away_until", s.value("until")},
+                      {"away_note", s.value("note")}, {"away_name", s.value("name")}};
+        updateAway();
+        emit notice(away ? tr("Away mode is on: the screen opens to Messages") : tr("Welcome home: away mode is off"));
+    };
+    if (m_mode != QLatin1String("live")) {
+        // The demo: here only, as the server would.
+        const bool was = m_away.value("away").toBool();
+        apply(away ? QVariantMap{{"since", was ? m_settings.value("away_since") : QVariant(now().toUTC().toString(Qt::ISODateWithMs))},
+                                 {"until", untilText.isEmpty() ? QVariant() : QVariant(untilText)},
+                                 {"note", was ? m_settings.value("away_note") : QVariant()},
+                                 {"name", was ? m_settings.value("away_name") : QVariant(personName())}}
+                   : QVariantMap{});
+        return;
+    }
+    QJsonObject args{{"away", away}};
+    if (!untilText.isEmpty())
+        args.insert("until", untilText);
+    const int generation = m_generation;
+    m_store->withSession([this, args, generation, apply]() {
+        if (generation != m_generation)
+            return;
+        m_client->rpc("device_set_away", args, [this, generation, apply](const QJsonDocument &doc, const QString &error) {
+            if (generation != m_generation)
+                return;
+            if (!error.isEmpty()) {
+                qWarning() << "messages: away:" << error;
+                if (error.contains(QLatin1String("HTTP 404")) || error.contains(QLatin1String("PGRST202"))) {
+                    emit notice(tr("Away mode from here needs McFly's newest backend"));
+                } else {
+                    QString why = error;
+                    why.remove(QRegularExpression(QStringLiteral(" \\(HTTP \\d+\\)$")));
+                    emit notice(tr("Couldn't change away mode: %1").arg(why));
+                }
+                return;
+            }
+            apply(doc.object().toVariantMap());
+        });
+    });
+}
+
 void MessageStore::updateAway()
 {
     const QVariantMap next = awayState(m_settings, now());

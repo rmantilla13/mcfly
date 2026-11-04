@@ -14,7 +14,9 @@ import McFly.Core
 // "Seen by Dad"; one that didn't go says why, and a tap tries it again.
 // With names listed and none picked, Send (or the mic) asks who's writing
 // first and goes on once someone taps their name. A voice note plays with
-// its ▶; the person's own notes too.
+// its ▶; the person's own notes too. "I'm heading out" turns away mode on
+// from here (for a few hours, or till they're back); "I'm home" on the
+// banner turns it off.
 Item {
     id: screen
     property bool shown: true
@@ -26,6 +28,8 @@ Item {
     // waiting to start.
     property string waiting: ""
     property bool waitingToRecord: false
+    // "I'm heading out" was tapped: how long?
+    property bool choosingAway: false
     readonly property bool needsWriter: Messages.names.length > 0 && Messages.writer === ""
 
     // The mic: a voice note, once whoever's writing has said who they are.
@@ -69,6 +73,7 @@ Item {
         if (!isCurrent) {
             waiting = ""
             waitingToRecord = false
+            choosingAway = false
             Messages.cancelRecording()
         }
     }
@@ -100,6 +105,68 @@ Item {
                       ? qsTr("Write to %1's phone").arg(Messages.personName)
                       : qsTr("Write to the phone")
             opacity: rv.at(0)
+            PillButton {
+                objectName: "awayStart"
+                visible: Messages.available && !Messages.away && !screen.choosingAway
+                icon.name: "home"
+                text: qsTr("I'm heading out")
+                fill: Theme.surface
+                ink: Theme.text
+                onClicked: screen.choosingAway = true
+            }
+        }
+
+        // How long: then the banner takes its place.
+        Rectangle {
+            objectName: "awayChooser"
+            Layout.fillWidth: true
+            visible: screen.choosingAway && !Messages.away && screen.keyboardHeight === 0
+            implicitHeight: chooserCol.implicitHeight + 24
+            radius: 22
+            color: Theme.surface
+            ColumnLayout {
+                id: chooserCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 20
+                anchors.rightMargin: 12
+                spacing: 4
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Heading out? Messages opens first till you're back")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.DemiBold
+                        wrapMode: Text.Wrap
+                    }
+                    IconButton {
+                        objectName: "awayChooserClose"
+                        width: 64; height: 64
+                        icon: "close"
+                        iconSize: 20
+                        fill: Theme.surfaceAlt
+                        ink: Theme.textMuted
+                        onClicked: screen.choosingAway = false
+                    }
+                }
+                ChipRow {
+                    objectName: "awayChoices"
+                    Layout.fillWidth: true
+                    chipHeight: 52
+                    model: [{ id: "0", label: qsTr("Till I'm back") }, { id: "60", label: qsTr("1 hour") },
+                            { id: "120", label: qsTr("2 hours") }, { id: "240", label: qsTr("4 hours") },
+                            { id: "480", label: qsTr("8 hours") }]
+                    current: ""
+                    onPicked: id => {
+                        screen.choosingAway = false
+                        Messages.setAway(true, Number(id))
+                    }
+                }
+            }
         }
 
         // Away mode: where the person is, and when they'll be back.
@@ -107,7 +174,7 @@ Item {
             objectName: "awayBanner"
             Layout.fillWidth: true
             visible: Messages.away && screen.keyboardHeight === 0
-            implicitHeight: awayRow.implicitHeight + 24
+            implicitHeight: awayRow.implicitHeight + 16
             radius: 22
             color: Theme.accentSoft
             opacity: rv.at(1)
@@ -127,6 +194,13 @@ Item {
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
+                }
+                PillButton {
+                    objectName: "awayEnd"
+                    text: qsTr("I'm home")
+                    fill: Theme.surface
+                    ink: Theme.text
+                    onClicked: Messages.setAway(false)
                 }
             }
         }
@@ -432,11 +506,13 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 // A voice note (there's no mic without the voice service).
-                IconButton {
+                PillButton {
                     objectName: "messageRecord"
                     visible: Messages.canRecord && !Messages.recording
-                    width: 60; height: 60
-                    icon: "mic"
+                    height: 60
+                    width: Theme.mini ? 60 : implicitWidth
+                    icon.name: "mic"
+                    text: Theme.mini ? "" : qsTr("Voice note")
                     fill: Theme.surfaceAlt
                     ink: Theme.text
                     onClicked: screen.record()

@@ -1241,7 +1241,7 @@ export async function askAssistant(message: string, history: AskTurn[], mode: As
 // ───────────────────────────── Backend status ─────────────────────────────
 
 // The newest migration this console was built for (backend/supabase/migrations).
-export const EXPECTED_MIGRATION = "20261104000020";
+export const EXPECTED_MIGRATION = "20261104000030";
 const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar", "notify"];
 
 export async function getBackendStatus(): Promise<BackendStatus> {

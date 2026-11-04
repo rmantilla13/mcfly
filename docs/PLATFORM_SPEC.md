@@ -38,7 +38,7 @@ in `backend/tests/*_test.sql` are the executable version of this section.
 |---|---|
 | `profiles` | One per person with an account: `id` (= auth user), `display_name`, `message_name` (what the household calls them on Messages, 1–24 characters, one line; null until set with `set_message_name`). A person reads and updates their own; admins read all. Not created for device accounts (`raw_app_meta_data.kind = 'device'`) |
 | `platform_admins` | Who runs McFly. **The first person to sign up becomes an admin** (`handle_new_user` trigger); later people are added with `admin_set_admin`. Read-only to admins |
-| `platform_settings` | One row: `display_name` ('McFly'), `timezone` ('America/Chicago'), `briefs_keep_days` (30), `quotes_keep_days` (90), `news_keep_reports` (14), `message_names` (who writes from the displays, at most 8, no two alike; `admin_set_message_names`), away mode: `away_since`, `away_until` (null: until it's turned off), `away_note` (≤80, one line), `away_name` (the person's `message_name` when they set it; displays can't read profiles), all written by `set_away` (§1.8). Readable by displays and admins; written by `admin_update_settings` |
+| `platform_settings` | One row: `display_name` ('McFly'), `timezone` ('America/Chicago'), `briefs_keep_days` (30), `quotes_keep_days` (90), `news_keep_reports` (14), `message_names` (who writes from the displays, at most 8, no two alike; `admin_set_message_names`), away mode: `away_since`, `away_until` (null: until it's turned off), `away_note` (≤80, one line), `away_name` (the person's `message_name` when they set it, or the first admin's when a display does; displays can't read profiles), all written by `set_away` and, from a display, `device_set_away` (§1.8). Readable by displays and admins; written by `admin_update_settings` |
 
 Helpers: `is_service_role()`, `is_platform_admin()` (true for the service
 role too), `is_device()`, `can_read()` (= device or admin).
@@ -205,6 +205,7 @@ nothing in AGENTS.md.
 | `register_push_token(token, environment, bundle_id, platform)` / `unregister_push_token(token)` | an admin's own sign-in, never a display | The phone that gets notifications; a kept token moves to whoever registers it |
 | `set_message_name(name)` | an admin's own sign-in | Their `profiles.message_name`; blank clears it |
 | `set_away(away, until, note)` | an admin's own sign-in, never a display | Away mode (migration 20261104000010) on, until `until` (at most two weeks out; null: until it's turned off), or off. On again while away keeps when it began. Returns { away, since, until, note, name }. Audit `set_away`. Each screen decides "still away" against `away_until` itself |
+| `device_set_away(away, until)` | a paired display | Away mode from the screen at home (migration 20261104000030): the same limits as `set_away`, no note. The name is the household's for the person (the first admin's `message_name`, else "Parent"); on again while away keeps when it began, the name and the note; off ends it whoever set it. Audit `set_away` with the display's name. Anyone at the screen may: all it does is put Messages first |
 | `admin_set_message_names(names)` | admins | `platform_settings.message_names`, trimmed, blanks out, at most 8, no two alike (audit `set_message_names`) |
 | `message_push(message)`, `message_notified(message, error)`, `push_token_gone(token)` | service role | For `notify` (§2.7): a display's message as its notification says it with the unread count and every admin's tokens; its outcome; a dead token forgotten |
 
@@ -450,13 +451,13 @@ thread once, then only what changed (`updated_at` after the newest seen
 less 30 s, rows de-duplicated by id), every 5 s while Messages is open or
 for five minutes after a send, else every 30 s; `message_names` with the
 first read and every tenth. Who's writing is a button a name (a name stays
-picked until the screen goes idle); a message is typed, said (the mic fills
-the box through the voice service, never the assistant) or tapped from the
+picked until the screen goes idle); a message is typed or tapped from the
 quick row. It shows at once ("Sending…") and stays with why it didn't go,
 a tap to try again. Under home's newest: Sent, "On Dad's phone"
 (`notified_at`), "Seen by Dad" (`read_at`). On screen and uncovered, the
 person's replies are marked read (`read_messages`). **Voice notes**:
-the mic records one through the voice service (`record`, at most 30 s;
+the Voice note button (beside Send, shown while the voice service has a
+microphone) records one through the voice service (`record`, at most 30 s;
 Send ends and sends it, × drops it; it asks who's talking first when names
 are listed), uploaded to `voice-notes` in the display's folder, then
 `send_message` with it; ▶ plays one, its WAV read from Storage with the
@@ -470,8 +471,12 @@ show on Messages. `platform_settings` is read with every poll (`select=*`,
 so an older backend still answers) for the names and away mode: while
 away, whoever wakes the screen finds Messages (going idle sets the screen
 to it), Messages has a banner ("Dad is out · back around 6:00 pm",
-the note), and a pill over the screen saver says to tap to send a message.
-"Still away" is checked each minute against `away_until`.
+the note, and "I'm home"), and a pill over the screen saver says to tap to
+send a message. "Still away" is checked each minute against `away_until`.
+**Away mode from the screen**: "I'm heading out" beside the title asks how
+long (till they're back, 1, 2, 4 or 8 hours) and turns it on through
+`device_set_away`; "I'm home" on the banner turns it off. The banner
+follows once the server has it; a refusal is a toast saying why.
 
 ## 4. Apple app
 

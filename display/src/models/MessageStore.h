@@ -105,6 +105,10 @@ public:
     Q_INVOKABLE bool startRecording();
     Q_INVOKABLE void finishRecording();
     Q_INVOKABLE void cancelRecording();
+    // Away mode from here (device_set_away, 20261104000030): on for
+    // `minutes` (0: till it's turned off), or off. Anyone at the screen may;
+    // the banner follows once the server has it.
+    Q_INVOKABLE void setAway(bool away, int minutes = 0);
     // Plays a message's voice note (or stops it, if it's the one playing).
     Q_INVOKABLE void play(const QString &id);
     Q_INVOKABLE void stopPlaying();
