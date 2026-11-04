@@ -190,6 +190,7 @@ private:
     QVariantList m_thread;
     QStringList m_names;
     QVariantMap m_settings; // the away_* columns as read
+    int m_awayWrites = 0;   // setAway()s sent and landed: a settings read from before one is older
     QVariantMap m_away;     // awayState(m_settings, now)
     QString m_writer;
     QString m_draft;

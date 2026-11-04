@@ -315,10 +315,16 @@ void MessageStore::loadNames()
     // Every column: a backend without away mode (or names) still answers.
     q.addQueryItem("select", "*");
     q.addQueryItem("limit", "1");
-    m_client->select("platform_settings", q, [this, generation](const QJsonDocument &doc, const QString &error) {
+    const int writes = m_awayWrites;
+    m_client->select("platform_settings", q, [this, generation, writes](const QJsonDocument &doc, const QString &error) {
         if (generation != m_generation || !error.isEmpty())
             return;
-        applySettings(doc.array().at(0).toObject().toVariantMap());
+        QVariantMap row = doc.array().at(0).toObject().toVariantMap();
+        // Asked for before away mode changed here: its away_* are older than ours.
+        if (writes != m_awayWrites)
+            for (auto it = m_settings.cbegin(); it != m_settings.cend(); ++it)
+                row.insert(it.key(), it.value());
+        applySettings(row);
     });
 }
 
@@ -349,6 +355,7 @@ void MessageStore::setAway(bool away, int minutes)
     const QString untilText = until.isValid() ? until.toUTC().toString(Qt::ISODateWithMs) : QString();
     // The setting as device_set_away returns it: { away, since, until, note, name }.
     const auto apply = [this, away](const QVariantMap &s) {
+        ++m_awayWrites;
         m_settings = {{"away_since", s.value("since")}, {"away_until", s.value("until")},
                       {"away_note", s.value("note")}, {"away_name", s.value("name")}};
         updateAway();
@@ -367,6 +374,7 @@ void MessageStore::setAway(bool away, int minutes)
     QJsonObject args{{"away", away}};
     if (!untilText.isEmpty())
         args.insert("until", untilText);
+    ++m_awayWrites;
     const int generation = m_generation;
     m_store->withSession([this, args, generation, apply]() {
         if (generation != m_generation)
@@ -375,6 +383,7 @@ void MessageStore::setAway(bool away, int minutes)
             if (generation != m_generation)
                 return;
             if (!error.isEmpty()) {
+                ++m_awayWrites;
                 qWarning() << "messages: away:" << error;
                 if (error.contains(QLatin1String("HTTP 404")) || error.contains(QLatin1String("PGRST202"))) {
                     emit notice(tr("Away mode from here needs McFly's newest backend"));

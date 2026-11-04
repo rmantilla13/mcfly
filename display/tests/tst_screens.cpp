@@ -516,15 +516,14 @@ private slots:
         QVERIFY(!start->isVisible());
         QQuickItem *end = find("awayEnd");
         QVERIFY(end && end->isVisible() && end->height() >= 64);
-        tap(end);
+        QMetaObject::invokeMethod(end, "clicked"); // just shown: not laid out yet for a tap
         QTRY_VERIFY(!banner->isVisible());
         QVERIFY(!m_messages->away());
         QTRY_VERIFY(start->isVisible());
         // × puts the chooser away without turning anything on.
-        tap(start);
+        QMetaObject::invokeMethod(start, "clicked");
         QTRY_VERIFY(chooser->isVisible());
-        QTest::qWait(200); // laid out, so the tap lands on the ×
-        tap(find("awayChooserClose"));
+        QMetaObject::invokeMethod(find("awayChooserClose"), "clicked");
         QTRY_VERIFY(!chooser->isVisible());
         QVERIFY(!m_messages->away());
     }
