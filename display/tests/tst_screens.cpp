@@ -468,7 +468,7 @@ private slots:
     // Away mode on Messages: a banner says who is out, till when and why.
     void messagesScreenShowsAwayMode()
     {
-        const QDateTime now = QDateTime::currentDateTime();
+        const QDateTime now = m_store->now(); // the store's (pinned) clock, not the wall clock
         m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}},
                                    {"away_since", now.addSecs(-600).toUTC().toString(Qt::ISODateWithMs)},
                                    {"away_until", now.addSecs(2 * 3600).toUTC().toString(Qt::ISODateWithMs)},
