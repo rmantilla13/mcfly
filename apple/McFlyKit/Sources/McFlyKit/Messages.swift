@@ -81,6 +81,45 @@ public struct MessageNames: Equatable, Sendable {
     public var signed: String { mine ?? "Parent" }
 }
 
+/// Away mode (platform_settings.away_*, migration 20261104000010): the
+/// person is out of the house, so the displays wake to Messages. Away from
+/// `since` until `until` (nil: until it's turned off), decided on each screen
+/// against the clock, so it ends on time without a write.
+public struct AwayStatus: Codable, Equatable, Sendable {
+    public var since: Date?
+    public var until: Date?
+    public var note: String?
+    /// What the household calls the person who set it.
+    public var name: String?
+
+    enum CodingKeys: String, CodingKey {
+        case since = "away_since"
+        case until = "away_until"
+        case note = "away_note"
+        case name = "away_name"
+    }
+
+    public init(since: Date? = nil, until: Date? = nil, note: String? = nil, name: String? = nil) {
+        self.since = since
+        self.until = until
+        self.note = note
+        self.name = name
+    }
+
+    public func isAway(now: Date = .now) -> Bool {
+        since != nil && (until.map { $0 > now } ?? true)
+    }
+
+    /// For the person: "Away until 6:00 PM", "Away until Thursday 9:00 AM", "Away".
+    public func label(now: Date = .now, calendar: Calendar = .current) -> String {
+        guard isAway(now: now) else { return "Home" }
+        guard let until else { return "Away" }
+        let time = until.formatted(date: .omitted, time: .shortened)
+        if calendar.isDate(until, inSameDayAs: now) { return "Away until \(time)" }
+        return "Away until \(until.formatted(.dateTime.weekday(.wide))) \(time)"
+    }
+}
+
 /// A day of the thread, for its heading: "Today", "Yesterday", the weekday
 /// within a week, else the date.
 public struct MessageDay: Identifiable, Equatable, Sendable {
@@ -150,6 +189,10 @@ public protocol MessageService: Sendable {
     /// Marks home's messages read up to `upTo` (`read_messages`; nil: all).
     func markRead(upTo: UUID?) async throws
     func names() async throws -> MessageNames
+    /// Away mode as the displays see it.
+    func away() async throws -> AwayStatus
+    /// Away mode on (until a time, or until it's turned off) or off (`set_away`).
+    func setAway(_ away: Bool, until: Date?, note: String?) async throws -> AwayStatus
     /// What the household calls the person (`set_message_name`); nil clears it.
     func setMyName(_ name: String?) async throws -> String?
     /// Who writes from the displays (`admin_set_message_names`), as kept.
@@ -214,6 +257,29 @@ public struct SupabaseMessageService: MessageService {
 
     public func setHouseholdNames(_ names: [String]) async throws -> [String] {
         try decode(await client.rpc("admin_set_message_names", params: ["names": names]).execute().data)
+    }
+
+    public func away() async throws -> AwayStatus {
+        let rows: [AwayStatus] = try decode(await client.from("platform_settings")
+            .select("away_since,away_until,away_note,away_name").limit(1).execute().data)
+        return rows.first ?? AwayStatus()
+    }
+
+    public func setAway(_ away: Bool, until: Date?, note: String?) async throws -> AwayStatus {
+        struct Params: Encodable {
+            var away: Bool
+            var until: String?
+            var note: String?
+        }
+        struct Answer: Decodable {
+            var since: Date?
+            var until: Date?
+            var note: String?
+            var name: String?
+        }
+        let params = Params(away: away, until: until.map { Self.iso.string(from: $0) }, note: note)
+        let answer: Answer = try decode(await client.rpc("set_away", params: params).execute().data)
+        return AwayStatus(since: answer.since, until: answer.until, note: answer.note, name: answer.name)
     }
 
     public func registerPushToken(_ token: String, environment: String, bundleId: String, platform: String) async throws {
@@ -396,13 +462,22 @@ public final class MessagesStore {
         }
     }
 
+    /// Away mode, as last read or set here.
+    public private(set) var away = AwayStatus()
+
     public func loadNames() async {
         if let names = try? await service.names() { self.names = names }
+        if let away = try? await service.away() { self.away = away }
     }
 
     public func setMyName(_ name: String?) async throws {
         let cleaned = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         names.mine = try await service.setMyName(cleaned?.isEmpty == false ? cleaned : nil)
+    }
+
+    public func setAway(_ on: Bool, until: Date? = nil, note: String? = nil) async throws {
+        let cleaned = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        away = try await service.setAway(on, until: until, note: cleaned?.isEmpty == false ? cleaned : nil)
     }
 
     public func setHouseholdNames(_ list: [String]) async throws {
@@ -426,6 +501,7 @@ public final class MessagesStore {
         messages = []
         pending = []
         names = MessageNames()
+        away = AwayStatus()
         loadedAt = nil
         cursor = nil
         errorMessage = nil
@@ -483,6 +559,13 @@ public actor DemoMessageService: MessageService {
     }
 
     public func names() async throws -> MessageNames { names }
+
+    private var awayNow = AwayStatus()
+    public func away() async throws -> AwayStatus { awayNow }
+    public func setAway(_ away: Bool, until: Date?, note: String?) async throws -> AwayStatus {
+        awayNow = away ? AwayStatus(since: awayNow.since ?? .now, until: until, note: note, name: names.signed) : AwayStatus()
+        return awayNow
+    }
 
     public func setMyName(_ name: String?) async throws -> String? {
         names.mine = name

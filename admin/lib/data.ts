@@ -1,7 +1,7 @@
 import type { Dismissal } from "@/lib/dismissals";
 import "server-only";
 import { demoAsks, notRunOut, openAsks, type OpenAsk } from "@/lib/asks";
-import { demoMessages, MESSAGE_COLUMNS, type Message, type MessageNames } from "@/lib/messages";
+import { demoMessages, MESSAGE_COLUMNS, NOT_AWAY, type AwayStatus, type Message, type MessageNames } from "@/lib/messages";
 import { FunctionsHttpError, type SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -428,6 +428,31 @@ export async function setMessageNames(household: string[], mine: string | null):
   const kept = list<string>(await rpc(src.db, "admin_set_message_names", { names: household }), "admin_set_message_names");
   const name = await rpc<string | null>(src.db, "set_message_name", { name: mine });
   return { household: kept, mine: typeof name === "string" && name ? name : null };
+}
+
+// Away mode as the displays see it (platform_settings.away_*).
+let demoAway: AwayStatus = NOT_AWAY;
+export async function getAway(): Promise<AwayStatus> {
+  const src = await source();
+  if (src.demo) return demoAway;
+  const { data } = await src.db.from("platform_settings").select("*").limit(1).maybeSingle();
+  const row = (data ?? {}) as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return { since: text(row.away_since), until: text(row.away_until), note: text(row.away_note), name: text(row.away_name) };
+}
+
+// Away mode on (until an instant, or until it's turned off) or off (set_away).
+export async function setAway(away: boolean, until: string | null, note: string | null): Promise<AwayStatus> {
+  const src = await source();
+  if (src.demo) {
+    demoAway = away ? { since: demoAway.since ?? new Date().toISOString(), until, note, name: demoThread.names.mine ?? "Parent" } : NOT_AWAY;
+    return demoAway;
+  }
+  const row = record<{ since?: string | null; until?: string | null; note?: string | null; name?: string | null }>(
+    await rpc(src.db, "set_away", { away, until, note }),
+    "set_away",
+  );
+  return { since: row.since ?? null, until: row.until ?? null, note: row.note ?? null, name: row.name ?? null };
 }
 
 // A test notification on each of the signed-in person's phones (`notify`, test).
@@ -1203,7 +1228,7 @@ export async function askAssistant(message: string, history: AskTurn[], mode: As
 // ───────────────────────────── Backend status ─────────────────────────────
 
 // The newest migration this console was built for (backend/supabase/migrations).
-export const EXPECTED_MIGRATION = "20261103000010";
+export const EXPECTED_MIGRATION = "20261104000010";
 const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar", "notify"];
 
 export async function getBackendStatus(): Promise<BackendStatus> {

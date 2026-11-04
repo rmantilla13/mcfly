@@ -13,7 +13,9 @@ export function useFormAction(action: FormAction, onSuccess?: (result: ActionRes
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
+    // The button that sent it counts too, when it has a name (I'm away / I'm home).
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+    const data = new FormData(form, submitter);
     startTransition(async () => {
       const next = await action(null, data);
       setResult(next);

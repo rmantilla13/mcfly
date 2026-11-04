@@ -65,7 +65,9 @@ and launch mark from `apple/scripts/flux_mark.py`, and the console's
    messages), and it reaches the phone as a notification; reply from the
    notification, the app or the console, and it shows on the display within
    seconds, read out. Notifications need an APNs key ([ADMIN.md](docs/ADMIN.md),
-   Messages and notifications).
+   Messages and notifications). **Away mode** (the app, the console, or a
+   Shortcuts automation when you leave home) makes the display open to
+   Messages while you're out.
 
 ## Quick start
 

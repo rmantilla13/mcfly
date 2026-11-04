@@ -11,7 +11,7 @@ import { DataError } from "@/lib/errors";
 import { googleReturnTo } from "@/lib/google-calendars";
 import { isCompleteCode, sanitizeCode } from "@/lib/pairing";
 import { knownTimeZone } from "@/lib/timezones";
-import { MAX_MESSAGE, type Message, parseNames } from "@/lib/messages";
+import { awayUntil, MAX_MESSAGE, type Message, parseNames } from "@/lib/messages";
 import type { DisplaySettings } from "@/lib/types";
 import { AGENT_KINDS, AGENT_SCOPES, ASSISTANT_PROVIDERS, type AgentKind, type AgentScope, type AssistantProvider, type SettingsPatch } from "@/lib/types";
 
@@ -724,6 +724,17 @@ export async function saveMessageNamesAction(_prev: ActionResult, fd: FormData):
     const mine = text(fd, "mine", 40) || null;
     await data.setMessageNames(household, mine);
     return { ok: true, message: "Saved. The displays show the names within a few minutes." };
+  });
+}
+
+// Away mode from the Messages page: `away` on or off, `back` hours ("" until
+// it's turned off), and a one-line note for the display.
+export async function setAwayAction(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  return mutate(async () => {
+    const on = text(fd, "away", 8) === "on";
+    const note = text(fd, "note", 80) || null;
+    const status = await data.setAway(on, on ? awayUntil(text(fd, "back", 4), Date.now()) : null, on ? note : null);
+    return { ok: true, message: status.since ? "Away mode is on: the display opens to Messages." : "Away mode is off: welcome home." };
   });
 }
 

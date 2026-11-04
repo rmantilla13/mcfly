@@ -80,6 +80,35 @@ Item {
             opacity: rv.at(0)
         }
 
+        // Away mode: where the person is, and when they'll be back.
+        Rectangle {
+            objectName: "awayBanner"
+            Layout.fillWidth: true
+            visible: Messages.away && screen.keyboardHeight === 0
+            implicitHeight: awayRow.implicitHeight + 24
+            radius: 22
+            color: Theme.accentSoft
+            opacity: rv.at(1)
+            RowLayout {
+                id: awayRow
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                spacing: 14
+                Icon { name: "home"; size: 26; color: Theme.accent }
+                Label {
+                    Layout.fillWidth: true
+                    text: Messages.awayNote ? qsTr("%1 · “%2”").arg(Messages.awayLabel).arg(Messages.awayNote) : Messages.awayLabel
+                    color: Theme.text
+                    font.pixelSize: Theme.fontMd - 2
+                    font.weight: Font.DemiBold
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
         // Who's writing: a big button a name.
         ColumnLayout {
             Layout.fillWidth: true

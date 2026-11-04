@@ -465,6 +465,27 @@ private slots:
         m_messages->setWriter(QString());
     }
 
+    // Away mode on Messages: a banner says who is out, till when and why.
+    void messagesScreenShowsAwayMode()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}},
+                                   {"away_since", now.addSecs(-600).toUTC().toString(Qt::ISODateWithMs)},
+                                   {"away_until", now.addSecs(2 * 3600).toUTC().toString(Qt::ISODateWithMs)},
+                                   {"away_note", "At work"}, {"away_name", "Dad"}});
+        QVERIFY(show("MessagesScreen { }", 1180, 800, QStringLiteral("compact")));
+        QQuickItem *banner = find("awayBanner");
+        QVERIFY(banner);
+        QTRY_VERIFY(banner->isVisible());
+        QVERIFY(banner->height() >= 48);
+        QTest::qWait(900); // the screen's reveal
+        shoot(QStringLiteral("messages-away"));
+        cleanup();
+        m_messages->applySettings({{"message_names", QVariantList{"Mia", "Leo"}}});
+        QVERIFY(show("MessagesScreen { }", 1180, 800, QStringLiteral("compact")));
+        QVERIFY(!find("awayBanner")->isVisible());
+    }
+
     // A reply from the person: the card shows who and what, and Reply asks for Messages.
     void messageCardShowsAReply()
     {

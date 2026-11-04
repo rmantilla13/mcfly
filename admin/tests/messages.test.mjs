@@ -2,7 +2,7 @@
 // where the next poll starts, runs and day headings, and the names field.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dayHeading, demoMessages, mergeMessages, notifyNote, OVERLAP_MS, parseNames, pollSince, replyStatus, startsRun, threadDays, unreadFromHome } from "../lib/messages.ts";
+import { awayLabel, awayUntil, isAway, NOT_AWAY, dayHeading, demoMessages, mergeMessages, notifyNote, OVERLAP_MS, parseNames, pollSince, replyStatus, startsRun, threadDays, unreadFromHome } from "../lib/messages.ts";
 
 const NOW = Date.parse("2026-11-03T22:00:00Z"); // 4 pm in Chicago
 const at = (minutes) => new Date(NOW + minutes * 60_000).toISOString();
@@ -64,6 +64,21 @@ test("runs, days and statuses", () => {
   assert.equal(notifyNote(msg("n", 0, { notify_error: "no phone has turned on notifications yet" })), "No notification: no phone has turned on notifications yet");
   assert.equal(notifyNote(msg("n", 0, { notified_at: at(0) })), null);
   assert.equal(unreadFromHome([msg("u", 0), msg("r", 0, { read_at: at(0) }), msg("p", 0, { sender_kind: "person" })]).length, 1);
+});
+
+test("away mode ends on its own", () => {
+  const tz = "America/Chicago";
+  assert.equal(isAway(NOT_AWAY, NOW), false);
+  const away = { since: at(-60), until: null, note: "At work", name: "Dad" };
+  assert.equal(isAway(away, NOW), true);
+  assert.equal(awayLabel(away, NOW, tz), "Away");
+  assert.equal(awayLabel({ ...away, until: at(120) }, NOW, tz), "Away until 6:00 PM");
+  assert.equal(awayLabel({ ...away, until: at(24 * 60) }, NOW, tz), "Away until Wednesday 4:00 PM");
+  assert.equal(isAway({ ...away, until: at(-1) }, NOW), false, "run out");
+  assert.equal(awayLabel({ ...away, until: at(-1) }, NOW, tz), "Home");
+  assert.equal(awayUntil("", NOW), null);
+  assert.equal(awayUntil("3", NOW), new Date(NOW + 3 * 3_600_000).toISOString());
+  assert.equal(awayUntil("99", NOW), null);
 });
 
 test("parseNames takes lines or commas", () => {

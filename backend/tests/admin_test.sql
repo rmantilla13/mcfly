@@ -150,7 +150,8 @@ select tests.throws($$select admin_revoke_device('00000000-0000-0000-0000-000000
 -- ───────────────────────────── Settings ─────────────────────────────
 select tests.eq(admin_get_settings() - 'updated_at' - 'updated_by',
                 '{"display_name": "McFly", "timezone": "America/Chicago", "briefs_keep_days": 30, "quotes_keep_days": 90, "news_keep_reports": 14,
-                  "assistant_provider": "claude", "metrics_keep_days": 90, "events_keep_days": 60, "message_names": []}'::jsonb,
+                  "assistant_provider": "claude", "metrics_keep_days": 90, "events_keep_days": 60, "message_names": [],
+                  "away_since": null, "away_until": null, "away_note": null, "away_name": null}'::jsonb,
                 'defaults');
 select tests.eq(admin_update_settings(display_name => 'Doc', briefs_keep_days => 7)->>'briefs_keep_days', '7', 'changed');
 select tests.eq(admin_get_settings()->>'display_name', 'Doc', 'renamed');

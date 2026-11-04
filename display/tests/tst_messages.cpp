@@ -292,6 +292,47 @@ private slots:
         QCOMPARE(MessageStore::dayLabel(QDate(2025, 12, 24), today), QLocale().toString(QDate(2025, 12, 24), QStringLiteral("MMM d, yyyy")));
     }
 
+    // Away mode from the settings row: on from away_since, off once
+    // away_until has passed; the live store reads it with every poll.
+    void awayModeFromTheSettings()
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        QVariantMap s{{"away_since", iso(now.addSecs(-600))}, {"away_name", "Dad"}, {"away_note", "At work"}};
+        QVariantMap a = MessageStore::awayState(s, now);
+        QCOMPARE(a.value("away").toBool(), true);
+        QCOMPARE(a.value("label").toString(), QStringLiteral("Dad is out"));
+        QCOMPARE(a.value("note").toString(), QStringLiteral("At work"));
+        s.insert("away_until", iso(now.addSecs(3600)));
+        QVERIFY2(MessageStore::awayState(s, now).value("label").toString().startsWith(QStringLiteral("Dad is out · back ")),
+                 qPrintable(MessageStore::awayState(s, now).value("label").toString()));
+        s.insert("away_until", iso(now.addSecs(-60)));
+        QCOMPARE(MessageStore::awayState(s, now).value("away").toBool(), false);
+        s.insert("away_until", QVariant());
+        s.insert("away_since", QVariant());
+        QCOMPARE(MessageStore::awayState(s, now).value("away").toBool(), false);
+        QCOMPARE(MessageStore::awayState({{"away_since", iso(now)}}, now).value("label").toString(), QStringLiteral("Parent is out"));
+
+        m_server.route("/rest/v1/platform_settings", [now](const Request &) {
+            return FakeServer::json(QJsonDocument(QJsonArray{QJsonObject{
+                {"display_name", "Hill Valley"}, {"timezone", "America/Chicago"}, {"message_names", QJsonArray{"Mia"}},
+                {"away_since", iso(now.addSecs(-60))}, {"away_until", QJsonValue::Null}, {"away_note", "At work"}, {"away_name", "Dad"}}}));
+        });
+        startLive();
+        QSignalSpy changed(&rig->messages, &MessageStore::awayChanged);
+        QTRY_VERIFY(rig->messages.away());
+        QCOMPARE(rig->messages.awayLabel(), QStringLiteral("Dad is out"));
+        QCOMPARE(rig->messages.awayNote(), QStringLiteral("At work"));
+        QCOMPARE(rig->messages.names(), QStringList({"Mia"}));
+        // Home again: the next poll says so.
+        m_server.route("/rest/v1/platform_settings", [](const Request &) {
+            return json(R"([{"display_name":"Hill Valley","message_names":["Mia"],"away_since":null,"away_until":null,"away_note":null,"away_name":null}])");
+        });
+        QTRY_VERIFY(!rig->messages.away());
+        // An older backend's row, without the columns, is simply not away.
+        rig->messages.applySettings({{"message_names", QVariantList{"Mia"}}});
+        QVERIFY(!rig->messages.away());
+    }
+
     void theDemoAnswersBack()
     {
         // A request the last test's store had on the way lands now, not in this one.

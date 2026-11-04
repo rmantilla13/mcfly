@@ -48,6 +48,12 @@ class MessageStore : public QObject
     Q_PROPERTY(QStringList quickMessages READ quickMessages CONSTANT)
     // live, demo, or "" (pairing, or a backend without messages).
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
+    // Away mode (platform_settings.away_*, 20261104000010): the person is out,
+    // so the screen wakes to Messages. "Still away" is decided here against
+    // away_until, each minute. awayLabel: "Dad is out · back around 6:00 pm".
+    Q_PROPERTY(bool away READ away NOTIFY awayChanged)
+    Q_PROPERTY(QString awayLabel READ awayLabel NOTIFY awayChanged)
+    Q_PROPERTY(QString awayNote READ awayNote NOTIFY awayChanged)
 
 public:
     MessageStore(SupabaseClient *client, FeedStore *store, QObject *parent = nullptr);
@@ -64,6 +70,9 @@ public:
     QString personName() const { return m_personName; }
     QStringList quickMessages() const;
     bool available() const { return m_available; }
+    bool away() const { return m_away.value("away").toBool(); }
+    QString awayLabel() const { return m_away.value("label").toString(); }
+    QString awayNote() const { return m_away.value("note").toString(); }
 
     // Sends `text` as `writer` (or the display): it shows at once as
     // "Sending…" and joins the thread once the server has it, or stays with
@@ -83,6 +92,11 @@ public:
                               const QString &personName);
     // "Today", "Yesterday", the weekday within a week, else "Oct 12".
     static QString dayLabel(const QDate &day, const QDate &today);
+    // Away mode from a platform_settings row at `now`: { away, name, label,
+    // note }. Not away without away_since, or once away_until has passed.
+    static QVariantMap awayState(const QVariantMap &settings, const QDateTime &now);
+    // The platform_settings row as read (the names and away mode); tests set it.
+    void applySettings(const QVariantMap &settings);
 
     // Tests: how often it polls, open and not.
     void setPollIntervals(int fastMs, int slowMs);
@@ -96,6 +110,7 @@ signals:
     void draftChanged();
     void openChanged();
     void availableChanged();
+    void awayChanged();
     // A reply from the person, seen for the first time: { id, name, body, timeLabel }.
     void arrived(const QVariantMap &message);
 
@@ -104,6 +119,7 @@ private:
     void loadDemo();
     void poll();
     void loadNames();
+    void updateAway();
     void merge(const QVariantList &rows, bool announce);
     void rebuild();
     void schedule();
@@ -122,6 +138,8 @@ private:
     QVariantList m_pending;     // { localId, body, name, createdMs, failure }
     QVariantList m_thread;
     QStringList m_names;
+    QVariantMap m_settings; // the away_* columns as read
+    QVariantMap m_away;     // awayState(m_settings, now)
     QString m_writer;
     QString m_draft;
     bool m_open = false;
@@ -131,7 +149,6 @@ private:
     int m_fastMs = 5000;
     int m_slowMs = 30000;
     qint64 m_fastUntilMs = 0;   // after a send: fast for a while, a reply may be coming
-    int m_namesTick = 0;
     int m_demoReplyMs = 4000;
     int m_localIds = 0;
 };

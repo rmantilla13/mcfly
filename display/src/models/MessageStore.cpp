@@ -56,6 +56,8 @@ MessageStore::MessageStore(SupabaseClient *client, FeedStore *store, QObject *pa
     m_timer.setSingleShot(true);
     connect(&m_timer, &QTimer::timeout, this, &MessageStore::poll);
     connect(m_store, &FeedStore::modeChanged, this, &MessageStore::onModeChanged);
+    // Away mode runs out on its own: look again each minute.
+    connect(m_store, &FeedStore::nowAngleChanged, this, &MessageStore::updateAway);
     onModeChanged();
 }
 
@@ -130,7 +132,6 @@ void MessageStore::onModeChanged()
     m_rows.clear();
     m_pending.clear();
     m_fastUntilMs = 0;
-    m_namesTick = 0;
     const bool available = mode == QLatin1String("demo") || mode == QLatin1String("live");
     if (available != m_available) {
         m_available = available;
@@ -141,6 +142,10 @@ void MessageStore::onModeChanged()
     else if (!m_names.isEmpty()) {
         m_names.clear();
         emit namesChanged();
+    }
+    if (mode != QLatin1String("demo") && mode != QLatin1String("live")) {
+        m_settings.clear();
+        updateAway();
     }
     rebuild();
     if (mode == QLatin1String("live"))
@@ -233,9 +238,9 @@ void MessageStore::poll()
                     markRead();
                 schedule();
             });
-            // The names: with the first read, then every tenth.
-            if (m_namesTick++ % 10 == 0)
-                loadNames();
+            // The names and away mode: with every read, so away mode shows
+            // within a poll. One small row.
+            loadNames();
         },
         [this, generation]() {
             if (generation != m_generation)
@@ -249,22 +254,61 @@ void MessageStore::loadNames()
 {
     const int generation = m_generation;
     QUrlQuery q;
-    q.addQueryItem("select", "message_names");
+    // Every column: a backend without away mode (or names) still answers.
+    q.addQueryItem("select", "*");
     q.addQueryItem("limit", "1");
     m_client->select("platform_settings", q, [this, generation](const QJsonDocument &doc, const QString &error) {
         if (generation != m_generation || !error.isEmpty())
             return;
-        QStringList names;
-        for (const QJsonValue &v : doc.array().at(0).toObject().value("message_names").toArray())
-            if (!v.toString().trimmed().isEmpty())
-                names << v.toString();
-        if (names != m_names) {
-            m_names = names;
-            emit namesChanged();
-        }
-        if (!m_writer.isEmpty() && !m_names.contains(m_writer))
-            setWriter(QString());
+        applySettings(doc.array().at(0).toObject().toVariantMap());
     });
+}
+
+void MessageStore::applySettings(const QVariantMap &settings)
+{
+    QStringList names;
+    for (const QVariant &v : settings.value("message_names").toList())
+        if (!v.toString().trimmed().isEmpty())
+            names << v.toString();
+    if (names != m_names) {
+        m_names = names;
+        emit namesChanged();
+    }
+    if (!m_writer.isEmpty() && !m_names.contains(m_writer))
+        setWriter(QString());
+    QVariantMap away;
+    for (const char *key : {"away_since", "away_until", "away_note", "away_name"})
+        away.insert(QLatin1String(key), settings.value(QLatin1String(key)));
+    m_settings = away;
+    updateAway();
+}
+
+void MessageStore::updateAway()
+{
+    const QVariantMap next = awayState(m_settings, now());
+    if (next == m_away)
+        return;
+    m_away = next;
+    emit awayChanged();
+}
+
+QVariantMap MessageStore::awayState(const QVariantMap &settings, const QDateTime &now)
+{
+    const QDateTime since = when(settings, "away_since");
+    const QDateTime until = when(settings, "away_until");
+    if (!since.isValid() || (until.isValid() && until <= now))
+        return {{"away", false}};
+    QString name = settings.value("away_name").toString().trimmed();
+    if (name.isEmpty())
+        name = tr("Parent");
+    QString label = tr("%1 is out").arg(name);
+    if (until.isValid()) {
+        const QDateTime local = until.toLocalTime();
+        label = local.date() == now.toLocalTime().date()
+                    ? tr("%1 is out · back around %2").arg(name, timeLabel(until))
+                    : tr("%1 is out · back %2 %3").arg(name, QLocale().toString(local.date(), QStringLiteral("dddd")), timeLabel(until));
+    }
+    return {{"away", true}, {"name", name}, {"label", label}, {"note", settings.value("away_note").toString()}};
 }
 
 void MessageStore::merge(const QVariantList &rows, bool announce)

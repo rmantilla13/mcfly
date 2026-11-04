@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRingIcon, MessageCircleIcon, SendIcon } from "lucide-react";
+import { BellRingIcon, DoorOpenIcon, MessageCircleIcon, SendIcon } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/bits";
@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ActionResult, FormAction } from "@/lib/action-result";
 import { cn } from "cn";
 import {
+  awayLabel,
+  isAway,
   MAX_MESSAGE,
   mergeMessages,
   notifyNote,
@@ -21,6 +23,7 @@ import {
   replyStatus,
   threadDays,
   unreadFromHome,
+  type AwayStatus,
   type Message,
   type MessageNames,
 } from "@/lib/messages";
@@ -30,6 +33,7 @@ type Actions = {
   send: (body: string) => Promise<{ ok: true; message: Message } | { ok: false; error: string }>;
   read: (upTo: string) => Promise<ActionResult>;
   saveNames: FormAction;
+  setAway: FormAction;
   test: () => Promise<ActionResult>;
 };
 
@@ -42,11 +46,13 @@ const POLL_MS = 5000;
 export function MessagesThread({
   initial,
   names,
+  away,
   timeZone,
   actions,
 }: {
   initial: Message[];
   names: MessageNames;
+  away: AwayStatus;
   timeZone: string;
   actions: Actions;
 }) {
@@ -177,10 +183,62 @@ export function MessagesThread({
         {error ? <p className="px-4 pb-4 text-sm text-destructive">{error}</p> : null}
       </Card>
       <div className="flex flex-col gap-6">
+        <AwayCard away={away} nowMs={nowMs} timeZone={timeZone} action={actions.setAway} />
         <NamesCard names={names} action={actions.saveNames} />
         <TestCard action={actions.test} />
       </div>
     </div>
+  );
+}
+
+// Away mode: on until a time or until it's turned off, with a note the
+// display shows beside your name.
+function AwayCard({ away, nowMs, timeZone, action }: { away: AwayStatus; nowMs: number; timeZone: string; action: FormAction }) {
+  const { result, pending, submit } = useFormAction(action, (res) => {
+    if (res?.ok && res.message) toast.success(res.message);
+  });
+  const on = isAway(away, nowMs);
+  return (
+    <Card className={cn(on && "border-primary/40")}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <DoorOpenIcon className="size-4" />
+          Away mode · {awayLabel(away, nowMs, timeZone)}
+        </CardTitle>
+        <CardDescription>While you&apos;re out, the display opens to Messages whenever someone wakes it, and its screen saver says how to reach you.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit}>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="back">Back</FieldLabel>
+              <select id="back" name="back" defaultValue="" className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                <option value="">When I turn it off</option>
+                <option value="1">In 1 hour</option>
+                <option value="3">In 3 hours</option>
+                <option value="8">In 8 hours</option>
+              </select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="away-note">Note</FieldLabel>
+              <Input id="away-note" name="note" maxLength={80} defaultValue={on ? (away.note ?? "") : ""} placeholder="At work, at the store…" />
+            </Field>
+            {result && !result.ok ? <FieldError>{result.error}</FieldError> : null}
+            <div className="flex gap-2">
+              <Button type="submit" name="away" value="on" disabled={pending}>
+                {pending ? <Spinner /> : null}
+                {on ? "Update" : "I'm away"}
+              </Button>
+              {on ? (
+                <Button type="submit" name="away" value="off" variant="outline" disabled={pending}>
+                  I&apos;m home
+                </Button>
+              ) : null}
+            </div>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 

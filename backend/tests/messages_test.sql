@@ -205,3 +205,43 @@ select tests.eq((select count(*)::int from messages where body = 'Yes, pizza ton
 select tests.logout();
 delete from devices where id = :'kitchen';
 select tests.ok((select count(*) from messages where sender_name = 'Kitchen' and device_id is null) > 0, 'a revoked display leaves its messages');
+
+-- ───────────────────────────── Away mode (20261104000010) ─────────────────────────────
+select tests.ok(not has_function_privilege('anon', 'set_away(boolean, timestamptz, text)', 'execute'), 'anon cannot set away');
+insert into devices (id, user_id, name) values ('00000000-0000-0000-0000-00000000d009', 'd0000000-0000-0000-0000-000000000001', 'Kitchen again')
+  on conflict do nothing;
+select tests.login(:'admin');
+select set_away(true, null, '  At work  ') as a \gset
+select tests.eq((:'a'::jsonb)->>'away', 'true', 'away');
+select tests.eq((:'a'::jsonb)->>'note', 'At work', 'the note, trimmed');
+select tests.eq((:'a'::jsonb)->>'name', 'Dad', 'under the name the household uses');
+select tests.eq((:'a'::jsonb)->>'until', null, 'until it''s turned off');
+select tests.eq((select action from admin_audit_log order by created_at desc, id desc limit 1), 'set_away', 'audited');
+select away_since as first_since from platform_settings \gset
+select set_away(true, now() + interval '3 hours', '');
+select tests.eq((select away_since from platform_settings), :'first_since'::timestamptz, 'on again keeps when it began');
+select tests.ok((select away_until > now() + interval '2 hours' from platform_settings), 'now until a time');
+select tests.eq((select away_note from platform_settings), null, 'a blank note clears it');
+select tests.throws($$select set_away(true, now() - interval '1 minute')$$, 'pick a time that hasn''t passed', 'a time gone by');
+select tests.throws($$select set_away(true, now() + interval '15 days')$$, 'away for at most two weeks at a time', 'too far out');
+select tests.throws($$select set_away(true, null, repeat('x', 81))$$, 'the note can be at most 80 characters', 'a long note');
+select tests.throws($$select set_away(true, null, E'two\nlines')$$, 'the note must be one line', 'two lines');
+select tests.throws($$select set_away(null)$$, 'say whether you''re away', 'neither');
+-- A display reads it, as it reads the names.
+select tests.login(:'device2');
+select tests.ok((select away_since is not null and away_name = 'Dad' from platform_settings), 'a display sees it');
+select tests.throws($$select set_away(false)$$, 'only the person can say they''re away', 'but can''t change it');
+select tests.login(:'other');
+select tests.throws($$select set_away(false)$$, 'only the person can say they''re away', 'nor can someone else');
+select tests.login_service();
+select tests.throws($$select set_away(false)$$, 'only the person can say they''re away', 'nor the service role');
+select tests.login(:'admin');
+select tests.eq(set_away(false)->>'away', 'false', 'home again');
+select tests.ok((select away_since is null and away_until is null and away_note is null and away_name is null from platform_settings), 'all of it cleared');
+-- Run out on its own: still in the row, but past away_until; on again starts afresh.
+select tests.logout();
+update platform_settings set away_since = now() - interval '5 hours', away_until = now() - interval '1 hour', away_name = 'Dad';
+select tests.login(:'admin');
+select set_away(true);
+select tests.ok((select away_since > now() - interval '1 minute' from platform_settings), 'run out: a new start');
+select set_away(false);

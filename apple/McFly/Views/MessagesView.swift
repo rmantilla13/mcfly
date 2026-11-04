@@ -16,6 +16,7 @@ struct MessagesView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var draft = ""
     @State private var showSettings = false
+    @State private var showAway = false
     @State private var active = true
     @FocusState private var composing: Bool
 
@@ -27,6 +28,10 @@ struct MessagesView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if store.away.isAway() {
+                        AwayBanner(away: store.away) { showAway = true }
+                            .padding(.bottom, 12)
+                    }
                     if store.names.mine == nil, store.hasLoaded, !app.isDemo {
                         NamePrompt().padding(.bottom, 16)
                     }
@@ -84,8 +89,21 @@ struct MessagesView: View {
         .inlineTitle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button { showAway = true } label: {
+                    Label(store.away.isAway() ? "Away" : "Away mode",
+                          systemImage: store.away.isAway() ? "figure.walk.departure" : "house")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button { showSettings = true } label: { Label("Who writes", systemImage: "person.2") }
             }
+        }
+        .sheet(isPresented: $showAway) {
+            NavigationStack { AwaySheet() }
+                .environment(app)
+                #if os(macOS)
+                .frame(minWidth: 460, minHeight: 520)
+                #endif
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { MessageSettingsView() }
@@ -417,6 +435,128 @@ struct MessageSettingsView: View {
                 testResult = McFlyError.describe(error)
             }
             testing = false
+        }
+    }
+}
+
+/// Away mode is on: what the display does about it, until when, and the
+/// way to change it.
+private struct AwayBanner: View {
+    let away: AwayStatus
+    let onChange: () -> Void
+
+    var body: some View {
+        Button(action: onChange) {
+            HStack(spacing: 12) {
+                Image(systemName: "figure.walk.departure")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(away.label() + (away.note.map { " · \($0)" } ?? ""))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                    Text("The display opens to Messages for the kids.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.muted)
+                }
+                Spacer(minLength: 0)
+                Text("Change").font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+            .padding(14)
+            .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.radiusSm, style: .continuous))
+        }
+        .buttonStyle(PressableStyle())
+    }
+}
+
+/// Away mode: on until a time or until it's turned off, with a note the
+/// display shows ("At work"); and how to have it switch itself.
+struct AwaySheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+
+    enum Back: Hashable { case off, hours(Int), at }
+
+    @State private var back: Back = .off
+    @State private var at = Date.now.addingTimeInterval(3 * 3600)
+    @State private var note = ""
+    @State private var saving = false
+
+    var body: some View {
+        let away = app.messages.away
+        Form {
+            Section {
+                Text("While you're away, the display opens to Messages whenever someone wakes it, and its screen saver says how to reach you.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.muted)
+            }
+            Section("Back") {
+                Picker("Back", selection: $back) {
+                    Text("When I turn it off").tag(Back.off)
+                    Text("In 1 hour").tag(Back.hours(1))
+                    Text("In 3 hours").tag(Back.hours(3))
+                    Text("In 8 hours").tag(Back.hours(8))
+                    Text("At a time…").tag(Back.at)
+                }
+                #if os(iOS)
+                .pickerStyle(.inline)
+                #endif
+                .labelsHidden()
+                if back == .at {
+                    DatePicker("Back at", selection: $at, in: Date.now.addingTimeInterval(60)...Date.now.addingTimeInterval(14 * 86400))
+                }
+            }
+            Section {
+                TextField("At work, at the store…", text: $note)
+            } header: {
+                Text("Note")
+            } footer: {
+                Text("Shown on the display beside your name.")
+            }
+            Section {
+                Button(away.isAway() ? "Update" : "I'm away") { save(true) }
+                    .disabled(saving)
+                if away.isAway() {
+                    Button("I'm home", role: .destructive) { save(false) }
+                        .disabled(saving)
+                }
+            } footer: {
+                Text("To switch it by itself: Shortcuts → Automation → New Automation → Leave (your home) → McFly's \u{201C}I'm Away\u{201D}; and Arrive → \u{201C}I'm Home\u{201D}. Choose Run Immediately.")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Away mode")
+        .inlineTitle()
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+        }
+        .onAppear {
+            note = away.isAway() ? (away.note ?? "") : ""
+            if away.isAway(), let until = away.until {
+                back = .at
+                at = until
+            }
+        }
+    }
+
+    private var until: Date? {
+        switch back {
+        case .off: return nil
+        case .hours(let n): return Date.now.addingTimeInterval(Double(n) * 3600)
+        case .at: return at
+        }
+    }
+
+    private func save(_ on: Bool) {
+        saving = true
+        Task {
+            do {
+                try await app.messages.setAway(on, until: on ? until : nil, note: on ? note : nil)
+                dismiss()
+            } catch {
+                app.report(error)
+            }
+            saving = false
         }
     }
 }

@@ -142,7 +142,8 @@ ApplicationWindow {
                 window.dismissKeyboard()
                 assistant.open = false
                 window.closeDetails()
-                window.currentScreen = 0
+                // Away mode: whoever wakes the screen finds Messages.
+                window.currentScreen = Messages.away ? window.messagesScreen : 0
                 // The next one to write says who they are again; what's typed stays.
                 Messages.writer = ""
             }
@@ -523,6 +524,34 @@ ApplicationWindow {
             }
         }
         ScreenSaver { anchors.fill: parent }
+        // Away mode: how to reach the person, over whichever saver. A tap
+        // wakes the screen to Messages.
+        Rectangle {
+            objectName: "awayHint"
+            visible: Messages.away
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Theme.mini ? 20 : 44
+            width: Math.min(awayHintRow.implicitWidth + 56, parent.width - 32)
+            height: Theme.mini ? 60 : 76
+            radius: height / 2
+            color: Qt.rgba(0, 0, 0, 0.5)
+            Row {
+                id: awayHintRow
+                anchors.centerIn: parent
+                spacing: 14
+                Icon { anchors.verticalCenter: parent.verticalCenter; name: "chat"; size: Theme.mini ? 22 : 28; color: "white" }
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("%1 · tap to send a message").arg(Messages.awayLabel)
+                    color: "white"
+                    font.pixelSize: Theme.mini ? Theme.fontSm : Theme.fontMd
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, awayHintRow.parent.width - 56 - 42)
+                }
+            }
+        }
     }
 
     // Wake-word answers float above everything, the screen saver included.
@@ -583,6 +612,11 @@ ApplicationWindow {
     }
     Connections {
         target: Messages
+        // Turned on while the screen sleeps or idles: it wakes to Messages too.
+        function onAwayChanged() {
+            if (Messages.away && Device.idle)
+                window.currentScreen = window.messagesScreen
+        }
         function onArrived(message) {
             if (Messages.open)
                 return

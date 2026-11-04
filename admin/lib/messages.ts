@@ -20,6 +20,35 @@ export type Message = {
 
 export type MessageNames = { household: string[]; mine: string | null };
 
+// Away mode (platform_settings.away_*, migration 20261104000010): away from
+// `since` until `until` (null: until it's turned off), decided against the
+// clock, so it ends on time without a write.
+export type AwayStatus = { since: string | null; until: string | null; note: string | null; name: string | null };
+export const NOT_AWAY: AwayStatus = { since: null, until: null, note: null, name: null };
+
+export function isAway(away: AwayStatus, nowMs: number): boolean {
+  return away.since != null && (away.until == null || Date.parse(away.until) > nowMs);
+}
+
+// "Away until 6:00 PM", "Away until Thursday 9:00 AM", "Away", or "Home".
+export function awayLabel(away: AwayStatus, nowMs: number, timeZone?: string): string {
+  if (!isAway(away, nowMs)) return "Home";
+  if (!away.until) return "Away";
+  const until = Date.parse(away.until);
+  const time = new Date(until).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
+  const day = (t: number) => new Date(t).toLocaleDateString("en-CA", { timeZone });
+  if (day(until) === day(nowMs)) return `Away until ${time}`;
+  return `Away until ${new Date(until).toLocaleDateString("en-US", { weekday: "long", timeZone })} ${time}`;
+}
+
+// The "back" choice from the console's form: "" (when it's turned off) or a
+// number of hours, as an instant from `nowMs`; anything else is null.
+export function awayUntil(choice: string, nowMs: number): string | null {
+  const hours = Number(choice);
+  if (!choice || !Number.isInteger(hours) || hours < 1 || hours > 24) return null;
+  return new Date(nowMs + hours * 3_600_000).toISOString();
+}
+
 export const MESSAGE_COLUMNS = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error";
 export const MAX_MESSAGE = 500;
 // Each poll looks this far behind the newest change it has, so a message

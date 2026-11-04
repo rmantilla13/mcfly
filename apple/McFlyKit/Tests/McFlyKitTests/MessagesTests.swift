@@ -25,6 +25,10 @@ private actor FakeMessages: MessageService {
     }
     func markRead(upTo: UUID?) async throws { readUpTo.append(upTo) }
     func names() async throws -> MessageNames { MessageNames(household: ["Mia"], mine: "Dad") }
+    func away() async throws -> AwayStatus { AwayStatus() }
+    func setAway(_ away: Bool, until: Date?, note: String?) async throws -> AwayStatus {
+        away ? AwayStatus(since: .now, until: until, note: note, name: "Dad") : AwayStatus()
+    }
     func setMyName(_ name: String?) async throws -> String? { name }
     func setHouseholdNames(_ names: [String]) async throws -> [String] { names }
     func registerPushToken(_ token: String, environment: String, bundleId: String, platform: String) async throws {}
@@ -171,6 +175,29 @@ final class MessagesTests: XCTestCase {
         // The server's copy, from before it heard, comes back in the overlap: still read.
         await store.refresh()
         XCTAssertEqual(store.unreadCount, 0)
+    }
+
+    func testAwayModeEndsOnItsOwn() async throws {
+        let json = """
+        [{"away_since": "2026-11-04T14:00:00Z", "away_until": null, "away_note": "At work", "away_name": "Dad"}]
+        """
+        let decoded = try JSONDecoder.mcfly.decode([AwayStatus].self, from: Data(json.utf8))
+        XCTAssertTrue(decoded[0].isAway(now: t0))
+        XCTAssertEqual(decoded[0].label(now: t0), "Away")
+        var away = AwayStatus(since: t0, until: t0.addingTimeInterval(3600), name: "Dad")
+        XCTAssertTrue(away.isAway(now: t0.addingTimeInterval(3599)))
+        XCTAssertFalse(away.isAway(now: t0.addingTimeInterval(3600)), "ends at its time, with no write")
+        XCTAssertEqual(away.label(now: t0.addingTimeInterval(4000)), "Home")
+        away.since = nil
+        XCTAssertFalse(away.isAway(now: t0))
+        XCTAssertFalse(AwayStatus().isAway())
+
+        let store = MessagesStore(service: FakeMessages())
+        try await store.setAway(true, until: nil, note: "  At work ")
+        XCTAssertTrue(store.away.isAway())
+        XCTAssertEqual(store.away.note, "At work")
+        try await store.setAway(false)
+        XCTAssertFalse(store.away.isAway())
     }
 
     func testTheDemoAnswersBack() async throws {
