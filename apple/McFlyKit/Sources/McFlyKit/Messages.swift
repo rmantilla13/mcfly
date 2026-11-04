@@ -29,9 +29,15 @@ public struct Message: Codable, Identifiable, Hashable, Sendable {
     /// A message from home: when Apple took its notification, or why it didn't go.
     public var notifiedAt: Date?
     public var notifyError: String?
+    /// A voice note (migration 20261104000020): its WAV in the voice-notes
+    /// bucket, and how long it is.
+    public var audioPath: String?
+    public var audioMs: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, body, via
+        case audioPath = "audio_path"
+        case audioMs = "audio_ms"
         case sender = "sender_kind"
         case senderName = "sender_name"
         case deviceId = "device_id"
@@ -44,7 +50,7 @@ public struct Message: Codable, Identifiable, Hashable, Sendable {
 
     public init(id: UUID = UUID(), sender: Sender, senderName: String, body: String, deviceId: UUID? = nil,
                 via: String? = nil, createdAt: Date, updatedAt: Date? = nil, readAt: Date? = nil,
-                notifiedAt: Date? = nil, notifyError: String? = nil) {
+                notifiedAt: Date? = nil, notifyError: String? = nil, audioPath: String? = nil, audioMs: Int? = nil) {
         self.id = id
         self.sender = sender
         self.senderName = senderName
@@ -56,12 +62,33 @@ public struct Message: Codable, Identifiable, Hashable, Sendable {
         self.readAt = readAt
         self.notifiedAt = notifiedAt
         self.notifyError = notifyError
+        self.audioPath = audioPath
+        self.audioMs = audioMs
     }
 
     public var fromHome: Bool { sender == .display }
 
+    public var hasAudio: Bool { audioPath != nil && (audioMs ?? 0) > 0 }
+    /// "0:12".
+    public var audioLabel: String { Self.clock(audioMs ?? 0) }
+    /// A voice note's words: "" when the body is the server's own "🎤 Voice note · 0:12".
+    public var caption: String {
+        guard let audioMs, hasAudio else { return body }
+        return body == Self.voiceNoteLabel(ms: audioMs) ? "" : body
+    }
+
+    /// What a voice note says without a caption, as send_message writes it.
+    public static func voiceNoteLabel(ms: Int) -> String { "🎤 Voice note · \(clock(ms))" }
+
+    static func clock(_ ms: Int) -> String {
+        let seconds = Int((Double(ms) / 1000).rounded())
+        return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
+    }
+
     /// The columns every screen reads.
-    public static let columns = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error"
+    public static let columns = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error,audio_path,audio_ms"
+    /// A voice note is at most this long.
+    public static let maxVoiceNoteMs = 30_000
     /// What a message may hold, as send_message checks it.
     public static let maxLength = 500
 }
@@ -186,6 +213,13 @@ public protocol MessageService: Sendable {
     func loadChanges(since: Date, limit: Int) async throws -> [Message]
     /// The person's reply (`send_message`, via the app), as stored.
     func send(_ body: String) async throws -> Message
+    /// A voice note's WAV into the voice-notes bucket, in the person's own
+    /// folder; returns its path for `sendVoiceNote`.
+    func uploadVoiceNote(_ wav: Data) async throws -> String
+    /// The person's voice note, already uploaded (`send_message` with it).
+    func sendVoiceNote(path: String, ms: Int) async throws -> Message
+    /// A voice note's WAV.
+    func voiceNote(_ path: String) async throws -> Data
     /// Marks home's messages read up to `upTo` (`read_messages`; nil: all).
     func markRead(upTo: UUID?) async throws
     func names() async throws -> MessageNames
@@ -229,6 +263,27 @@ public struct SupabaseMessageService: MessageService {
 
     public func send(_ body: String) async throws -> Message {
         try decode(await client.rpc("send_message", params: ["body": body, "via": "app"]).execute().data)
+    }
+
+    public func uploadVoiceNote(_ wav: Data) async throws -> String {
+        guard let user = client.auth.currentUser?.id else { throw McFlyError.message("Sign in again to send a voice note.") }
+        let path = "\(user.lowercased)/\(UUID().lowercased).wav"
+        _ = try await client.storage.from("voice-notes").upload(path, data: wav, options: FileOptions(contentType: "audio/wav"))
+        return path
+    }
+
+    public func sendVoiceNote(path: String, ms: Int) async throws -> Message {
+        struct Params: Encodable {
+            var body = ""
+            var via = "app"
+            var audio_path: String
+            var audio_ms: Int
+        }
+        return try decode(await client.rpc("send_message", params: Params(audio_path: path, audio_ms: ms)).execute().data)
+    }
+
+    public func voiceNote(_ path: String) async throws -> Data {
+        try await client.storage.from("voice-notes").download(path: path)
     }
 
     public func markRead(upTo: UUID?) async throws {
@@ -325,6 +380,11 @@ public struct PendingMessage: Identifiable, Equatable, Sendable {
     public var body: String
     public var createdAt: Date
     public var failure: String?
+    /// A voice note: its WAV and length, and where it went once uploaded (a
+    /// retry then doesn't upload it again).
+    public var audio: Data?
+    public var audioMs: Int?
+    public var audioPath: String?
 }
 
 /// The household thread as the app shows it: read in full once, then only
@@ -432,9 +492,42 @@ public final class MessagesStore {
         pending.removeAll { $0.id == id }
     }
 
+    /// Sends a voice note (16 kHz mono WAV) as the person's reply: shown at
+    /// once, uploaded, then sent, as `send` a text.
+    @discardableResult
+    public func sendVoiceNote(_ wav: Data, ms: Int) async -> Bool {
+        guard !wav.isEmpty, ms >= 300 else { return false }
+        let length = min(ms, Message.maxVoiceNoteMs)
+        let item = PendingMessage(body: Message.voiceNoteLabel(ms: length), createdAt: .now, audio: wav, audioMs: length)
+        pending.append(item)
+        return await deliver(item)
+    }
+
+    /// A voice note's WAV: kept once read (or sent from here).
+    public func audio(for message: Message) async throws -> Data {
+        if let data = audioCache[message.id] { return data }
+        guard let path = message.audioPath else { throw McFlyError.message("That message has no voice note.") }
+        let data = try await service.voiceNote(path)
+        audioCache[message.id] = data
+        return data
+    }
+
+    @ObservationIgnored private var audioCache: [UUID: Data] = [:]
+
     private func deliver(_ item: PendingMessage) async -> Bool {
         do {
-            let sent = try await service.send(item.body)
+            let sent: Message
+            if let audio = item.audio, let ms = item.audioMs {
+                var path = item.audioPath
+                if path == nil {
+                    path = try await service.uploadVoiceNote(audio)
+                    if let index = pending.firstIndex(where: { $0.id == item.id }) { pending[index].audioPath = path }
+                }
+                sent = try await service.sendVoiceNote(path: path ?? "", ms: ms)
+                audioCache[sent.id] = audio
+            } else {
+                sent = try await service.send(item.body)
+            }
             pending.removeAll { $0.id == item.id }
             merge([sent])
             return true
@@ -521,6 +614,8 @@ public actor DemoMessageService: MessageService {
             Message(sender: .display, senderName: "Mia", body: "I'm home from school!", createdAt: at(185), readAt: at(180), notifiedAt: at(185)),
             Message(sender: .person, senderName: "Parent", body: "Yay! Snack is in the fridge. Homework first 🙂", createdAt: at(178), readAt: at(176)),
             Message(sender: .display, senderName: "Leo", body: "Can Sam come over to play?", createdAt: at(24), notifiedAt: at(24)),
+            Message(sender: .display, senderName: "Leo", body: Message.voiceNoteLabel(ms: 6400), createdAt: at(23),
+                    notifiedAt: at(23), audioPath: "demo/leo.wav", audioMs: 6400),
             Message(sender: .display, senderName: "Mia", body: "When are you coming home?", createdAt: at(6), notifiedAt: at(6)),
         ]
         names = MessageNames(household: ["Mia", "Leo"], mine: nil)
@@ -543,6 +638,27 @@ public actor DemoMessageService: MessageService {
         let at = Date.now.addingTimeInterval(4)
         echoes.append(Message(sender: .display, senderName: names.household.first ?? "Kitchen", body: reply, createdAt: at, notifiedAt: at))
         return m
+    }
+
+    private var notes: [String: Data] = [:]
+
+    public func uploadVoiceNote(_ wav: Data) async throws -> String {
+        let path = "demo/\(UUID().lowercased).wav"
+        notes[path] = wav
+        return path
+    }
+
+    public func sendVoiceNote(path: String, ms: Int) async throws -> Message {
+        try await Task.sleep(for: .milliseconds(350))
+        let m = Message(sender: .person, senderName: names.signed, body: Message.voiceNoteLabel(ms: ms), createdAt: .now,
+                        audioPath: path, audioMs: ms)
+        messages.append(m)
+        return m
+    }
+
+    /// The demo's notes: what was sent here, else a short hum.
+    public func voiceNote(_ path: String) async throws -> Data {
+        notes[path] ?? VoiceNoteAudio.wav(VoiceNoteAudio.tone(seconds: 1.5), rate: 16000)
     }
 
     public func markRead(upTo: UUID?) async throws {
@@ -580,4 +696,55 @@ public actor DemoMessageService: MessageService {
     public func registerPushToken(_ token: String, environment: String, bundleId: String, platform: String) async throws {}
     public func unregisterPushToken(_ token: String) async throws {}
     public func sendTestNotification() async throws -> String { "The demo sends no notifications." }
+}
+
+
+/// Voice notes' audio: 16 kHz mono 16-bit WAV, as the display records it
+/// and every screen plays it.
+public enum VoiceNoteAudio {
+    public static let sampleRate = 16000
+
+    /// 16-bit little-endian mono samples as a WAV file.
+    public static func wav(_ samples: [Int16], rate: Int = sampleRate) -> Data {
+        var data = Data()
+        func put<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        let bytes = UInt32(samples.count * 2)
+        data.append(contentsOf: Array("RIFF".utf8)); put(36 + bytes)
+        data.append(contentsOf: Array("WAVE".utf8))
+        data.append(contentsOf: Array("fmt ".utf8)); put(UInt32(16)); put(UInt16(1)); put(UInt16(1))
+        put(UInt32(rate)); put(UInt32(rate * 2)); put(UInt16(2)); put(UInt16(16))
+        data.append(contentsOf: Array("data".utf8)); put(bytes)
+        for s in samples { put(s) }
+        return data
+    }
+
+    /// A soft hum, for the demo's notes.
+    public static func tone(seconds: Double, hz: Double = 220, rate: Int = sampleRate) -> [Int16] {
+        (0 ..< Int(seconds * Double(rate))).map { i in
+            Int16(2500 * sin(2 * Double.pi * hz * Double(i) / Double(rate)))
+        }
+    }
+
+    /// How long a WAV's samples run, from its header and size: nil when it
+    /// isn't a 16-bit PCM WAV.
+    public static func milliseconds(of wav: Data) -> Int? {
+        guard wav.count > 44, String(decoding: wav.prefix(4), as: UTF8.self) == "RIFF" else { return nil }
+        var offset = 12
+        var rate = 0, channels = 0, bits = 0
+        while offset + 8 <= wav.count {
+            let id = String(decoding: wav[offset ..< offset + 4], as: UTF8.self)
+            let size = Int(wav[offset + 4 ..< offset + 8].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian })
+            let body = offset + 8
+            if id == "fmt ", body + 16 <= wav.count {
+                channels = Int(wav[body + 2 ..< body + 4].withUnsafeBytes { $0.loadUnaligned(as: UInt16.self).littleEndian })
+                rate = Int(wav[body + 4 ..< body + 8].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian })
+                bits = Int(wav[body + 14 ..< body + 16].withUnsafeBytes { $0.loadUnaligned(as: UInt16.self).littleEndian })
+            } else if id == "data", rate > 0, channels > 0, bits == 16 {
+                let bytes = min(size, wav.count - body)
+                return bytes * 1000 / (rate * channels * 2)
+            }
+            offset = body + size + (size % 2)
+        }
+        return nil
+    }
 }

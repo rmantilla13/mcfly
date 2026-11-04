@@ -9,6 +9,7 @@
 
 class FeedStore;
 class SupabaseClient;
+class VoiceClient;
 
 // The household thread for the Messages screen (the messages table,
 // migration 20261103000010): what the people at home write here goes to the
@@ -27,7 +28,14 @@ class SupabaseClient;
 // home), name, body, timeLabel, dayLabel (on the first of each day, else
 // ""), runStart (a new writer, or ten minutes on), status (under home's
 // newest message and any that failed: "Sending…", "Sent", "On Dad's
-// phone", "Seen by Dad", or why it didn't go), failed, pending }.
+// phone", "Seen by Dad", or why it didn't go), failed, pending, hasAudio,
+// audioLabel ("0:12"), caption (a voice note's words, "" for the server's
+// own "🎤 Voice note · 0:12") }.
+//
+// Voice notes (20261104000020): recorded through the voice service
+// (startRecording → finishRecording, at most 30 s), uploaded to the
+// `voice-notes` bucket in this display's folder, then sent; played through
+// the voice service from bytes read here (it never reaches the network).
 class MessageStore : public QObject
 {
     Q_OBJECT
@@ -54,9 +62,16 @@ class MessageStore : public QObject
     Q_PROPERTY(bool away READ away NOTIFY awayChanged)
     Q_PROPERTY(QString awayLabel READ awayLabel NOTIFY awayChanged)
     Q_PROPERTY(QString awayNote READ awayNote NOTIFY awayChanged)
+    // Voice notes: the voice service can record and play them here.
+    Q_PROPERTY(bool canRecord READ canRecord NOTIFY voiceChanged)
+    Q_PROPERTY(bool canPlay READ canPlay NOTIFY voiceChanged)
+    // A voice note is being recorded for this screen.
+    Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
+    // The message whose voice note is playing, or "".
+    Q_PROPERTY(QString playingId READ playingId NOTIFY playingChanged)
 
 public:
-    MessageStore(SupabaseClient *client, FeedStore *store, QObject *parent = nullptr);
+    MessageStore(SupabaseClient *client, FeedStore *store, VoiceClient *voice = nullptr, QObject *parent = nullptr);
 
     QVariantList thread() const { return m_thread; }
     QStringList names() const { return m_names; }
@@ -73,6 +88,10 @@ public:
     bool away() const { return m_away.value("away").toBool(); }
     QString awayLabel() const { return m_away.value("label").toString(); }
     QString awayNote() const { return m_away.value("note").toString(); }
+    bool canRecord() const;
+    bool canPlay() const;
+    bool recording() const { return m_recording; }
+    QString playingId() const { return m_playingId; }
 
     // Sends `text` as `writer` (or the display): it shows at once as
     // "Sending…" and joins the thread once the server has it, or stays with
@@ -80,6 +99,17 @@ public:
     Q_INVOKABLE bool send(const QString &text);
     Q_INVOKABLE void retry(const QString &localId);
     Q_INVOKABLE void discard(const QString &localId);
+    // A voice note, as `writer`: starts recording (false if it can't), then
+    // finishRecording() sends it, or the 30 s running out does;
+    // cancelRecording() drops it.
+    Q_INVOKABLE bool startRecording();
+    Q_INVOKABLE void finishRecording();
+    Q_INVOKABLE void cancelRecording();
+    // Plays a message's voice note (or stops it, if it's the one playing).
+    Q_INVOKABLE void play(const QString &id);
+    Q_INVOKABLE void stopPlaying();
+    // Sends a recorded voice note (16 kHz mono WAV) as `name`, as send() a text.
+    void sendVoiceNote(const QByteArray &wav, int ms, const QString &name);
     // The person's replies up to now have been seen (Messages is open, or the card was).
     Q_INVOKABLE void markRead();
     // Reads what changed now, apart from the timer.
@@ -90,6 +120,8 @@ public:
     // `now`. A pure function, so tests can check it.
     static QVariantList shape(const QVariantList &rows, const QVariantList &pending, const QDateTime &now,
                               const QString &personName);
+    // What a voice note says without a caption, as send_message writes it.
+    static QString voiceNoteLabel(int ms);
     // "Today", "Yesterday", the weekday within a week, else "Oct 12".
     static QString dayLabel(const QDate &day, const QDate &today);
     // Away mode from a platform_settings row at `now`: { away, name, label,
@@ -111,7 +143,13 @@ signals:
     void openChanged();
     void availableChanged();
     void awayChanged();
-    // A reply from the person, seen for the first time: { id, name, body, timeLabel }.
+    void voiceChanged();
+    void recordingChanged();
+    void playingChanged();
+    // Something to tell whoever's at the screen ("That was too short to send").
+    void notice(const QString &message);
+    // A reply from the person, seen for the first time: { id, name, body,
+    // timeLabel, audio (it's a voice note) }.
     void arrived(const QVariantMap &message);
 
 private:
@@ -124,18 +162,27 @@ private:
     void rebuild();
     void schedule();
     void deliver(const QString &localId);
+    void startPlaying(const QString &id, const QByteArray &wav);
+    void setRecording(bool on);
     QDateTime now() const;
 
     SupabaseClient *m_client;
     FeedStore *m_store;
+    VoiceClient *m_voice;
+    bool m_recording = false;
+    QString m_recordingName;     // who started the recording
+    QString m_playingId;         // the message playing
+    QString m_playingSpeechId;   // the voice service's id for it
+    QHash<QString, QByteArray> m_audio; // voice notes' WAVs, by message id
     QString m_mode;
     int m_generation = 0;
     bool m_available = false;
     bool m_loaded = false;      // the first full read is in
     bool m_polling = false;     // a request is out
+    bool m_oldColumns = false;  // the backend predates voice notes: no audio_* to ask for
     QDateTime m_cursor;         // the newest updated_at seen
     QHash<QString, QVariantMap> m_rows; // by id
-    QVariantList m_pending;     // { localId, body, name, createdMs, failure }
+    QVariantList m_pending;     // { localId, body, name, createdMs, failure, audio?, audioMs?, audioPath? }
     QVariantList m_thread;
     QStringList m_names;
     QVariantMap m_settings; // the away_* columns as read

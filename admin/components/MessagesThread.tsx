@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRingIcon, DoorOpenIcon, MessageCircleIcon, SendIcon } from "lucide-react";
+import { BellRingIcon, DoorOpenIcon, MessageCircleIcon, PlayIcon, SendIcon, SquareIcon } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/bits";
@@ -15,7 +15,10 @@ import type { ActionResult, FormAction } from "@/lib/action-result";
 import { cn } from "cn";
 import {
   awayLabel,
+  caption,
+  hasAudio,
   isAway,
+  noteClock,
   MAX_MESSAGE,
   mergeMessages,
   notifyNote,
@@ -35,6 +38,7 @@ type Actions = {
   saveNames: FormAction;
   setAway: FormAction;
   test: () => Promise<ActionResult>;
+  voiceNoteUrl: (path: string) => Promise<{ ok: true; url: string | null } | { ok: false; error: string }>;
 };
 
 const POLL_MS = 5000;
@@ -138,14 +142,15 @@ export function MessagesThread({
                         {m.sender_name} · {time(m.created_at)}
                       </span>
                     ) : null}
-                    <p
+                    <div
                       className={cn(
-                        "max-w-[520px] rounded-3xl px-4 py-2.5 text-[15px] leading-snug whitespace-pre-wrap",
+                        "flex max-w-[520px] flex-col gap-1.5 rounded-3xl px-4 py-2.5 text-[15px] leading-snug whitespace-pre-wrap",
                         mine ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
                       )}
                     >
-                      {m.body}
-                    </p>
+                      {hasAudio(m) ? <VoiceNote message={m} mine={mine} getUrl={actions.voiceNoteUrl} /> : null}
+                      {caption(m) ? <p>{caption(m)}</p> : null}
+                    </div>
                     {note ? <span className="px-2 text-[11px] text-muted-foreground">{note}</span> : null}
                   </div>
                 );
@@ -188,6 +193,48 @@ export function MessagesThread({
         <TestCard action={actions.test} />
       </div>
     </div>
+  );
+}
+
+// A voice note: ▶ plays it from a link signed for a few minutes; ■ stops it.
+function VoiceNote({ message, mine, getUrl }: { message: Message; mine: boolean; getUrl: Actions["voiceNoteUrl"] }) {
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => () => audio?.pause(), [audio]);
+
+  async function toggle() {
+    if (audio) {
+      audio.pause();
+      setAudio(null);
+      return;
+    }
+    setBusy(true);
+    const res = await getUrl(message.audio_path ?? "");
+    setBusy(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    if (!res.url) {
+      toast.info("The demo's voice notes have no sound.");
+      return;
+    }
+    const player = new Audio(res.url);
+    player.onended = () => setAudio(null);
+    void player.play().catch(() => toast.error("That voice note won't play here."));
+    setAudio(player);
+  }
+
+  return (
+    <button type="button" onClick={toggle} disabled={busy} className="flex items-center gap-2.5 text-left" aria-label={audio ? "Stop the voice note" : "Play the voice note"}>
+      <span className={cn("flex size-8 items-center justify-center rounded-full", mine ? "bg-white/20" : "bg-primary/15 text-primary")}>
+        {busy ? <Spinner /> : audio ? <SquareIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span className="font-semibold">Voice note</span>
+        <span className="text-xs tabular-nums opacity-80">{noteClock(message.audio_ms ?? 0)}</span>
+      </span>
+    </button>
   );
 }
 

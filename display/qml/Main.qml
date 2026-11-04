@@ -19,9 +19,9 @@ ApplicationWindow {
     readonly property int messagesScreen: 8
     property int currentScreen: Math.max(0, screenNames.indexOf(startScreen))
     readonly property real keyboardHeight: keyboard.item ? keyboard.item.visibleHeight : 0
-    // "chat" while push-to-talk is feeding the assistant panel, "message"
-    // while the mic on Messages fills the message box (never the assistant);
-    // the wake word and the mic on Home go to the voice card (QuickAnswer).
+    // "chat" while push-to-talk is feeding the assistant panel; the wake word
+    // and the mic on Home go to the voice card (QuickAnswer). Messages' mic
+    // records a voice note, through MessageStore, not here.
     property string voiceTarget: ""
     // --screen setup / saver / ask / settings (settings/<tab>) / admin: for pictures and checks.
     readonly property bool forceSetup: startScreen === "setup"
@@ -71,26 +71,6 @@ ApplicationWindow {
         pttWatchdog.restart()
         Voice.listen()
         return true
-    }
-    // The mic on Messages: what's said joins the message box. A second tap stops it.
-    function dictate() {
-        if (!Voice.available) {
-            showToast(qsTr("Voice needs the McFly voice service (see docs/VOICE.md)"))
-            return
-        }
-        if (voiceTarget === "message") {
-            Voice.cancel()
-            voiceTarget = ""
-            return
-        }
-        if (!Voice.canTranscribe) {
-            showToast(qsTr("Voice needs a microphone (see docs/VOICE.md)"))
-            return
-        }
-        Voice.stopSpeaking()
-        voiceTarget = "message"
-        pttWatchdog.restart()
-        Voice.listen()
     }
     // The service ends a turn within ~12 s; never leave the mic stuck "on".
     Timer { id: pttWatchdog; interval: 25000; onTriggered: window.voiceTarget = "" }
@@ -167,7 +147,7 @@ ApplicationWindow {
     Connections {
         target: Voice
         function onWoke(source) {
-            if (window.voiceTarget === "chat" || window.voiceTarget === "message" || Store.mode === "pairing")
+            if (window.voiceTarget === "chat" || Store.mode === "pairing")
                 return
             // A follow-up the card asked for itself: it's already listening.
             if (quick.followingUp && quick.phase === "listening") {
@@ -180,11 +160,7 @@ ApplicationWindow {
             quick.start()
         }
         function onHeard(text) {
-            if (window.voiceTarget === "message") {
-                window.voiceTarget = ""
-                pttWatchdog.stop()
-                messagesPage.dictated(text) // into the box, to read before it's sent
-            } else if (window.voiceTarget === "chat") {
+            if (window.voiceTarget === "chat") {
                 window.voiceTarget = ""
                 pttWatchdog.stop()
                 if (AI.busy)
@@ -195,11 +171,7 @@ ApplicationWindow {
             }
         }
         function onHeardNothing() {
-            if (window.voiceTarget === "message") {
-                window.voiceTarget = ""
-                pttWatchdog.stop()
-                window.showToast(qsTr("Sorry, I didn't catch that"))
-            } else if (window.voiceTarget === "chat") {
+            if (window.voiceTarget === "chat") {
                 window.voiceTarget = ""
                 pttWatchdog.stop()
                 window.showToast(qsTr("Sorry, I didn't catch that"))
@@ -318,8 +290,6 @@ ApplicationWindow {
                 isCurrent: window.currentScreen === 8
                 // The keyboard rises over the bar: only what shows above it counts.
                 keyboardHeight: Math.max(0, window.keyboardHeight - Theme.navHeight)
-                listening: window.voiceTarget === "message"
-                onDictate: window.dictate()
             }
         }
     }
@@ -624,10 +594,15 @@ ApplicationWindow {
             if (Device.screenOff)
                 return
             Device.wake()
-            // Not read out at night: the card is enough, and someone may be asleep.
-            if (Voice.available && Device.mood !== "night")
+            // Not played or read out at night: the card is enough, and someone may be asleep.
+            if (Device.mood === "night")
+                return
+            if (message.audio && Messages.canPlay)
+                Messages.play(message.id)
+            else if (Voice.available)
                 Voice.speak(qsTr("Message from %1: %2").arg(message.name).arg(message.body))
         }
+        function onNotice(text) { window.showToast(text) }
     }
     Connections {
         target: Store

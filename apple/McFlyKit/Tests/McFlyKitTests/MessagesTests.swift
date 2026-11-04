@@ -26,6 +26,23 @@ private actor FakeMessages: MessageService {
     func markRead(upTo: UUID?) async throws { readUpTo.append(upTo) }
     func names() async throws -> MessageNames { MessageNames(household: ["Mia"], mine: "Dad") }
     func away() async throws -> AwayStatus { AwayStatus() }
+    var uploads = 0
+    var failNextVoiceSend = false
+    func failNextVoice() { failNextVoiceSend = true }
+    func uploadVoiceNote(_ wav: Data) async throws -> String {
+        uploads += 1
+        return "ad000000-0000-0000-0000-000000000001/\(UUID().lowercased).wav"
+    }
+    func sendVoiceNote(path: String, ms: Int) async throws -> Message {
+        if failNextVoiceSend {
+            failNextVoiceSend = false
+            throw McFlyError.message("Try again.")
+        }
+        let m = Message(sender: .person, senderName: "Dad", body: Message.voiceNoteLabel(ms: ms), createdAt: .now, audioPath: path, audioMs: ms)
+        rows.append(m)
+        return m
+    }
+    func voiceNote(_ path: String) async throws -> Data { Data("downloaded".utf8) }
     func setAway(_ away: Bool, until: Date?, note: String?) async throws -> AwayStatus {
         away ? AwayStatus(since: .now, until: until, note: note, name: "Dad") : AwayStatus()
     }
@@ -198,6 +215,39 @@ final class MessagesTests: XCTestCase {
         XCTAssertEqual(store.away.note, "At work")
         try await store.setAway(false)
         XCTAssertFalse(store.away.isAway())
+    }
+
+    func testVoiceNotesUploadOnceThenSend() async throws {
+        XCTAssertEqual(Message.voiceNoteLabel(ms: 12345), "🎤 Voice note · 0:12", "as send_message writes it")
+        XCTAssertEqual(Message.voiceNoteLabel(ms: 65000), "🎤 Voice note · 1:05")
+        let note = Message(sender: .display, senderName: "Mia", body: Message.voiceNoteLabel(ms: 4000), createdAt: t0,
+                           audioPath: "x/y.wav", audioMs: 4000)
+        XCTAssertTrue(note.hasAudio)
+        XCTAssertEqual(note.caption, "", "the server's own words aren't a caption")
+        XCTAssertEqual(note.audioLabel, "0:04")
+        var captioned = note
+        captioned.body = "Listen!"
+        XCTAssertEqual(captioned.caption, "Listen!")
+
+        let service = FakeMessages()
+        let store = MessagesStore(service: service)
+        let wav = VoiceNoteAudio.wav(VoiceNoteAudio.tone(seconds: 3))
+        XCTAssertEqual(VoiceNoteAudio.milliseconds(of: wav), 3000)
+        await service.failNextVoice()
+        let first = await store.sendVoiceNote(wav, ms: 3000)
+        XCTAssertFalse(first)
+        XCTAssertEqual(store.pending.first?.failure, "Try again.")
+        XCTAssertNotNil(store.pending.first?.audioPath, "uploaded before the send failed")
+        await store.retry(store.pending[0].id)
+        XCTAssertEqual(store.pending, [])
+        let uploads = await service.uploads
+        XCTAssertEqual(uploads, 1, "a retry doesn't upload again")
+        let sent = try XCTUnwrap(store.messages.last)
+        XCTAssertEqual(sent.audioMs, 3000)
+        let played = try await store.audio(for: sent)
+        XCTAssertEqual(played, wav, "our own note plays from here")
+        let tooShort = await store.sendVoiceNote(wav, ms: 100)
+        XCTAssertFalse(tooShort)
     }
 
     func testTheDemoAnswersBack() async throws {

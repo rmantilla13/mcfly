@@ -46,8 +46,14 @@ class TestMessages : public QObject
 
     void serve()
     {
+        // A token shaped like a JWT, so the display knows its own user (its voice notes' folder).
         m_server.route("/auth/v1/token", [](const Request &) {
-            return json(R"({"access_token":"access-1","refresh_token":"refresh-2"})");
+            const QByteArray payload = QJsonDocument(QJsonObject{{"sub", "d0000000-0000-0000-0000-000000000001"}})
+                                           .toJson(QJsonDocument::Compact)
+                                           .toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+            const QJsonObject session{{"access_token", QString::fromLatin1("eyJhbGciOiJIUzI1NiJ9." + payload + ".sig")},
+                                      {"refresh_token", "refresh-2"}};
+            return FakeServer::json(QJsonDocument(session));
         });
         m_server.route("/rest/v1/platform_settings", [](const Request &) {
             return json(R"([{"display_name":"Hill Valley","timezone":"America/Chicago","message_names":["Mia","Leo"]}])");
@@ -294,6 +300,87 @@ private slots:
 
     // Away mode from the settings row: on from away_since, off once
     // away_until has passed; the live store reads it with every poll.
+    // A voice note: shaped with its length and no caption for the server's
+    // own words; sent by uploading into this display's folder, then
+    // send_message with the file; a retry after the upload doesn't upload again.
+    void voiceNotesUploadThenSend()
+    {
+        QCOMPARE(MessageStore::voiceNoteLabel(12345), QStringLiteral("🎤 Voice note · 0:12"));
+        QCOMPARE(MessageStore::voiceNoteLabel(65000), QStringLiteral("🎤 Voice note · 1:05"));
+        const QDateTime now = QDateTime::currentDateTime();
+        const QVariantList rows{
+            QVariantMap{{"id", "a"}, {"sender_kind", "person"}, {"sender_name", "Dad"}, {"body", "🎤 Voice note · 0:12"},
+                        {"audio_path", "x/y.wav"}, {"audio_ms", 12345}, {"created_at", iso(now)}},
+            QVariantMap{{"id", "b"}, {"sender_kind", "display"}, {"sender_name", "Mia"}, {"body", "Listen!"},
+                        {"audio_path", "x/z.wav"}, {"audio_ms", 4000}, {"created_at", iso(now.addSecs(1))}},
+        };
+        const QVariantList t = MessageStore::shape(rows, {}, now, "Dad");
+        QCOMPARE(t.at(0).toMap().value("hasAudio").toBool(), true);
+        QCOMPARE(t.at(0).toMap().value("audioLabel").toString(), QStringLiteral("0:12"));
+        QCOMPARE(t.at(0).toMap().value("caption").toString(), QString());
+        QCOMPARE(t.at(1).toMap().value("caption").toString(), QStringLiteral("Listen!"));
+
+        startLive();
+        QTRY_VERIFY(rig->messages.available());
+        int uploads = 0;
+        QString uploadedPath;
+        m_server.route("/storage/v1/object/voice-notes/", [&](const Request &r) {
+            ++uploads;
+            uploadedPath = QString::fromUtf8(r.pathOnly().mid(QByteArray("/storage/v1/object/voice-notes/").size()));
+            return json(R"({"Key":"voice-notes/x"})");
+        });
+        bool failOnce = true;
+        m_server.route("/rest/v1/rpc/send_message", [&](const Request &r) {
+            if (failOnce) {
+                failOnce = false;
+                return json(R"({"message":"something went wrong"})", 500);
+            }
+            QJsonObject o = row("v1", "display", "Kitchen", "🎤 Voice note · 0:03", QDateTime::currentDateTime());
+            o.insert("audio_path", r.body.value("audio_path"));
+            o.insert("audio_ms", r.body.value("audio_ms"));
+            m_rows.insert("v1", o);
+            return FakeServer::json(QJsonDocument(o));
+        });
+        rig->messages.sendVoiceNote(QByteArray("RIFF-fake-wav"), 3000, QString());
+        QCOMPARE(last(rig->messages.thread()).value("hasAudio").toBool(), true);
+        QCOMPARE(last(rig->messages.thread()).value("status").toString(), QStringLiteral("Sending…"));
+        QTRY_COMPARE(last(rig->messages.thread()).value("failed").toBool(), true);
+        QCOMPARE(uploads, 1);
+        QVERIFY2(uploadedPath.startsWith(QStringLiteral("d0000000-0000-0000-0000-000000000001/")) && uploadedPath.endsWith(".wav"),
+                 qPrintable(uploadedPath));
+        rig->messages.retry(last(rig->messages.thread()).value("id").toString());
+        QTRY_COMPARE(last(rig->messages.thread()).value("pending").toBool(), false);
+        QCOMPARE(uploads, 1); // uploaded once
+        const Request sent = m_server.requests("POST", "/rest/v1/rpc/send_message").last();
+        QCOMPARE(sent.body.value("audio_path").toString(), uploadedPath);
+        QCOMPARE(sent.body.value("audio_ms").toInt(), 3000);
+        QCOMPARE(sent.body.value("body").toString(), QString());
+        QCOMPARE(last(rig->messages.thread()).value("audioLabel").toString(), QStringLiteral("0:03"));
+        // Without the voice service there's nothing to record or play with.
+        QVERIFY(!rig->messages.canRecord());
+        QSignalSpy notice(&rig->messages, &MessageStore::notice);
+        rig->messages.play(QStringLiteral("v1"));
+        QCOMPARE(notice.size(), 1);
+    }
+
+    // A backend from before voice notes refuses the audio columns: the store
+    // asks again without them, and messages still read.
+    void anOlderBackendWithoutVoiceNotes()
+    {
+        m_rows.insert("m1", row("m1", "display", "Mia", "hi", QDateTime::currentDateTime()));
+        m_server.route("/rest/v1/messages", [this](const Request &r) {
+            if (r.path.contains("audio_path"))
+                return json(R"({"code":"42703","message":"column messages.audio_path does not exist"})", 400);
+            QJsonArray out;
+            for (const QJsonObject &o : std::as_const(m_rows))
+                out << o;
+            return json(rows(out));
+        });
+        startLive();
+        QTRY_COMPARE(rig->messages.thread().size(), 1);
+        QVERIFY(rig->messages.available());
+    }
+
     void awayModeFromTheSettings()
     {
         const QDateTime now = QDateTime::currentDateTime();

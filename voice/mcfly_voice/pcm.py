@@ -17,6 +17,8 @@ FRAME_BYTES = FRAME_SAMPLES * 2
 
 # `level` maps -60…0 dBFS onto 0…1, so normal speech moves the display's orb.
 LEVEL_FLOOR_DB = -60.0
+# A voice note is at most this long (the service stops recording there).
+MAX_NOTE_SECONDS = 30
 
 
 def samples(pcm: bytes) -> array:
@@ -93,3 +95,43 @@ def tone(freq: float, seconds: float, amplitude: float = 0.3, rate: int = SAMPLE
 
 def silence(seconds: float, rate: int = SAMPLE_RATE) -> bytes:
     return bytes(2 * int(rate * seconds))
+
+
+def to_wav(pcm: bytes, rate: int = SAMPLE_RATE) -> bytes:
+    """16-bit mono PCM as a WAV file (a voice note)."""
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm[: len(pcm) - len(pcm) % 2])
+    return buf.getvalue()
+
+
+def from_wav(data: bytes) -> tuple[int, bytes]:
+    """A 16-bit PCM WAV's sample rate and its samples as mono (a stereo one
+    mixed down). The `wave` module walks the chunks, so a file with others
+    before its data (the iPhone pads one) reads too. ValueError otherwise."""
+    import io
+    import wave
+
+    try:
+        with wave.open(io.BytesIO(data), "rb") as w:
+            channels, width, rate = w.getnchannels(), w.getsampwidth(), w.getframerate()
+            frames = w.readframes(w.getnframes())
+    except (wave.Error, EOFError) as e:
+        raise ValueError(f"not a WAV file ({e})") from None
+    if width != 2:
+        raise ValueError("only 16-bit WAV plays")
+    if not 8000 <= rate <= 48000:
+        raise ValueError(f"a sample rate of {rate} Hz doesn't play")
+    if channels == 2:
+        a = samples(frames)
+        mono = array("h", ((a[i] + a[i + 1]) // 2 for i in range(0, len(a) - 1, 2)))
+        frames = to_bytes(mono)
+    elif channels != 1:
+        raise ValueError(f"{channels} channels don't play")
+    return rate, frames

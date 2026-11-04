@@ -17,8 +17,8 @@ insert into devices (id, user_id, name) values (:'kitchen', :'device', 'Kitchen'
                                                ('00000000-0000-0000-0000-00000000d002', :'device2', 'Den');
 
 -- Who may call what.
-select tests.ok(not has_function_privilege('anon', 'send_message(text, text, text)', 'execute'), 'anon cannot send');
-select tests.ok(has_function_privilege('authenticated', 'send_message(text, text, text)', 'execute'), 'a signed-in caller may try');
+select tests.ok(not has_function_privilege('anon', 'send_message(text, text, text, text, integer)', 'execute'), 'anon cannot send');
+select tests.ok(has_function_privilege('authenticated', 'send_message(text, text, text, text, integer)', 'execute'), 'a signed-in caller may try');
 select tests.ok(has_function_privilege('authenticated', 'read_messages(uuid)', 'execute'), 'and read');
 select tests.ok(has_function_privilege('authenticated', 'register_push_token(text, text, text, text)', 'execute'), 'and register a phone');
 select tests.ok(not has_function_privilege('authenticated', 'message_push(uuid)', 'execute'), 'message_push is service only');
@@ -245,3 +245,30 @@ select tests.login(:'admin');
 select set_away(true);
 select tests.ok((select away_since > now() - interval '1 minute' from platform_settings), 'run out: a new start');
 select set_away(false);
+
+-- ───────────────────────────── Voice notes (20261104000020) ─────────────────────────────
+select tests.ok(to_regprocedure('send_message(text, text, text)') is null, 'no three-argument send_message beside the new one');
+select tests.ok(has_function_privilege('authenticated', 'send_message(text, text, text, text, integer)', 'execute'), 'the new one is callable');
+select tests.eq(voice_note_label(12345), '🎤 Voice note · 0:12', 'the label');
+select tests.eq(voice_note_label(65000), '🎤 Voice note · 1:05', 'over a minute');
+select tests.login(:'device2');
+select send_message(audio_path => :'device2' || '/0d0e0000-0000-0000-0000-000000000001.wav', audio_ms => 12345) as v \gset
+select tests.eq((:'v'::jsonb)->>'body', '🎤 Voice note · 0:12', 'no caption: the server writes one');
+select tests.eq(((:'v'::jsonb)->>'audio_ms')::int, 12345, 'its length');
+select tests.eq((:'v'::jsonb)->>'audio_path', :'device2' || '/0d0e0000-0000-0000-0000-000000000001.wav', 'its file');
+select tests.eq(send_message('Listen!', null, null, :'device2' || '/0d0e0000-0000-0000-0000-000000000002.wav', 4000)->>'body', 'Listen!', 'a caption stays');
+select tests.eq(send_message(body => 'Just text')->>'audio_path', null, 'a call naming only the old arguments still works');
+select tests.throws($$select send_message(audio_path => 'ad000000-0000-0000-0000-000000000001/0d0e0000-0000-0000-0000-000000000003.wav', audio_ms => 3000)$$,
+                    'that voice note isn''t yours to send', 'someone else''s file');
+select tests.throws($$select send_message(audio_path => 'd0000000-0000-0000-0000-000000000002/x.wav', audio_ms => 3000)$$,
+                    'that voice note isn''t yours to send', 'not a file name it makes');
+select tests.throws($$select send_message(audio_path => 'd0000000-0000-0000-0000-000000000002/0d0e0000-0000-0000-0000-000000000004.wav')$$,
+                    'a voice note needs its file and its length', 'no length');
+select tests.throws($$select send_message(audio_ms => 3000)$$, 'a voice note needs its file and its length', 'no file');
+select tests.throws($$select send_message(audio_path => 'd0000000-0000-0000-0000-000000000002/0d0e0000-0000-0000-0000-000000000005.wav', audio_ms => 45000)$$,
+                    'a voice note is up to 30 seconds', 'too long');
+select tests.login(:'admin');
+select tests.eq(send_message(null, null, null, :'admin' || '/0d0e0000-0000-0000-0000-000000000006.wav', 30000)->>'sender_kind', 'person',
+                'the person sends one too');
+select tests.login_service();
+select tests.eq((message_push((select id from messages where audio_ms = 12345)))->>'body', '🎤 Voice note · 0:12', 'the notification says it');

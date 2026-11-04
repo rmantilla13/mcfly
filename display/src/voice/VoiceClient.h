@@ -48,6 +48,9 @@ class VoiceClient : public QObject
     // wake word (QSettings voice/followUp, default on). This display's own
     // choice: devices.settings doesn't take it, so it isn't synced.
     Q_PROPERTY(bool followUp READ followUp WRITE setFollowUp NOTIFY followUpChanged)
+    // Voice notes: the service can record one (a mic is open) and play one.
+    Q_PROPERTY(bool canRecord READ canRecord NOTIFY infoChanged)
+    Q_PROPERTY(bool canPlay READ canPlay NOTIFY infoChanged)
 
 public:
     explicit VoiceClient(const QUrl &url, QObject *parent = nullptr);
@@ -65,6 +68,8 @@ public:
     QString transcript() const { return m_transcript; }
     bool canSpeak() const { return m_tts; }
     bool canTranscribe() const { return m_stt; }
+    bool canRecord() const { return m_record; }
+    bool canPlay() const { return m_play; }
     QString micName() const { return m_micName; }
     QString voiceId() const { return m_voiceId; }
     qreal speechSpeed() const { return m_speechSpeed; }
@@ -82,6 +87,14 @@ public:
     // Returns the id the service echoes in `spoken`, or "" if nothing was sent.
     Q_INVOKABLE QString speak(const QString &text);
     Q_INVOKABLE void stopSpeaking();
+    // A voice note from the mic, up to `maxSeconds` (30): `recorded` follows
+    // `stopRecord()` or the time running out; `cancel()` drops it. False if
+    // nothing was sent (no service).
+    Q_INVOKABLE bool record(int maxSeconds = 30);
+    Q_INVOKABLE void stopRecord();
+    // Plays a voice note (WAV bytes) after any speech; returns the id the
+    // service echoes in `spoken`, or "" if nothing was sent.
+    QString play(const QByteArray &wav);
     Q_INVOKABLE void setWakewordEnabled(bool enabled);
     // Any of: voice (a Kokoro voice id), speed (0.5..2), wakewordModel. The
     // service answers with a fresh hello carrying what it applied.
@@ -105,6 +118,8 @@ signals:
     void heardNothing();
     // Speech with this id finished or was stopped.
     void spoken(const QString &id);
+    // A voice note recorded with record(): a 16 kHz mono WAV and its length.
+    void recorded(const QByteArray &wav, int ms);
     void errorOccurred(const QString &message);
 
 private:
@@ -136,6 +151,8 @@ private:
     QString m_wakewordModel;
     bool m_tts = false;
     bool m_stt = false;
+    bool m_record = false;
+    bool m_play = false;
     QString m_transcript;
     bool m_speakReplies = true;
     bool m_followUp = true;

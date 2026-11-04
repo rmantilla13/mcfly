@@ -254,6 +254,52 @@ private slots:
         QVERIFY(voice.speakReplies());
     }
 
+    // Voice notes: record and stop go out, a recorded note well over a
+    // megabyte (30 s, base64) comes back whole, and a note goes out to play.
+    void voiceNotes()
+    {
+        VoiceClient voice(url());
+        voice.setRetryInterval(200);
+        voice.start();
+        QTRY_VERIFY(voice.available());
+        QVERIFY(!voice.canRecord()); // this hello predates voice notes
+        serverSend({{"type", "hello"}, {"version", "1"}, {"wakeword", true}, {"wakeword_name", "Hey McFly"},
+                    {"tts", true}, {"stt", true}, {"record", true}, {"play", true}});
+        QTRY_VERIFY(voice.canRecord());
+        QVERIFY(voice.canPlay());
+
+        m_received.clear();
+        QVERIFY(voice.record(45));
+        QTRY_COMPARE(m_received.size(), 1);
+        QCOMPARE(m_received.last().value("type").toString(), QStringLiteral("record"));
+        QCOMPARE(m_received.last().value("max_seconds").toInt(), 30); // capped here too
+        serverSend({{"type", "state"}, {"state", "recording"}});
+        serverSend({{"type", "level"}, {"rms", 0.5}});
+        QTRY_COMPARE(voice.state(), QStringLiteral("recording"));
+        QTRY_COMPARE(voice.level(), 0.5); // the level shows while recording too
+        voice.stopRecord();
+        QTRY_COMPARE(m_received.size(), 2);
+        QCOMPARE(m_received.last().value("type").toString(), QStringLiteral("stop_record"));
+
+        QByteArray wav(1000000, '\0');
+        for (int i = 0; i < wav.size(); ++i)
+            wav[i] = char(i % 251);
+        QSignalSpy recorded(&voice, &VoiceClient::recorded);
+        serverSend({{"type", "recorded"}, {"audio", QString::fromLatin1(wav.toBase64())}, {"ms", 31250}});
+        QTRY_COMPARE_WITH_TIMEOUT(recorded.size(), 1, 5000);
+        QCOMPARE(recorded.first().at(0).toByteArray(), wav);
+        QCOMPARE(recorded.first().at(1).toInt(), 31250);
+        QVERIFY(voice.available()); // the big frame didn't close the connection
+
+        const QString id = voice.play(wav.left(4000));
+        QVERIFY(!id.isEmpty());
+        QTRY_COMPARE(m_received.size(), 3);
+        QCOMPARE(m_received.last().value("type").toString(), QStringLiteral("play"));
+        QCOMPARE(m_received.last().value("id").toString(), id);
+        QCOMPARE(QByteArray::fromBase64(m_received.last().value("audio").toString().toLatin1()), wav.left(4000));
+        QCOMPARE(voice.play({}), QString());
+    }
+
     void cleanupTestCase()
     {
         QSettings().clear();

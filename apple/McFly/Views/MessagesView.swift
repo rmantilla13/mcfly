@@ -10,7 +10,8 @@ import UIKit
 /// home" once a display has shown them. Read in full once, then polled every
 /// few seconds while open; opening it marks home's messages read, which
 /// clears the badge. A reply shows at once and stays, with Retry, if it
-/// didn't go.
+/// didn't go. With the box empty the mic records a voice note (up to 30 s;
+/// ↑ sends it, ✕ drops it); a note plays with its ▶.
 struct MessagesView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
@@ -18,6 +19,8 @@ struct MessagesView: View {
     @State private var showSettings = false
     @State private var showAway = false
     @State private var active = true
+    @State private var recorder = VoiceNoteRecorder()
+    @State private var player = VoiceNotePlayer()
     @FocusState private var composing: Bool
 
     private var store: MessagesStore { app.messages }
@@ -52,7 +55,8 @@ struct MessagesView: View {
                             .padding(.bottom, 8)
                         ForEach(Array(day.messages.enumerated()), id: \.element.id) { index, message in
                             let starts = MessageThread.startsRun(message, after: index > 0 ? day.messages[index - 1] : nil)
-                            Bubble(message: message, startsRun: starts, status: message.id == lastReply ? MessageThread.replyStatus(message) : nil)
+                            Bubble(message: message, startsRun: starts, status: message.id == lastReply ? MessageThread.replyStatus(message) : nil,
+                                   playing: player.playingId == message.id) { play(message) }
                                 .padding(.top, starts ? 10 : 3)
                                 .id(message.id)
                         }
@@ -81,7 +85,8 @@ struct MessagesView: View {
                 withAnimation(.snappy) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
             .safeAreaInset(edge: .bottom) {
-                Composer(draft: $draft, composing: $composing) { send() }
+                Composer(draft: $draft, composing: $composing, recorder: recorder, onSend: send,
+                         onRecord: record, onCancelRecording: { recorder.cancel() })
             }
         }
         .screenBackground()
@@ -132,10 +137,45 @@ struct MessagesView: View {
     private static let bottom = "bottom"
 
     private func send() {
+        if recorder.isRecording {
+            sendRecording()
+            return
+        }
         let text = draft
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         draft = ""
         Task { await store.send(text) }
+    }
+
+    private func record() {
+        player.stop()
+        recorder.onLimit = { sendRecording() }
+        Task {
+            do {
+                try await recorder.start()
+            } catch {
+                app.report(error)
+            }
+        }
+    }
+
+    private func sendRecording() {
+        guard let note = recorder.finish() else { return }
+        Task { await store.sendVoiceNote(note.wav, ms: note.ms) }
+    }
+
+    private func play(_ message: Message) {
+        if player.playingId == message.id {
+            player.stop()
+            return
+        }
+        Task {
+            do {
+                try player.play(try await store.audio(for: message), id: message.id)
+            } catch {
+                app.report(error)
+            }
+        }
     }
 }
 
@@ -146,6 +186,8 @@ private struct Bubble: View {
     let message: Message
     let startsRun: Bool
     var status: String?
+    var playing = false
+    var onPlay: () -> Void = {}
 
     var body: some View {
         let mine = !message.fromHome
@@ -156,15 +198,22 @@ private struct Bubble: View {
                     .foregroundStyle(Theme.muted)
                     .padding(.horizontal, 6)
             }
-            Text(message.body)
-                .font(.body)
-                .foregroundStyle(mine ? Theme.accentInk : Theme.text)
-                .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(mine ? Theme.accent : Theme.surface,
-                            in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .frame(maxWidth: 520, alignment: mine ? .trailing : .leading)
+            VStack(alignment: .leading, spacing: 6) {
+                if message.hasAudio {
+                    VoiceNoteRow(label: message.audioLabel, playing: playing, mine: mine, onPlay: onPlay)
+                }
+                if !message.caption.isEmpty {
+                    Text(message.caption)
+                        .font(.body)
+                        .foregroundStyle(mine ? Theme.accentInk : Theme.text)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(mine ? Theme.accent : Theme.surface,
+                        in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .frame(maxWidth: 520, alignment: mine ? .trailing : .leading)
             if let status {
                 Text(status)
                     .font(.caption2)
@@ -188,7 +237,7 @@ private struct PendingBubble: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
-            Text(item.body)
+            Text(item.audioMs.map { Message.voiceNoteLabel(ms: $0) } ?? item.body)
                 .font(.body)
                 .foregroundStyle(Theme.accentInk)
                 .padding(.horizontal, 14)
@@ -217,33 +266,77 @@ private struct PendingBubble: View {
 private struct Composer: View {
     @Binding var draft: String
     var composing: FocusState<Bool>.Binding
+    let recorder: VoiceNoteRecorder
     let onSend: () -> Void
+    let onRecord: () -> Void
+    let onCancelRecording: () -> Void
 
     var body: some View {
         let empty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let over = draft.count > Message.maxLength
         HStack(alignment: .bottom, spacing: 10) {
-            TextField("Message home", text: $draft, axis: .vertical)
-                .lineLimit(1 ... 5)
-                .focused(composing)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
+            if recorder.isRecording {
+                // Recording: ✕ drops it, the time and the level, ↑ sends it.
+                HStack(spacing: 12) {
+                    Button(action: onCancelRecording) {
+                        Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.muted)
+                            .frame(width: 32, height: 32).background(Theme.sunken, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Drop the voice note")
+                    Circle().fill(Theme.down).frame(width: 10, height: 10)
+                    Text(String(format: "0:%02d", Int(recorder.elapsed)))
+                        .font(.body.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                    GeometryReader { geo in
+                        Capsule().fill(Theme.sunken)
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(Theme.accent).frame(width: geo.size.width * recorder.level)
+                                    .animation(.linear(duration: 0.1), value: recorder.level)
+                            }
+                    }
+                    .frame(height: 8)
+                    Text("0:30").font(.caption.monospacedDigit()).foregroundStyle(Theme.muted)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .onSubmit(onSend)
-                #if os(macOS)
-                .textFieldStyle(.plain)
-                #endif
-            Button(action: onSend) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Theme.accentInk)
-                    .frame(width: 44, height: 44)
-                    .background(empty || over ? Theme.muted.opacity(0.4) : Theme.accent, in: Circle())
+            } else {
+                TextField("Message home", text: $draft, axis: .vertical)
+                    .lineLimit(1 ... 5)
+                    .focused(composing)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .onSubmit(onSend)
+                    #if os(macOS)
+                    .textFieldStyle(.plain)
+                    #endif
             }
-            .buttonStyle(.plain)
-            .disabled(empty || over)
-            .accessibilityLabel("Send")
-            .keyboardShortcut(.return, modifiers: .command)
+            if empty, !recorder.isRecording {
+                // Nothing typed: the mic, for a voice note.
+                Button(action: onRecord) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.accentInk)
+                        .frame(width: 44, height: 44)
+                        .background(Theme.accent, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Record a voice note")
+            } else {
+                Button(action: onSend) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.accentInk)
+                        .frame(width: 44, height: 44)
+                        .background(over && !recorder.isRecording ? Theme.muted.opacity(0.4) : Theme.accent, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(over && !recorder.isRecording)
+                .accessibilityLabel(recorder.isRecording ? "Send the voice note" : "Send")
+                .keyboardShortcut(.return, modifiers: .command)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if draft.count > Message.maxLength - 100 {

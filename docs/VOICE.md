@@ -407,12 +407,13 @@ behind it.
 
 | Server → client | When |
 |---|---|
-| `{"type":"hello","version":"1","wakeword":bool,"wakeword_name":str,"wakeword_model":str,"tts":bool,"stt":bool,"mic":str,"voice":str,"speed":num}` | On connect, and again to everyone after `set` or when the mic is plugged in or unplugged |
-| `{"type":"state","state":"idle\|listening\|transcribing\|speaking"}` | On connect (right after `hello`) and on every change |
+| `{"type":"hello","version":"1","wakeword":bool,"wakeword_name":str,"wakeword_model":str,"tts":bool,"stt":bool,"mic":str,"voice":str,"speed":num,"record":bool,"play":bool}` | On connect, and again to everyone after `set` or when the mic is plugged in or unplugged |
+| `{"type":"state","state":"idle\|listening\|transcribing\|speaking\|recording"}` | On connect (right after `hello`) and on every change. `speaking` covers a voice note playing too |
 | `{"type":"wake","source":"wakeword\|button"}` | A session starts; always followed by `listening` |
-| `{"type":"level","rms":0.0-1.0}` | While listening, at most 15/s |
+| `{"type":"level","rms":0.0-1.0}` | While listening or recording, at most 15/s |
+| `{"type":"recorded","audio":base64,"ms":int}` | A voice note, to the client that asked (`record`): a 16 kHz mono 16-bit WAV, at most 30 s |
 | `{"type":"transcript","text":str,"final":true}` | Once per session, unless it was cancelled; `""` if nothing was heard |
-| `{"type":"spoken","id":str}` | Exactly once per `speak`, when finished, stopped or skipped |
+| `{"type":"spoken","id":str}` | Exactly once per `speak` or `play`, when finished, stopped or skipped |
 | `{"type":"error","message":str}` | Bad client message (to that client only), or a runtime problem |
 
 | Client → server | Effect |
@@ -420,11 +421,14 @@ behind it.
 | `{"type":"listen"}` | Push-to-talk. Interrupts speech; ignored if a session is already running |
 | `{"type":"cancel"}` | Ends the session without a transcript, stops speech, and goes `idle` |
 | `{"type":"speak","text":str,"id":str}` | Queues speech. Waits for a session in progress to finish. `id` is optional (one is made up) and at most 200 characters. Text past 2,000 characters is cut at a word break. With 16 replies already waiting, it's refused with an `error` and an immediate `spoken` |
-| `{"type":"stop_speaking"}` | Stops speech and drops anything queued; each pending id gets `spoken` |
+| `{"type":"stop_speaking"}` | Stops speech (and a voice note playing) and drops anything queued; each pending id gets `spoken` |
+| `{"type":"record","max_seconds":1-30}` | Records a voice note (30 s when left out): state `recording`, `level`s, then `recorded` when `stop_record` comes or the time is up. Stops speech; the wake word and `listen` wait. Refused with an `error` without a mic (`hello.record` false) or while listening or recording; under half a second is an `error` ("too short"), not a note. `cancel` drops it |
+| `{"type":"stop_record"}` | Ends the recording: `recorded` follows |
+| `{"type":"play","audio":base64,"id":str}` | Plays a voice note (a 16-bit PCM WAV, mono or stereo, 8–48 kHz) after any queued speech, then `spoken` with the id. A file that won't play gets an `error` and an immediate `spoken`. The display fetches the file; the service never reaches the network |
 | `{"type":"set","wakeword_enabled":bool}` | Switches the wake word on or off; answered with a fresh `hello` to every client |
 | `{"type":"set","wakeword_model":str,"voice":str,"speed":num}` | Any of them: the wake word (`hey_mcfly`, `hey_jarvis`, `alexa`, `hey_mycroft` or `hey_rhasspy`), Kokoro's voice (`af_heart`, `af_bella`, `am_michael`, `am_fenrir`) and the speaking rate (0.5–2). Remembered across restarts; answered with a fresh `hello` to every client, or an `error` if the wake word can't load |
 
-- A frame over 64 KiB closes the connection (code 1009); a handshake with
+- A frame over 9 MiB closes the connection (code 1009); a handshake with
   an `Origin` header not in `server.allowed_origins` is refused with 403.
 - `level` is the frame's loudness mapped from −60…0 dBFS onto 0…1, so normal
   speech reads about 0.4–0.8 and can drive the orb directly.

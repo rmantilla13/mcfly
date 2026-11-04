@@ -192,7 +192,7 @@ private slots:
         m_voice = new VoiceClient(QUrl(QStringLiteral("ws://127.0.0.1:9")), this); // never started: no voice
         m_ai = new Assistant(m_client, m_store, m_voice, this);
         m_glance = new HomeGlance(m_store, this);
-        m_messages = new MessageStore(m_client, m_store, this); // the demo's thread
+        m_messages = new MessageStore(m_client, m_store, m_voice, this); // the demo's thread
         m_messages->setDemoReplyMs(60 * 60 * 1000);
 
         qmlRegisterSingletonInstance("McFly.Core", 1, 0, "Store", m_store);

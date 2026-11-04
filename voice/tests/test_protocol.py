@@ -32,6 +32,8 @@ async def test_hello_then_state_on_connect():
             "voice": "af_heart",
             "speed": 1.0,
             "wakeword_model": "hey_mcfly",
+            "record": True,
+            "play": True,
         }
         assert await c.recv() == IDLE
 
@@ -432,7 +434,8 @@ async def test_an_empty_id_is_echoed():
 
 async def test_oversized_frames_close_the_connection():
     async with running() as (service, _, url), client(url) as c:
-        await c.ws.send(json.dumps({"type": "speak", "text": "x" * 100_000}))
+        # Past MAX_MESSAGE_BYTES, which leaves room for a voice note to play.
+        await c.ws.send(json.dumps({"type": "speak", "text": "x" * (10 << 20)}))
         with pytest.raises(ConnectionClosedError):
             await c.recv()
         assert service.state == "idle"

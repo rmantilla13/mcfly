@@ -66,7 +66,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: Scan the pairing code on your McFly display.
-        NSMicrophoneUsageDescription: Talk to McFly instead of typing.
+        NSMicrophoneUsageDescription: Talk to McFly instead of typing, and record voice notes for home.
         NSSpeechRecognitionUsageDescription: Turn what you say to McFly into text, on this device.
         NSLocationWhenInUseUsageDescription: Show today's weather where you are on Home, and set McFly's time zone from where you are in Settings. Only your approximate location is used.
         # Filled from Config/Signing.xcconfig (Local.xcconfig overrides).

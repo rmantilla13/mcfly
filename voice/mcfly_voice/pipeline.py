@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING
 from . import stt, wakeword
 from .audio import AudioError, Microphone, make_player
 from .config import BUILTIN_WAKEWORDS, Config
-from .pcm import level, rms
+from .pcm import SAMPLE_RATE, level, rms
 from .tts import Speaker, create_synth, download_kokoro, piper_voice_path
 from .vad import Endpointer, detector_factory
 from .wakeword import WakeWordDetector, display_name
 
 if TYPE_CHECKING:
-    from .service import Session, VoiceService
+    from .service import Recording, Session, VoiceService
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +44,8 @@ class AudioBackend:
         self._detector: WakeWordDetector | None = None
         self._transcriber: stt.Transcriber | None = None
         self._speaker: Speaker | None = None
+        # Voice notes play through a player of their own (it starts nothing until used).
+        self._player = make_player(cfg.audio.output, cfg.audio.output_device)
         self._mic_ok = False
         self.mic_name = ""  # the open microphone, for the screen
         self._frames = 0  # read from mics so far: a stall, or a mic that never sent any?
@@ -58,6 +60,14 @@ class AudioBackend:
         self._wake_pool = ThreadPoolExecutor(1, thread_name_prefix="wakeword")
         self._stt_pool = ThreadPoolExecutor(1, thread_name_prefix="stt")
         self._tts_pool = ThreadPoolExecutor(1, thread_name_prefix="tts")
+
+    @property
+    def record_available(self) -> bool:
+        return self._mic_ok
+
+    @property
+    def play_available(self) -> bool:
+        return self._player is not None
 
     @property
     def wakeword_available(self) -> bool:
@@ -286,6 +296,51 @@ class AudioBackend:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._stt_pool, self._transcriber.transcribe,
                                           endpointer.audio())
+
+    # Voice notes
+
+    async def record(self, recording: Recording, max_seconds: float, stop: asyncio.Event) -> bytes:
+        """The microphone's frames until `stop` is set or `max_seconds` have
+        been heard, as 16 kHz mono PCM."""
+        queue = self._capture
+        if queue is None:
+            queue = self._capture = asyncio.Queue()
+        limit = int(max_seconds * SAMPLE_RATE) * 2
+        chunks: list[bytes] = []
+        total = 0
+        idle = 0.0
+        try:
+            while not stop.is_set() and total < limit:
+                try:
+                    frame = await asyncio.wait_for(queue.get(), 0.2)
+                except TimeoutError:
+                    idle += 0.2
+                    if idle >= MIC_TIMEOUT_SECONDS:
+                        raise AudioError("the microphone stopped sending audio") from None
+                    continue
+                idle = 0.0
+                chunks.append(frame)
+                total += len(frame)
+                recording.level(level(rms(frame)))
+        finally:
+            if self._capture is queue:
+                self._capture = None
+        return b"".join(chunks)[:limit]
+
+    async def play(self, rate: int, pcm: bytes) -> None:
+        player = self._player
+        stop = threading.Event()
+        step = rate // 5 * 2  # a fifth of a second a chunk
+        chunks = iter([pcm[i:i + step] for i in range(0, len(pcm), step)])
+        loop = asyncio.get_running_loop()
+        future = loop.run_in_executor(self._tts_pool, player.play, rate, chunks, stop)
+        future.add_done_callback(lambda f: f.cancelled() or f.exception())
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError:
+            stop.set()
+            player.abort()
+            raise
 
     # Speaking
 

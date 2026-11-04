@@ -236,6 +236,42 @@ QNetworkReply *SupabaseClient::streamFunction(const QString &name, const QJsonOb
     return reply;
 }
 
+QString SupabaseClient::userId() const
+{
+    const QList<QByteArray> parts = m_accessToken.toLatin1().split('.');
+    if (parts.size() != 3)
+        return {};
+    const QByteArray payload = QByteArray::fromBase64(parts.at(1), QByteArray::Base64UrlEncoding);
+    return QJsonDocument::fromJson(payload).object().value("sub").toString();
+}
+
+void SupabaseClient::upload(const QString &bucket, const QString &path, const QByteArray &data,
+                            const QString &contentType, Callback cb)
+{
+    QNetworkRequest req = request("/storage/v1/object/" + bucket + "/" + path);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    req.setRawHeader("x-upsert", "false");
+    req.setTransferTimeout(60000);
+    handle(m_nam.post(req, data), cb);
+}
+
+void SupabaseClient::download(const QString &bucket, const QString &path,
+                              std::function<void(const QByteArray &, const QString &)> done)
+{
+    QNetworkRequest req = request("/storage/v1/object/authenticated/" + bucket + "/" + path);
+    req.setTransferTimeout(30000);
+    QNetworkReply *reply = m_nam.get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, done]() {
+        reply->deleteLater();
+        const QByteArray body = reply->readAll();
+        if (reply->error() == QNetworkReply::NoError) {
+            done(body, {});
+            return;
+        }
+        done({}, errorMessage(reply, body));
+    });
+}
+
 void SupabaseClient::postAbsolute(const QUrl &url, const QJsonObject &body, Callback cb)
 {
     const QString scheme = url.scheme().toLower();

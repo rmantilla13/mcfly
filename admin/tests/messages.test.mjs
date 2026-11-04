@@ -2,7 +2,7 @@
 // where the next poll starts, runs and day headings, and the names field.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { awayLabel, awayUntil, isAway, NOT_AWAY, dayHeading, demoMessages, mergeMessages, notifyNote, OVERLAP_MS, parseNames, pollSince, replyStatus, startsRun, threadDays, unreadFromHome } from "../lib/messages.ts";
+import { awayLabel, awayUntil, caption, hasAudio, isAway, noteClock, NOT_AWAY, voiceNoteLabel, VOICE_NOTE_PATH, dayHeading, demoMessages, mergeMessages, notifyNote, OVERLAP_MS, parseNames, pollSince, replyStatus, startsRun, threadDays, unreadFromHome } from "../lib/messages.ts";
 
 const NOW = Date.parse("2026-11-03T22:00:00Z"); // 4 pm in Chicago
 const at = (minutes) => new Date(NOW + minutes * 60_000).toISOString();
@@ -81,6 +81,18 @@ test("away mode ends on its own", () => {
   assert.equal(awayUntil("99", NOW), null);
 });
 
+test("voice notes: the label as the server writes it, and the caption", () => {
+  assert.equal(voiceNoteLabel(12345), "🎤 Voice note · 0:12");
+  assert.equal(noteClock(65000), "1:05");
+  const note = msg("n", 0, { body: voiceNoteLabel(4000), audio_path: "a/b.wav", audio_ms: 4000 });
+  assert.equal(hasAudio(note), true);
+  assert.equal(caption(note), "");
+  assert.equal(caption({ ...note, body: "Listen!" }), "Listen!");
+  assert.equal(caption(msg("t", 0)), "t");
+  assert.ok(VOICE_NOTE_PATH.test("ad000000-0000-0000-0000-000000000001/0d0e0000-0000-0000-0000-000000000001.wav"));
+  assert.ok(!VOICE_NOTE_PATH.test("../secret.wav"));
+});
+
 test("parseNames takes lines or commas", () => {
   assert.deepEqual(parseNames(" Mia, Leo\nmia\n\n Sam "), ["Mia", "Leo", "Sam"]);
   assert.deepEqual(parseNames(""), []);
@@ -88,6 +100,6 @@ test("parseNames takes lines or commas", () => {
 
 test("the demo has news from home", () => {
   const thread = demoMessages(NOW);
-  assert.equal(unreadFromHome(thread).length, 2);
+  assert.equal(unreadFromHome(thread).length, 3);
   assert.equal(thread.at(-1).sender_name, "Mia");
 });

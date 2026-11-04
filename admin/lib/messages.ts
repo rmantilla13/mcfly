@@ -16,6 +16,9 @@ export type Message = {
   read_at: string | null;
   notified_at: string | null;
   notify_error: string | null;
+  // A voice note (migration 20261104000020): its WAV in voice-notes, and how long.
+  audio_path?: string | null;
+  audio_ms?: number | null;
 };
 
 export type MessageNames = { household: string[]; mine: string | null };
@@ -49,7 +52,26 @@ export function awayUntil(choice: string, nowMs: number): string | null {
   return new Date(nowMs + hours * 3_600_000).toISOString();
 }
 
-export const MESSAGE_COLUMNS = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error";
+export const MESSAGE_COLUMNS = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error,audio_path,audio_ms";
+// A voice note's path, as send_message makes them: <auth user>/<uuid>.wav.
+export const VOICE_NOTE_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.wav$/;
+
+// "0:12".
+export function noteClock(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+// What a voice note says without a caption, as send_message writes it.
+export const voiceNoteLabel = (ms: number) => `🎤 Voice note · ${noteClock(ms)}`;
+
+export const hasAudio = (m: Message) => !!m.audio_path && (m.audio_ms ?? 0) > 0;
+
+// A message's words: for a voice note, "" when they're the server's own label.
+export function caption(m: Message): string {
+  if (!hasAudio(m)) return m.body;
+  return m.body === voiceNoteLabel(m.audio_ms ?? 0) ? "" : m.body;
+}
 export const MAX_MESSAGE = 500;
 // Each poll looks this far behind the newest change it has, so a message
 // that committed late isn't missed.
@@ -165,6 +187,7 @@ export function demoMessages(nowMs: number): Message[] {
     m(1, "display", "Mia", "I'm home from school!", 185, { read_at: at(180) }),
     m(2, "person", "Parent", "Yay! Snack is in the fridge. Homework first 🙂", 178, { read_at: at(176) }),
     m(3, "display", "Leo", "Can Sam come over to play?", 24),
+    m(5, "display", "Leo", voiceNoteLabel(6400), 23, { audio_path: "demo/leo.wav", audio_ms: 6400 }),
     m(4, "display", "Mia", "When are you coming home?", 6),
   ];
 }

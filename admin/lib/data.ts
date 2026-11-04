@@ -430,6 +430,19 @@ export async function setMessageNames(household: string[], mine: string | null):
   return { household: kept, mine: typeof name === "string" && name ? name : null };
 }
 
+// A voice note's WAV, as a link signed for five minutes (null in the demo,
+// which has no audio).
+export async function voiceNoteUrl(path: string): Promise<string | null> {
+  const src = await source();
+  if (src.demo) return null;
+  const { data, error } = await src.db.storage.from("voice-notes").createSignedUrl(path, 300);
+  if (error) {
+    console.error("voice note link failed:", error.message);
+    throw new DataError("Couldn't get that voice note.");
+  }
+  return data?.signedUrl ?? null;
+}
+
 // Away mode as the displays see it (platform_settings.away_*).
 let demoAway: AwayStatus = NOT_AWAY;
 export async function getAway(): Promise<AwayStatus> {
@@ -1228,7 +1241,7 @@ export async function askAssistant(message: string, history: AskTurn[], mode: As
 // ───────────────────────────── Backend status ─────────────────────────────
 
 // The newest migration this console was built for (backend/supabase/migrations).
-export const EXPECTED_MIGRATION = "20261104000010";
+export const EXPECTED_MIGRATION = "20261104000020";
 const FUNCTIONS = ["ingest", "pair-device", "admin", "assistant", "calendar-sync", "bots", "google-calendar", "notify"];
 
 export async function getBackendStatus(): Promise<BackendStatus> {

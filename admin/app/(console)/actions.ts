@@ -11,7 +11,7 @@ import { DataError } from "@/lib/errors";
 import { googleReturnTo } from "@/lib/google-calendars";
 import { isCompleteCode, sanitizeCode } from "@/lib/pairing";
 import { knownTimeZone } from "@/lib/timezones";
-import { awayUntil, MAX_MESSAGE, type Message, parseNames } from "@/lib/messages";
+import { awayUntil, MAX_MESSAGE, type Message, parseNames, VOICE_NOTE_PATH } from "@/lib/messages";
 import type { DisplaySettings } from "@/lib/types";
 import { AGENT_KINDS, AGENT_SCOPES, ASSISTANT_PROVIDERS, type AgentKind, type AgentScope, type AssistantProvider, type SettingsPatch } from "@/lib/types";
 
@@ -701,6 +701,17 @@ export async function sendMessageAction(body: string): Promise<{ ok: true; messa
     if (err instanceof DataError) return { ok: false, error: sentence(err.message) };
     console.error("send message failed:", err);
     return { ok: false, error: "Couldn't send that. Try again." };
+  }
+}
+
+// A link to play a voice note by, for five minutes.
+export async function voiceNoteUrlAction(path: string): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
+  await data.requireAdmin();
+  if (typeof path !== "string" || !VOICE_NOTE_PATH.test(path)) return { ok: false, error: "That voice note isn't there." };
+  try {
+    return { ok: true, url: await data.voiceNoteUrl(path) };
+  } catch (err) {
+    return { ok: false, error: err instanceof DataError ? sentence(err.message) : "Couldn't get that voice note." };
   }
 }
 

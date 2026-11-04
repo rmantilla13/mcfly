@@ -8,7 +8,7 @@
 namespace {
 constexpr int kRetryMs = 5000;
 constexpr int kConnectTimeoutMs = 10000;
-const QStringList kStates{"idle", "listening", "transcribing", "speaking"};
+const QStringList kStates{"idle", "listening", "transcribing", "speaking", "recording"};
 // The wake words a `set` may switch to, McFly's own first. The same list as
 // BUILTIN_WAKEWORDS in voice/mcfly_voice/config.py and the one
 // clean_device_settings allows (migration 20261015000008): change all three.
@@ -59,6 +59,9 @@ VoiceClient::VoiceClient(const QUrl &url, QObject *parent) : QObject(parent), m_
             onDisconnected();
     });
     connect(&m_socket, &QWebSocket::textMessageReceived, this, &VoiceClient::onMessage);
+    // A recorded voice note is a frame of about 1.3 MB (30 s, base64).
+    m_socket.setMaxAllowedIncomingMessageSize(16 << 20);
+    m_socket.setMaxAllowedIncomingFrameSize(16 << 20);
 }
 
 VoiceClient::~VoiceClient()
@@ -130,6 +133,8 @@ void VoiceClient::onMessage(const QString &text)
         m_wakewordName = msg.value("wakeword_name").toString();
         m_tts = msg.value("tts").toBool();
         m_stt = msg.value("stt").toBool();
+        m_record = msg.value("record").toBool();
+        m_play = msg.value("play").toBool();
         m_micName = msg.value("mic").toString();
         m_voiceId = msg.value("voice").toString();
         m_speechSpeed = msg.value("speed").toDouble(1.0);
@@ -158,6 +163,10 @@ void VoiceClient::onMessage(const QString &text)
             emit heard(said);
     } else if (type == "spoken") {
         emit spoken(msg.value("id").toString());
+    } else if (type == "recorded") {
+        const QByteArray wav = QByteArray::fromBase64(msg.value("audio").toString().toLatin1());
+        if (!wav.isEmpty())
+            emit recorded(wav, msg.value("ms").toInt());
     } else if (type == "error") {
         const QString message = msg.value("message").toString();
         qWarning() << "voice: service error:" << message;
@@ -195,6 +204,24 @@ QString VoiceClient::speak(const QString &text)
 void VoiceClient::stopSpeaking()
 {
     send({{"type", "stop_speaking"}});
+}
+
+bool VoiceClient::record(int maxSeconds)
+{
+    return send({{"type", "record"}, {"max_seconds", qBound(1, maxSeconds, 30)}});
+}
+
+void VoiceClient::stopRecord()
+{
+    send({{"type", "stop_record"}});
+}
+
+QString VoiceClient::play(const QByteArray &wav)
+{
+    if (wav.isEmpty())
+        return {};
+    const QString id = QStringLiteral("display-%1").arg(m_nextSpeechId++);
+    return send({{"type", "play"}, {"audio", QString::fromLatin1(wav.toBase64())}, {"id", id}}) ? id : QString();
 }
 
 void VoiceClient::setWakewordEnabled(bool enabled)
@@ -264,7 +291,7 @@ void VoiceClient::setState(const QString &state)
     if (!kStates.contains(state) || state == m_state)
         return;
     m_state = state;
-    if (state != "listening")
+    if (state != "listening" && state != "recording")
         setLevel(0);
     emit stateChanged();
 }

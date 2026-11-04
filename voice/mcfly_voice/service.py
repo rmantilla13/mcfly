@@ -1,6 +1,7 @@
 """The WebSocket server and the state machine behind it.
 
-`VoiceService` owns the state (idle, listening, transcribing, speaking), the
+`VoiceService` owns the state (idle, listening, transcribing, speaking,
+recording a voice note), the
 connected clients and the wake-word gate. The audio work is done by a
 backend: `pipeline.AudioBackend` on real hardware, `simulate.SimBackend` in
 development and tests.
@@ -24,12 +25,17 @@ from websockets.asyncio.server import Server, ServerConnection, broadcast, serve
 from websockets.exceptions import ConnectionClosed
 
 from . import protocol
+from .pcm import SAMPLE_RATE, from_wav, to_wav
 from .wakeword import WakeGate
 
 log = logging.getLogger(__name__)
 
-# A quick answer (max_tokens 2000) fits easily; bigger frames close the connection.
-MAX_MESSAGE_BYTES = 64 << 10
+# A quick answer (max_tokens 2000) fits easily, and so does a voice note to
+# play (`play`, base64); bigger frames close the connection. Only local,
+# Origin-checked clients connect.
+MAX_MESSAGE_BYTES = 9 << 20
+# A voice note shorter than this is a slip, not a message.
+MIN_NOTE_MS = 500
 CLOSE_TIMEOUT_SECONDS = 2.0
 # Longer replies are cut (about two minutes of speech): cleaning and
 # synthesizing huge text would tie up the speech thread, which can't be stopped.
@@ -80,6 +86,21 @@ class Session:
 
     def transcribing(self) -> None:
         self.service._session_transcribing(self)
+
+
+class Recording:
+    """One voice note being recorded, from `record` to `recorded`."""
+
+    def __init__(self, service: VoiceService, client: ServerConnection | None,
+                 max_seconds: float) -> None:
+        self.service = service
+        self.client = client
+        self.max_seconds = max_seconds
+        self.stop = asyncio.Event()
+        self.task: asyncio.Task[None] | None = None
+
+    def level(self, rms: float) -> None:
+        self.service._recording_level(self, rms)
 
 
 class StateStore:
@@ -152,7 +173,9 @@ class VoiceService:
         self._last_level = -math.inf
         self._session: Session | None = None
         self._session_task: asyncio.Task[None] | None = None
-        self._speech_queue: deque[tuple[str, str]] = deque()
+        # Replies to speak (text) and voice notes to play ((rate, pcm)), in order.
+        self._speech_queue: deque[tuple[str, str | tuple[int, bytes]]] = deque()
+        self._recording: Recording | None = None
         self._speech_task: asyncio.Task[None] | None = None
         self._speaking_id: str | None = None
         # When the last transcript went out: the reply to speak that follows
@@ -205,6 +228,12 @@ class VoiceService:
             self.speak(msg["text"], msg.get("id"), client)
         elif kind == "stop_speaking":
             self.stop_speaking()
+        elif kind == "record":
+            self.record(msg["max_seconds"], client)
+        elif kind == "stop_record":
+            self.stop_record()
+        elif kind == "play":
+            self.play(msg["audio"], msg.get("id"), client)
         elif kind == "set":
             if "wakeword_enabled" in msg:
                 self.set_wakeword_enabled(msg["wakeword_enabled"], client)
@@ -223,6 +252,8 @@ class VoiceService:
             voice=getattr(self.backend, "voice", ""),
             speed=getattr(self.backend, "speed", 1.0),
             wakeword_model=getattr(self.backend, "wakeword_model", ""),
+            record=bool(getattr(self.backend, "record_available", False)),
+            play=bool(getattr(self.backend, "play_available", False)),
         )
 
     def broadcast(self, msg: dict[str, Any]) -> None:
@@ -276,6 +307,9 @@ class VoiceService:
         if self._session is not None:
             log.debug("already listening; %s ignored", source)
             return False
+        if self._recording is not None:
+            log.debug("recording a voice note; %s ignored", source)
+            return False
         if not self.backend.stt_available:
             self._reply(client, protocol.error(
                 "Listening isn't available: no microphone or speech-to-text model "
@@ -328,8 +362,15 @@ class VoiceService:
             self._set_state("transcribing")
 
     def cancel(self) -> None:
-        """Drop the current session (no transcript is sent) and any speech."""
+        """Drop the current session (no transcript is sent), a voice note
+        being recorded (nothing is sent) and any speech."""
         self._heard_at = None
+        recording, self._recording = self._recording, None
+        if recording is not None:
+            self.backend.end_capture()
+            if recording.task is not None:
+                recording.task.cancel()
+            log.info("voice note cancelled")
         task, self._session_task = self._session_task, None
         if self._session is not None:
             self._session = None
@@ -341,6 +382,88 @@ class VoiceService:
             task.cancel()
         self._stop_speech(go_idle=False)
         self._set_state("idle")
+
+    # Voice notes
+
+    def record(self, max_seconds: float, client: ServerConnection | None = None) -> bool:
+        """Record a voice note from the microphone until `stop_record`, or
+        `max_seconds` (at most 30): `recorded` goes to the client that asked.
+        A spoken reply stops; the wake word waits. Returns False if refused."""
+        if not getattr(self.backend, "record_available", False):
+            self._reply(client, protocol.error(
+                "Voice notes aren't available: no microphone (see docs/VOICE.md)"))
+            return False
+        if self._session is not None or self._recording is not None:
+            self._reply(client, protocol.error("The microphone is busy; try again in a moment"))
+            return False
+        self._stop_speech(go_idle=False)
+        recording = Recording(self, client, max_seconds)
+        self._recording = recording
+        self.backend.begin_capture()
+        log.info("recording a voice note (up to %.0f s)", max_seconds)
+        self._set_state("recording")
+        recording.task = self._spawn(self._run_recording(recording))
+        return True
+
+    def stop_record(self) -> None:
+        if self._recording is not None:
+            self._recording.stop.set()
+
+    async def _run_recording(self, recording: Recording) -> None:
+        pcm = b""
+        try:
+            pcm = await self.backend.record(recording, recording.max_seconds, recording.stop)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("recording failed: %s", e, exc_info=log.isEnabledFor(logging.DEBUG))
+            self._reply(recording.client, protocol.error(f"Recording failed: {e}"))
+        if self._recording is not recording:
+            return  # cancelled
+        self._recording = None
+        self.backend.end_capture()
+        self._set_state("idle")
+        ms = len(pcm) * 1000 // (2 * SAMPLE_RATE)
+        if pcm and ms < MIN_NOTE_MS:
+            self._reply(recording.client, protocol.error("That was too short to send"))
+        elif pcm:
+            log.info("voice note recorded (%.1f s)", ms / 1000)
+            self._reply(recording.client, protocol.recorded(to_wav(pcm), ms))
+        self._kick_speech()
+
+    def _recording_level(self, recording: Recording, rms: float) -> None:
+        if recording is not self._recording or self.state != "recording":
+            return
+        now = self._clock()
+        if now - self._last_level < self._level_interval:
+            return
+        self._last_level = now
+        self.broadcast(protocol.level(rms))
+
+    def play(self, wav: bytes, play_id: str | None = None,
+             client: ServerConnection | None = None) -> str:
+        """Queue a voice note (WAV bytes) behind any reply being spoken;
+        `spoken` with the same id follows when it's done or stopped."""
+        if play_id is None:
+            play_id = uuid.uuid4().hex[:12]
+        if not getattr(self.backend, "play_available", False):
+            self._reply(client, protocol.error(
+                "Voice notes can't play here: no speaker (see docs/VOICE.md)"))
+            self.broadcast(protocol.spoken(play_id))
+            return play_id
+        try:
+            rate, pcm = from_wav(wav)
+        except ValueError as e:
+            self._reply(client, protocol.error(f"Couldn't play that voice note: {e}"))
+            self.broadcast(protocol.spoken(play_id))
+            return play_id
+        if len(self._speech_queue) >= MAX_QUEUED_SPEECH:
+            self._reply(client, protocol.error("Too many replies waiting to be spoken"))
+            self.broadcast(protocol.spoken(play_id))
+            return play_id
+        self._speech_queue.append((play_id, (rate, pcm)))
+        self._kick_speech()
+        return play_id
 
     # Speaking
 
@@ -376,8 +499,9 @@ class VoiceService:
         return speech_id
 
     def _kick_speech(self) -> None:
-        # Replies wait while someone is talking to us, then play in order.
-        if self._speech_task is None and self._session is None and self._speech_queue:
+        # Replies wait while someone is talking to us or recording, then play in order.
+        if (self._speech_task is None and self._session is None and self._recording is None
+                and self._speech_queue):
             self._speech_task = self._spawn(self._run_speech())
 
     async def _run_speech(self) -> None:
@@ -385,10 +509,13 @@ class VoiceService:
         self._set_state("speaking")
         try:
             while self._speech_queue:
-                speech_id, text = self._speech_queue.popleft()
+                speech_id, item = self._speech_queue.popleft()
                 self._speaking_id = speech_id
                 try:
-                    await self.backend.speak(text)
+                    if isinstance(item, str):
+                        await self.backend.speak(item)
+                    else:
+                        await self.backend.play(*item)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:

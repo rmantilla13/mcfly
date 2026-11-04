@@ -68,6 +68,7 @@
 		EB7CFCEFE3E9160428C199EC /* FluxMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723B38382E218AAC5DEADF94 /* FluxMark.swift */; };
 		EE568B69399E265371EA67C7 /* McFlyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 073CD6EE7ADBC33D7CD8F5F7 /* McFlyKit */; };
 		F16F5D8A995172337B9118C5 /* GamesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A1E14F7EC45D782EC88EB1 /* GamesView.swift */; };
+		F39D97C17B51A68CBC68E5E8 /* VoiceNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED763DB5EBA7EBB838A649D /* VoiceNotes.swift */; };
 		F4B6FC65070416AE8E2701A4 /* Exo2-BlackItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DE4E84B00CEB19B890662B22 /* Exo2-BlackItalic.ttf */; };
 		F525524164AEB7667290FB0F /* PenguinArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6E9A0C46BDA3EFE4FF62AF /* PenguinArt.swift */; };
 		F6E1122D9AEE36B2F2616485 /* Game2048View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65C28066EAE7E32623A3DD48 /* Game2048View.swift */; };
@@ -144,6 +145,7 @@
 		F8FEA2371F57BFBE2E8D0E67 /* MarketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketsView.swift; sourceTree = "<group>"; };
 		FD4C0AD666ED0B4CF2BEBF4E /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		FEB70DF6CA28AF37E9A61B08 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		FED763DB5EBA7EBB838A649D /* VoiceNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNotes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -239,6 +241,7 @@
 				7CBA3C5DC096BA2AE83E8709 /* SettingsView.swift */,
 				7B4DA5C7573FB6B6376939E2 /* SignInView.swift */,
 				39B4EC30B75341278FB8D613 /* VoiceHubView.swift */,
+				FED763DB5EBA7EBB838A649D /* VoiceNotes.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -452,6 +455,7 @@
 				A985F080DBDA85AE23C3019C /* VoiceHubView.swift in Sources */,
 				403B2E4ACBFB949C7AF4FF38 /* VoiceListener.swift in Sources */,
 				2E9C73D7E0F113F825A00848 /* VoiceModeView.swift in Sources */,
+				F39D97C17B51A68CBC68E5E8 /* VoiceNotes.swift in Sources */,
 				BB4E99DDBC63E6181595841E /* VoiceSession.swift in Sources */,
 				193EA53CA3A385329B3E4387 /* VoiceSpeaker.swift in Sources */,
 				20D440D69AB32265061E1CE7 /* WeatherLayer.swift in Sources */,

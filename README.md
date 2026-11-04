@@ -61,8 +61,9 @@ and launch mark from `apple/scripts/flux_mark.py`, and the console's
    choice you say; or tap the choice on the display, in the app or on the
    console.
 5. **Messages**: whoever is home writes on the display's Messages screen
-   (a button a name, a box with the on-screen keyboard or the mic, quick
-   messages), and it reaches the phone as a notification; reply from the
+   (a button a name, a box with the on-screen keyboard, quick messages, or
+   a voice note of up to 30 seconds with the mic), and it reaches the phone
+   as a notification; reply from the
    notification, the app or the console, and it shows on the display within
    seconds, read out. Notifications need an APNs key ([ADMIN.md](docs/ADMIN.md),
    Messages and notifications). **Away mode** (the app, the console, or a

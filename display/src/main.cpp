@@ -161,13 +161,14 @@ int main(int argc, char *argv[])
 
     FeedStore store(&client, parser.isSet(demo));
     ArticleReader reader(&client, parser.isSet(demo));
-    MessageStore messages(&client, &store); // the household thread (Messages)
 
     // The on-device voice service (wake word, speech in and out) is optional.
     QString voiceUrl = setting(settings, "MCFLY_VOICE_URL", "voice/url");
     if (voiceUrl.isEmpty())
         voiceUrl = QStringLiteral("ws://127.0.0.1:8765");
     VoiceClient voice{QUrl(voiceUrl)};
+    // The household thread (Messages): its voice notes record and play through the voice service.
+    MessageStore messages(&client, &store, &voice);
 
     Assistant assistant(&client, &store, &voice);
     DisplayController display;

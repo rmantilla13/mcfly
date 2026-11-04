@@ -91,7 +91,8 @@ class Client:
 @contextlib.asynccontextmanager
 async def client(url: str, *, greeted: bool = True) -> AsyncIterator[Client]:
     """Connect; by default also consume the hello and initial state."""
-    async with connect(url) as ws:
+    # No frame cap here: a recorded voice note is over a megabyte, as the display takes it.
+    async with connect(url, max_size=None) as ws:
         c = Client(ws)
         if greeted:
             await c.until({"type": "state"})

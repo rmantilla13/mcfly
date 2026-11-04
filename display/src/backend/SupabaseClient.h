@@ -56,6 +56,16 @@ public:
     void signUrls(const QString &bucket, const QStringList &paths, int expiresInSec,
                   std::function<void(const QStringList &urls)> done);
 
+    // The signed-in user's id (the access token's `sub`), or "" without a session.
+    QString userId() const;
+    // Stores `data` in a Storage bucket at `path` (never over an object
+    // already there), as the signed-in user: the bucket's policies decide.
+    void upload(const QString &bucket, const QString &path, const QByteArray &data,
+                const QString &contentType, Callback cb);
+    // A private object's bytes, read as the signed-in user.
+    void download(const QString &bucket, const QString &path,
+                  std::function<void(const QByteArray &data, const QString &error)> done);
+
     // POST JSON to an absolute URL with the device's access token. A failure
     // here does not clear the Supabase session (a 401 from Storage does).
     void postAbsolute(const QUrl &url, const QJsonObject &body, Callback cb);

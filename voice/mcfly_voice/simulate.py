@@ -21,13 +21,15 @@ import math
 import sys
 import threading
 import time
+from array import array
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, TextIO
 
+from .pcm import FRAME_SAMPLES, SAMPLE_RATE, to_bytes
 from .wakeword import display_name
 
 if TYPE_CHECKING:
-    from .service import Session, VoiceService
+    from .service import Recording, Session, VoiceService
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +47,8 @@ class SimBackend:
     wakeword_available = True
     stt_available = True
     tts_available = True
+    record_available = True
+    play_available = True
     mic_name = "Simulated mic"
     voice = "af_heart"
     speed = 1.0
@@ -70,6 +74,7 @@ class SimBackend:
         level_step: float = 0.07,
         transcribe_time: float = 0.3,
         word_time: float = 0.05,
+        record_step: float = FRAME_SAMPLES / SAMPLE_RATE,
     ) -> None:
         self.wakeword_name = wakeword_name
         self.next_text = listen_text
@@ -78,6 +83,9 @@ class SimBackend:
         self.transcribe_time = transcribe_time
         self.word_time = word_time
         self.spoken: list[str] = []
+        # Each frame of a voice note takes this long to "record" (80 ms in real time).
+        self.record_step = record_step
+        self.played: list[tuple[int, int]] = []  # (rate, bytes) of each voice note played
         self.follow_ups: list[str] = []
         self._service: VoiceService | None = None
         self._pending: str | None = None
@@ -114,6 +122,23 @@ class SimBackend:
         await asyncio.sleep(self.transcribe_time)
         log.info("heard: %r", text)
         return text
+
+    async def record(self, recording: Recording, max_seconds: float, stop: asyncio.Event) -> bytes:
+        """A soft tone, a frame at a time, until stopped or full."""
+        limit = int(max_seconds * SAMPLE_RATE) * 2
+        tone = to_bytes(array("h", (int(3000 * math.sin(2 * math.pi * 440 * i / SAMPLE_RATE))
+                                    for i in range(FRAME_SAMPLES))))
+        pcm = bytearray()
+        while not stop.is_set() and len(pcm) < limit:
+            recording.level(0.4)
+            pcm += tone
+            await asyncio.sleep(self.record_step)
+        return bytes(pcm[:limit])
+
+    async def play(self, rate: int, pcm: bytes) -> None:
+        log.info("playing a voice note (%.1f s)", len(pcm) / (2 * rate))
+        self.played.append((rate, len(pcm)))
+        await asyncio.sleep(self.word_time)
 
     async def speak(self, text: str) -> None:
         words = len(text.split())

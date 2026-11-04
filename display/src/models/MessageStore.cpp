@@ -2,12 +2,14 @@
 
 #include "backend/SupabaseClient.h"
 #include "models/FeedStore.h"
+#include "voice/VoiceClient.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QUrlQuery>
+#include <QUuid>
 #include <algorithm>
 
 namespace {
@@ -18,7 +20,11 @@ constexpr qint64 kOverlapMs = 30000; // each poll looks this far behind the newe
 constexpr qint64 kFastAfterSendMs = 5 * 60 * 1000;
 constexpr int kUnavailableRetryMs = 10 * 60 * 1000;
 constexpr qint64 kRunGapMs = 10 * 60 * 1000;
-const char *kColumns = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error";
+// audio_* came with 20261104000020; an older backend answers 400, and the poll
+// asks again without them.
+const char *kOldColumns = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error";
+const char *kColumns = "id,sender_kind,sender_name,body,device_id,via,created_at,updated_at,read_at,notified_at,notify_error,audio_path,audio_ms";
+const char *kBucket = "voice-notes";
 
 QDateTime when(const QVariantMap &row, const char *key)
 {
@@ -50,9 +56,44 @@ QString sentence(const QString &error)
 
 } // namespace
 
-MessageStore::MessageStore(SupabaseClient *client, FeedStore *store, QObject *parent)
-    : QObject(parent), m_client(client), m_store(store)
+MessageStore::MessageStore(SupabaseClient *client, FeedStore *store, VoiceClient *voice, QObject *parent)
+    : QObject(parent), m_client(client), m_store(store), m_voice(voice)
 {
+    if (m_voice) {
+        connect(m_voice, &VoiceClient::infoChanged, this, &MessageStore::voiceChanged);
+        connect(m_voice, &VoiceClient::availableChanged, this, [this]() {
+            if (!m_voice->available()) {
+                setRecording(false);
+                if (!m_playingId.isEmpty()) {
+                    m_playingId.clear();
+                    m_playingSpeechId.clear();
+                    emit playingChanged();
+                }
+            }
+            emit voiceChanged();
+        });
+        connect(m_voice, &VoiceClient::recorded, this, [this](const QByteArray &wav, int ms) {
+            if (!m_recording)
+                return;
+            setRecording(false);
+            sendVoiceNote(wav, ms, m_recordingName);
+        });
+        // A refusal ("too short", "busy") comes once the service is idle again.
+        connect(m_voice, &VoiceClient::errorOccurred, this, [this](const QString &message) {
+            if (m_recording && m_voice->state() != QLatin1String("recording")) {
+                setRecording(false);
+                emit notice(message);
+            }
+        });
+        connect(m_voice, &VoiceClient::spoken, this, [this](const QString &id) {
+            if (!m_playingSpeechId.isEmpty() && id == m_playingSpeechId) {
+                m_playingId.clear();
+                m_playingSpeechId.clear();
+                emit playingChanged();
+            }
+        });
+    }
+    connect(this, &MessageStore::availableChanged, this, &MessageStore::voiceChanged);
     m_timer.setSingleShot(true);
     connect(&m_timer, &QTimer::timeout, this, &MessageStore::poll);
     connect(m_store, &FeedStore::modeChanged, this, &MessageStore::onModeChanged);
@@ -131,6 +172,14 @@ void MessageStore::onModeChanged()
     m_cursor = {};
     m_rows.clear();
     m_pending.clear();
+    m_audio.clear();
+    m_oldColumns = false;
+    setRecording(false);
+    if (!m_playingId.isEmpty()) {
+        m_playingId.clear();
+        m_playingSpeechId.clear();
+        emit playingChanged();
+    }
     m_fastUntilMs = 0;
     const bool available = mode == QLatin1String("demo") || mode == QLatin1String("live");
     if (available != m_available) {
@@ -172,6 +221,9 @@ void MessageStore::loadDemo()
     row("6d000000-0000-0000-0000-000000000002", "person", "Parent", tr("Yay! Snack is in the fridge. Homework first 🙂"), 178, true, false);
     row("6d000000-0000-0000-0000-000000000003", "display", "Leo", tr("Can Sam come over to play?"), 24, true, true);
     row("6d000000-0000-0000-0000-000000000004", "person", "Parent", tr("Yes, until 6. Be nice to the dog!"), 20, false, false);
+    row("6d000000-0000-0000-0000-000000000005", "person", "Parent", voiceNoteLabel(8200), 14, false, false);
+    m_rows["6d000000-0000-0000-0000-000000000005"].insert("audio_path", QStringLiteral("demo/parent.wav"));
+    m_rows["6d000000-0000-0000-0000-000000000005"].insert("audio_ms", 8200);
     m_names = {QStringLiteral("Mia"), QStringLiteral("Leo")};
     emit namesChanged();
     m_loaded = true;
@@ -198,7 +250,7 @@ void MessageStore::poll()
             if (generation != m_generation)
                 return;
             QUrlQuery q;
-            q.addQueryItem("select", kColumns);
+            q.addQueryItem("select", m_oldColumns ? kOldColumns : kColumns);
             const bool first = !m_loaded;
             // Nothing seen yet (an empty thread): the whole thread again,
             // which is cheap, until there's a change to read from.
@@ -215,6 +267,12 @@ void MessageStore::poll()
                 m_polling = false;
                 if (!error.isEmpty()) {
                     // An older backend: no messages table yet. Look again now and then.
+                    if (!m_oldColumns && error.contains(QLatin1String("audio_"))) {
+                        qInfo() << "messages: no voice notes on this backend yet";
+                        m_oldColumns = true;
+                        m_timer.start(0);
+                        return;
+                    }
                     if (error.contains("HTTP 404") || error.contains("PGRST205")) {
                         if (m_available) {
                             qInfo() << "messages not available:" << error;
@@ -349,6 +407,7 @@ void MessageStore::merge(const QVariantList &rows, bool announce)
         emit arrived({{"id", row.value("id")},
                       {"name", row.value("sender_name")},
                       {"body", row.value("body")},
+                      {"audio", !row.value("audio_path").toString().isEmpty()},
                       {"timeLabel", timeLabel(when(row, "created_at"))}});
     }
 }
@@ -389,6 +448,12 @@ QString MessageStore::dayLabel(const QDate &day, const QDate &today)
     if (day > today.addDays(-7) && day < today)
         return QLocale().toString(day, QStringLiteral("dddd"));
     return QLocale().toString(day, day.year() == today.year() ? QStringLiteral("MMM d") : QStringLiteral("MMM d, yyyy"));
+}
+
+QString MessageStore::voiceNoteLabel(int ms)
+{
+    const int seconds = int(std::lround(ms / 1000.0));
+    return QStringLiteral("🎤 Voice note · %1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
 }
 
 QVariantList MessageStore::shape(const QVariantList &rows, const QVariantList &pending, const QDateTime &now,
@@ -433,17 +498,31 @@ QVariantList MessageStore::shape(const QVariantList &rows, const QVariantList &p
             else
                 status = tr("Sent");
         }
-        add({{"id", r.value("id")}, {"home", home}, {"name", r.value("sender_name")}, {"body", r.value("body")},
-             {"status", status}, {"failed", false}, {"pending", false}},
-            when(r, "created_at"));
+        QVariantMap item{{"id", r.value("id")}, {"home", home}, {"name", r.value("sender_name")}, {"body", r.value("body")},
+                         {"status", status}, {"failed", false}, {"pending", false}};
+        const int audioMs = r.value("audio_ms").toInt();
+        const bool hasAudio = !r.value("audio_path").toString().isEmpty() && audioMs > 0;
+        item.insert("hasAudio", hasAudio);
+        if (hasAudio) {
+            const QString label = voiceNoteLabel(audioMs);
+            item.insert("audioLabel", label.section(QStringLiteral(" · "), -1));
+            item.insert("caption", r.value("body").toString() == label ? QString() : r.value("body").toString());
+        }
+        add(item, when(r, "created_at"));
     }
     for (const QVariant &v : pending) {
         const QVariantMap p = v.toMap();
         const QString failure = p.value("failure").toString();
-        add({{"id", p.value("localId")}, {"home", true}, {"name", p.value("name")}, {"body", p.value("body")},
-             {"status", failure.isEmpty() ? tr("Sending…") : tr("Didn't send: %1").arg(failure)},
-             {"failed", !failure.isEmpty()}, {"pending", true}},
-            QDateTime::fromMSecsSinceEpoch(p.value("createdMs").toLongLong()));
+        QVariantMap item{{"id", p.value("localId")}, {"home", true}, {"name", p.value("name")}, {"body", p.value("body")},
+                         {"status", failure.isEmpty() ? tr("Sending…") : tr("Didn't send: %1").arg(failure)},
+                         {"failed", !failure.isEmpty()}, {"pending", true}};
+        const int audioMs = p.value("audioMs").toInt();
+        item.insert("hasAudio", audioMs > 0);
+        if (audioMs > 0) {
+            item.insert("audioLabel", voiceNoteLabel(audioMs).section(QStringLiteral(" · "), -1));
+            item.insert("caption", QString());
+        }
+        add(item, QDateTime::fromMSecsSinceEpoch(p.value("createdMs").toLongLong()));
     }
     return out;
 }
@@ -510,12 +589,16 @@ void MessageStore::deliver(const QString &localId)
         }
         rebuild();
     };
-    auto landed = [this, localId, generation](const QVariantMap &row) {
+    const QByteArray audio = item.value("audio").toByteArray();
+    auto landed = [this, localId, generation, audio](const QVariantMap &row) {
         if (generation != m_generation)
             return;
         m_pending.erase(std::remove_if(m_pending.begin(), m_pending.end(),
                                        [&](const QVariant &v) { return v.toMap().value("localId").toString() == localId; }),
                         m_pending.end());
+        // Our own voice note plays from here, with no download.
+        if (!audio.isEmpty())
+            m_audio.insert(row.value("id").toString(), audio);
         merge({row}, false);
         schedule();
     };
@@ -526,9 +609,16 @@ void MessageStore::deliver(const QString &localId)
                 return;
             const QString at = now().toUTC().toString(Qt::ISODateWithMs);
             const QString name = item.value("name").toString();
-            landed({{"id", QStringLiteral("6d000000-demo-%1").arg(item.value("localId").toString())},
-                    {"sender_kind", "display"}, {"sender_name", name.isEmpty() ? tr("Kitchen") : name}, {"body", item.value("body")},
-                    {"created_at", at}, {"updated_at", at}, {"notified_at", at}});
+            const int audioMs = item.value("audioMs").toInt();
+            QVariantMap row{{"id", QStringLiteral("6d000000-demo-%1").arg(item.value("localId").toString())},
+                            {"sender_kind", "display"}, {"sender_name", name.isEmpty() ? tr("Kitchen") : name},
+                            {"body", audioMs > 0 ? voiceNoteLabel(audioMs) : item.value("body")},
+                            {"created_at", at}, {"updated_at", at}, {"notified_at", at}};
+            if (audioMs > 0) {
+                row.insert("audio_path", QStringLiteral("demo/%1.wav").arg(item.value("localId").toString()));
+                row.insert("audio_ms", audioMs);
+            }
+            landed(row);
             // A reply from the person, a few seconds on.
             QTimer::singleShot(m_demoReplyMs, this, [this, generation]() {
                 if (generation != m_generation)
@@ -549,12 +639,45 @@ void MessageStore::deliver(const QString &localId)
     }
 
     m_store->withSession(
-        [this, item, fail, landed, generation]() {
+        [this, item, audio, localId, fail, landed, generation]() {
             if (generation != m_generation)
                 return;
+            // A voice note goes up first, into this display's folder; a retry
+            // after the upload worked doesn't upload it again.
+            if (!audio.isEmpty() && item.value("audioPath").toString().isEmpty()) {
+                const QString uid = m_client->userId();
+                if (uid.isEmpty()) {
+                    fail(tr("McFly couldn't be reached"));
+                    return;
+                }
+                const QString path = uid + QLatin1Char('/') + QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".wav");
+                m_client->upload(kBucket, path, audio, QStringLiteral("audio/wav"),
+                                 [this, localId, path, fail, generation](const QJsonDocument &, const QString &error) {
+                                     if (generation != m_generation)
+                                         return;
+                                     if (!error.isEmpty()) {
+                                         qWarning() << "voice note upload failed:" << error;
+                                         fail(sentence(error));
+                                         return;
+                                     }
+                                     for (QVariant &v : m_pending) {
+                                         QVariantMap p = v.toMap();
+                                         if (p.value("localId").toString() == localId) {
+                                             p.insert("audioPath", path);
+                                             v = p;
+                                         }
+                                     }
+                                     deliver(localId);
+                                 });
+                return;
+            }
             QJsonObject args{{"body", item.value("body").toString()}};
             if (!item.value("name").toString().isEmpty())
                 args.insert("sender_name", item.value("name").toString());
+            if (!audio.isEmpty()) {
+                args.insert("audio_path", item.value("audioPath").toString());
+                args.insert("audio_ms", item.value("audioMs").toInt());
+            }
             m_client->rpc("send_message", args, [fail, landed](const QJsonDocument &doc, const QString &error) {
                 if (!error.isEmpty()) {
                     qWarning() << "send_message failed:" << error;
@@ -565,6 +688,128 @@ void MessageStore::deliver(const QString &localId)
             });
         },
         [fail]() { fail(tr("McFly couldn't be reached")); });
+}
+
+// ───────────────────────────── Voice notes ─────────────────────────────
+
+bool MessageStore::canRecord() const
+{
+    return m_available && m_voice && m_voice->available() && m_voice->canRecord();
+}
+
+bool MessageStore::canPlay() const
+{
+    return m_voice && m_voice->available() && m_voice->canPlay();
+}
+
+void MessageStore::setRecording(bool on)
+{
+    if (on == m_recording)
+        return;
+    m_recording = on;
+    emit recordingChanged();
+}
+
+bool MessageStore::startRecording()
+{
+    if (!canRecord() || m_recording)
+        return false;
+    stopPlaying();
+    if (!m_voice->record(30))
+        return false;
+    m_recordingName = m_writer;
+    setRecording(true);
+    return true;
+}
+
+void MessageStore::finishRecording()
+{
+    if (m_recording && m_voice)
+        m_voice->stopRecord();
+}
+
+void MessageStore::cancelRecording()
+{
+    if (!m_recording)
+        return;
+    setRecording(false);
+    if (m_voice)
+        m_voice->cancel();
+}
+
+void MessageStore::sendVoiceNote(const QByteArray &wav, int ms, const QString &name)
+{
+    if (wav.isEmpty() || ms <= 0 || !m_available)
+        return;
+    const QString localId = QStringLiteral("local-%1").arg(++m_localIds);
+    m_pending << QVariantMap{{"localId", localId}, {"body", QString()}, {"name", name},
+                             {"createdMs", now().toMSecsSinceEpoch()}, {"failure", QString()},
+                             {"audio", wav}, {"audioMs", qMin(ms, 30000)}};
+    m_fastUntilMs = now().toMSecsSinceEpoch() + kFastAfterSendMs;
+    rebuild();
+    deliver(localId);
+}
+
+void MessageStore::play(const QString &id)
+{
+    if (id == m_playingId) {
+        stopPlaying();
+        return;
+    }
+    if (!canPlay()) {
+        emit notice(tr("Voice notes need the McFly voice service (see docs/VOICE.md)"));
+        return;
+    }
+    if (m_audio.contains(id)) {
+        startPlaying(id, m_audio.value(id));
+        return;
+    }
+    for (const QVariant &v : std::as_const(m_pending)) {
+        const QVariantMap p = v.toMap();
+        if (p.value("localId").toString() == id && !p.value("audio").toByteArray().isEmpty()) {
+            startPlaying(id, p.value("audio").toByteArray());
+            return;
+        }
+    }
+    const QString path = m_rows.value(id).value("audio_path").toString();
+    if (path.isEmpty() || m_mode != QLatin1String("live"))
+        return;
+    const int generation = m_generation;
+    m_store->withSession([this, id, path, generation]() {
+        if (generation != m_generation)
+            return;
+        m_client->download(kBucket, path, [this, id, generation](const QByteArray &wav, const QString &error) {
+            if (generation != m_generation)
+                return;
+            if (!error.isEmpty() || wav.isEmpty()) {
+                qWarning() << "voice note download failed:" << error;
+                emit notice(tr("Couldn't get that voice note"));
+                return;
+            }
+            m_audio.insert(id, wav);
+            startPlaying(id, wav);
+        });
+    });
+}
+
+void MessageStore::startPlaying(const QString &id, const QByteArray &wav)
+{
+    if (!m_playingSpeechId.isEmpty() && m_voice)
+        m_voice->stopSpeaking();
+    m_playingSpeechId = m_voice ? m_voice->play(wav) : QString();
+    m_playingId = m_playingSpeechId.isEmpty() ? QString() : id;
+    emit playingChanged();
+}
+
+void MessageStore::stopPlaying()
+{
+    if (m_playingId.isEmpty())
+        return;
+    if (m_voice)
+        m_voice->stopSpeaking();
+    m_playingId.clear();
+    m_playingSpeechId.clear();
+    emit playingChanged();
 }
 
 void MessageStore::markRead()

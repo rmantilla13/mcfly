@@ -194,12 +194,13 @@ nothing in AGENTS.md.
 
 | Table | Notes |
 |---|---|
-| `messages` | `id`, `sender_kind` ∈ display (written on a display) · person (the person's reply), `sender_name` (≤40: one of `platform_settings.message_names` in the list's spelling, else the display's own name; for the person their `message_name`, else "Parent"), `body` (1–500 characters, lines but no other control characters), `device_id` (the display; set null when it's revoked), `author` (the auth user, no reference), `via` ∈ display · app · console, `created_at`, `updated_at` (moved by a read and a notification too: screens poll by it), `read_at` (the other side read it), `notified_at` / `notify_error` (a display's message: Apple took its notification for a phone, or why none went). Displays and admins read (`can_read()`). Messages over a year old go (pruned by `send_message`) |
+| `messages` | `id`, `sender_kind` ∈ display (written on a display) · person (the person's reply), `sender_name` (≤40: one of `platform_settings.message_names` in the list's spelling, else the display's own name; for the person their `message_name`, else "Parent"), `body` (1–500 characters, lines but no other control characters), `device_id` (the display; set null when it's revoked), `author` (the auth user, no reference), `via` ∈ display · app · console, `created_at`, `updated_at` (moved by a read and a notification too: screens poll by it), `read_at` (the other side read it), `notified_at` / `notify_error` (a display's message: Apple took its notification for a phone, or why none went), `audio_path` / `audio_ms` (a voice note, migration 20261104000020: its WAV in the `voice-notes` bucket and its length, 0.3–31 s; with no caption the body is the server's own "🎤 Voice note · 0:12"). Displays and admins read (`can_read()`). Messages over a year old go (pruned by `send_message`); their audio stays in the bucket |
+| `voice-notes` (Storage bucket) | Private, WAVs (`audio/wav`) up to 1.5 MB: 30 s of 16 kHz mono 16-bit is about 960 KB. A paired display or an admin uploads into `<their auth user>/<uuid>.wav` and reads every note (policies `voice_notes_upload`, `voice_notes_read`) |
 | `push_tokens` | Service role only (RLS on, no policies): `token` (hex, Apple's), `user_id`, `environment` ∈ sandbox · production (which of Apple's hosts: a debug build's token is a sandbox one), `bundle_id`, `platform` ∈ ios · macos, `created_at`, `updated_at` |
 
 | Function | Who | Does |
 |---|---|---|
-| `send_message(body, sender_name, via)` | a paired display, or an admin's own sign-in | Sends to the thread; the server says who (`sender_kind`, `device_id`, `via`: an admin's `via` is console or app). A display's `sender_name` must be one of the names when names are listed ("pick who is writing: Mia, Leo"); none given, it's the display's name. At most 10 a minute and 60 an hour from one display. The body is trimmed, `\r\n` made `\n`, tabs spaces, runs of blank lines one. Returns the row |
+| `send_message(body, sender_name, via, audio_path, audio_ms)` | a paired display, or an admin's own sign-in | (The three-argument one of 20261103000010 is gone; a call naming only those still resolves.) A voice note: `audio_path` in the caller's own folder of `voice-notes`, already uploaded, and `audio_ms`; the body is then an optional caption. Sends to the thread; the server says who (`sender_kind`, `device_id`, `via`: an admin's `via` is console or app). A display's `sender_name` must be one of the names when names are listed ("pick who is writing: Mia, Leo"); none given, it's the display's name. At most 10 a minute and 60 an hour from one display. The body is trimmed, `\r\n` made `\n`, tabs spaces, runs of blank lines one. Returns the row |
 | `read_messages(up_to)` | the same | Marks the other side's messages read up to and including that one (null: all): a display the person's, the person the displays'. Returns how many |
 | `register_push_token(token, environment, bundle_id, platform)` / `unregister_push_token(token)` | an admin's own sign-in, never a display | The phone that gets notifications; a kept token moves to whoever registers it |
 | `set_message_name(name)` | an admin's own sign-in | Their `profiles.message_name`; blank clears it |
@@ -454,7 +455,14 @@ the box through the voice service, never the assistant) or tapped from the
 quick row. It shows at once ("Sending…") and stays with why it didn't go,
 a tap to try again. Under home's newest: Sent, "On Dad's phone"
 (`notified_at`), "Seen by Dad" (`read_at`). On screen and uncovered, the
-person's replies are marked read (`read_messages`). A reply seen for the
+person's replies are marked read (`read_messages`). **Voice notes**:
+the mic records one through the voice service (`record`, at most 30 s;
+Send ends and sends it, × drops it; it asks who's talking first when names
+are listed), uploaded to `voice-notes` in the display's folder, then
+`send_message` with it; ▶ plays one, its WAV read from Storage with the
+device's session and handed to the voice service (`play`), which never
+reaches the network. A voice note from the person plays when it arrives,
+under the same guards as the read-aloud. A reply seen for the
 first time elsewhere is a card at the top of the screen with Reply, read out
 once; it wakes the screen unless the screen is asleep, where it waits under
 the sleep cover. The rail's Messages carries the unread count. Asks never
@@ -508,7 +516,10 @@ person's account (email + password or magic link, supabase-swift) and then:
   time or until it's turned off, with a note, through `set_away`; a banner
   on Messages while it's on. The App Intents "I'm Away" and "I'm Home" do
   the same from Shortcuts, so an automation on leaving and arriving home
-  switches it. On the iPhone, after sign-in, McFly asks to
+  switches it. **Voice notes**: with the box empty the mic records one
+  (AVAudioRecorder, 16 kHz mono 16-bit WAV, at most 30 s; ↑ sends, ✕ drops),
+  uploaded to `voice-notes` in the person's folder, then sent; ▶ plays one,
+  downloaded once and kept. On the iPhone, after sign-in, McFly asks to
   notify, registers its token (`register_push_token`, sandbox for a debug
   build, else production; again each launch, dropped on sign-out); a
   notification's tap opens Messages, its Reply sends from the lock screen.

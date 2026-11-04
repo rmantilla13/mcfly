@@ -6,6 +6,7 @@ import {
   sendMessageAction,
   setAwayAction,
   testNotificationAction,
+  voiceNoteUrlAction,
 } from "@/app/(console)/actions";
 import { MessagesThread } from "@/components/MessagesThread";
 import { PageHeader } from "@/components/PageHeader";
@@ -51,6 +52,7 @@ export default async function MessagesPage() {
           saveNames: saveMessageNamesAction,
           setAway: setAwayAction,
           test: testNotificationAction,
+          voiceNoteUrl: voiceNoteUrlAction,
         }}
       />
     </>

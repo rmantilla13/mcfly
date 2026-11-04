@@ -6,34 +6,38 @@ import McFly.Core
 
 // Messages: the people at home write to the person's phone, and read the
 // replies. Who's writing is a button each (Messages.names, set in the app or
-// on the console; none: the display itself), then a message typed, said
-// (the mic, through the voice service) or tapped from the quick row. Home's
+// on the console; none: the display itself), then a message typed, tapped
+// from the quick row, or a voice note of up to 30 seconds (the mic, through
+// the voice service; Send ends it and sends it, × drops it). Home's
 // messages sit on the right in the accent; the person's on the left under
 // their name. Under home's newest: "Sending…", "Sent", "On Dad's phone",
 // "Seen by Dad"; one that didn't go says why, and a tap tries it again.
-// With names listed and none picked, Send asks who's writing first and
-// sends once someone taps their name.
+// With names listed and none picked, Send (or the mic) asks who's writing
+// first and goes on once someone taps their name. A voice note plays with
+// its ▶; the person's own notes too.
 Item {
     id: screen
     property bool shown: true
     property bool isCurrent: true
     // What the on-screen keyboard covers of this page.
     property real keyboardHeight: 0
-    // The mic is filling the box (Main.qml's voiceTarget "message").
-    property bool listening: false
-    signal dictate()
 
-    // A message waiting for someone to say who wrote it.
+    // A message waiting for someone to say who wrote it, or a voice note
+    // waiting to start.
     property string waiting: ""
+    property bool waitingToRecord: false
     readonly property bool needsWriter: Messages.names.length > 0 && Messages.writer === ""
 
-    // What the mic heard, added to what's typed.
-    function dictated(text) {
-        const t = (text || "").trim()
-        if (!t)
+    // The mic: a voice note, once whoever's writing has said who they are.
+    function record() {
+        if (screen.needsWriter) {
+            screen.waitingToRecord = true
+            whoPulse.restart()
             return
-        Messages.draft = Messages.draft.trim() ? Messages.draft.trim() + " " + t : t
-        input.forceActiveFocus()
+        }
+        Qt.inputMethod.hide()
+        screen.waitingToRecord = false
+        Messages.startRecording()
     }
 
     function send(text, typed) {
@@ -57,9 +61,27 @@ Item {
                 const typed = screen.waiting === Messages.draft.trim()
                 screen.send(screen.waiting, typed)
             }
+            if (Messages.writer !== "" && screen.waitingToRecord)
+                screen.record()
         }
     }
-    onIsCurrentChanged: if (!isCurrent) waiting = ""
+    onIsCurrentChanged: {
+        if (!isCurrent) {
+            waiting = ""
+            waitingToRecord = false
+            Messages.cancelRecording()
+        }
+    }
+    // How long the voice note being recorded has run, in seconds.
+    property int recordedSeconds: 0
+    Timer {
+        interval: 250
+        repeat: true
+        running: Messages.recording
+        property double started: 0
+        onRunningChanged: { started = Date.now(); screen.recordedSeconds = 0 }
+        onTriggered: screen.recordedSeconds = Math.min(30, Math.floor((Date.now() - started) / 1000))
+    }
 
     Reveal { id: rv; shown: screen.isCurrent }
 
@@ -117,10 +139,11 @@ Item {
             opacity: rv.at(1)
             Label {
                 id: whoLabel
-                visible: !Theme.mini || screen.waiting !== ""
+                visible: !Theme.mini || screen.waiting !== "" || screen.waitingToRecord
                 text: screen.waiting !== "" ? qsTr("Who's writing? Tap your name to send it")
-                                            : qsTr("Who's writing?")
-                color: screen.waiting !== "" ? Theme.accent : Theme.textMuted
+                      : screen.waitingToRecord ? qsTr("Who's talking? Tap your name to record")
+                                               : qsTr("Who's writing?")
+                color: screen.waiting !== "" || screen.waitingToRecord ? Theme.accent : Theme.textMuted
                 font.pixelSize: Theme.fontXs
                 font.weight: Font.DemiBold
                 font.letterSpacing: 1.2
@@ -196,27 +219,66 @@ Item {
                     }
                     Rectangle {
                         id: bubble
+                        readonly property bool audio: !!row.modelData.hasAudio
+                        readonly property real textMax: list.bubbleMax - 2 * 22
+                        readonly property bool showsText: !audio || !!row.modelData.caption
                         x: row.home ? parent.width - width : 0
-                        width: Math.min(bodyText.implicitWidth, list.bubbleMax - 2 * 22) + 2 * 22
-                        height: bodyText.height + 2 * 14
+                        width: Math.max(audio ? noteRow.implicitWidth : 0,
+                                        showsText ? Math.min(bodyText.implicitWidth, textMax) : 0) + 2 * 22
+                        height: content.implicitHeight + 2 * (audio ? 10 : 14)
                         radius: 26
                         color: row.home ? (row.modelData.pending ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
                                                                  : Theme.accent)
                                         : Theme.surface
                         border.width: row.modelData.failed ? 2 : 0
                         border.color: Theme.danger
-                        Text {
-                            id: bodyText
+                        Column {
+                            id: content
                             x: 22
-                            y: 14
-                            width: Math.min(implicitWidth, list.bubbleMax - 2 * 22)
-                            text: row.modelData.body
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: row.home ? Theme.accentInk : Theme.text
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontMd
-                            lineHeight: 1.15
+                            y: bubble.audio ? 10 : 14
+                            spacing: 6
+                            // A voice note: ▶ (■ while it plays) and how long it is.
+                            Row {
+                                id: noteRow
+                                objectName: "voiceNote"
+                                visible: bubble.audio
+                                spacing: 14
+                                IconButton {
+                                    width: 64; height: 64
+                                    icon: Messages.playingId === row.modelData.id ? "pause" : "play"
+                                    iconSize: 26
+                                    fill: row.home ? Qt.rgba(1, 1, 1, 0.22) : Theme.accentSoft
+                                    ink: row.home ? Theme.accentInk : Theme.accent
+                                    onClicked: Messages.play(row.modelData.id)
+                                }
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Label {
+                                        text: qsTr("Voice note")
+                                        color: row.home ? Theme.accentInk : Theme.text
+                                        font.pixelSize: Theme.fontMd
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Label {
+                                        text: row.modelData.audioLabel || ""
+                                        color: row.home ? Qt.rgba(1, 1, 1, 0.8) : Theme.textMuted
+                                        font.pixelSize: Theme.fontSm
+                                        font.features: ({ "tnum": 1 })
+                                    }
+                                }
+                            }
+                            Text {
+                                id: bodyText
+                                visible: bubble.showsText
+                                width: Math.min(implicitWidth, bubble.textMax)
+                                text: bubble.audio ? (row.modelData.caption || "") : row.modelData.body
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: row.home ? Theme.accentInk : Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.fontMd
+                                lineHeight: 1.15
+                            }
                         }
                         // One that didn't go: a tap tries again.
                         TapHandler {
@@ -259,20 +321,83 @@ Item {
             opacity: rv.at(3)
         }
 
-        // Type it, or say it.
+        // Type it, or record it.
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 76
             radius: height / 2
             color: Theme.surface
-            border.color: input.activeFocus || screen.listening ? Theme.accent : Theme.divider
-            border.width: input.activeFocus || screen.listening ? 2 : 1
+            border.color: input.activeFocus || Messages.recording ? Theme.accent : Theme.divider
+            border.width: input.activeFocus || Messages.recording ? 2 : 1
             opacity: rv.at(4)
             enabled: Messages.available
+
+            // Recording a voice note: × drops it, the level and the time, Send sends it.
+            Item {
+                objectName: "recordingBar"
+                anchors.left: parent.left
+                anchors.right: buttons.left
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                height: parent.height
+                visible: Messages.recording
+                IconButton {
+                    id: dropNote
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 60; height: 60
+                    icon: "close"
+                    fill: Theme.surfaceAlt
+                    ink: Theme.textMuted
+                    onClicked: Messages.cancelRecording()
+                }
+                Rectangle {
+                    id: recDot
+                    anchors.left: dropNote.right
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14; height: 14; radius: 7
+                    color: Theme.danger
+                    SequentialAnimation on opacity {
+                        running: Messages.recording
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 600 }
+                        NumberAnimation { to: 1; duration: 600 }
+                    }
+                }
+                Label {
+                    id: recLabel
+                    anchors.left: recDot.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Recording… 0:%1").arg(String(screen.recordedSeconds).padStart(2, "0"))
+                    color: Theme.text
+                    font.pixelSize: Theme.fontMd - 2
+                    font.weight: Font.DemiBold
+                    font.features: ({ "tnum": 1 })
+                }
+                // How loud, so a kid can see it's hearing them.
+                Rectangle {
+                    anchors.left: recLabel.right
+                    anchors.leftMargin: 18
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 10
+                    radius: 5
+                    color: Theme.surfaceAlt
+                    Rectangle {
+                        width: parent.width * Math.min(1, Voice.level * 1.4)
+                        height: parent.height
+                        radius: 5
+                        color: Theme.accent
+                        Behavior on width { NumberAnimation { duration: Theme.quick } }
+                    }
+                }
+            }
 
             TextField {
                 id: input
                 objectName: "messageInput"
+                visible: !Messages.recording
                 anchors.left: parent.left
                 anchors.right: buttons.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -281,12 +406,11 @@ Item {
                 text: Messages.draft
                 onTextEdited: Messages.draft = text
                 maximumLength: 500
-                placeholderText: screen.listening ? qsTr("Listening… say your message")
-                                                  : Messages.writer ? qsTr("Write a message, %1").arg(Messages.writer)
-                                                                    : qsTr("Write a message")
+                placeholderText: Messages.writer ? qsTr("Write a message, %1").arg(Messages.writer)
+                                                 : qsTr("Write a message")
                 font.pixelSize: Theme.fontMd - 2
                 color: Theme.text
-                placeholderTextColor: screen.listening ? Theme.accent : Theme.textMuted
+                placeholderTextColor: Theme.textMuted
                 background: null
                 // As the Ask panel's: a word still being predicted isn't in `text` yet.
                 inputMethodHints: Qt.ImhNoPredictiveText
@@ -301,24 +425,15 @@ Item {
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
-                Item {
+                // A voice note (there's no mic without the voice service).
+                IconButton {
+                    objectName: "messageRecord"
+                    visible: Messages.canRecord && !Messages.recording
                     width: 60; height: 60
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: parent.width; height: width; radius: width / 2
-                        color: Theme.accent
-                        opacity: screen.listening ? 0.25 : 0
-                        scale: 1 + (screen.listening ? Math.min(1, Voice.level * 1.6) * 0.45 : 0)
-                        Behavior on scale { NumberAnimation { duration: Theme.quick } }
-                        Behavior on opacity { NumberAnimation { duration: Theme.quick } }
-                    }
-                    IconButton {
-                        anchors.fill: parent
-                        icon: Voice.available ? "mic" : "mic-off"
-                        fill: screen.listening ? Theme.accent : Theme.surfaceAlt
-                        ink: screen.listening ? Theme.accentInk : Voice.available ? Theme.text : Theme.textMuted
-                        onClicked: screen.dictate()
-                    }
+                    icon: "mic"
+                    fill: Theme.surfaceAlt
+                    ink: Theme.text
+                    onClicked: screen.record()
                 }
                 IconButton {
                     objectName: "messageSend"
@@ -326,8 +441,12 @@ Item {
                     icon: "send"
                     fill: Theme.accent
                     ink: Theme.accentInk
-                    enabled: input.text.trim().length > 0 || input.preeditText.length > 0
+                    enabled: Messages.recording || input.text.trim().length > 0 || input.preeditText.length > 0
                     onClicked: {
+                        if (Messages.recording) {
+                            Messages.finishRecording()
+                            return
+                        }
                         Qt.inputMethod.commit()
                         screen.send(input.text, true)
                     }

@@ -98,12 +98,23 @@ Item {
                     maximumLineCount: 4
                     elide: Text.ElideRight
                 }
-                PillButton {
+                RowLayout {
                     Layout.topMargin: 6
-                    text: qsTr("Reply")
-                    onClicked: {
-                        Voice.stopSpeaking()
-                        card.reply()
+                    spacing: 12
+                    // A voice note: play it (again), or stop it.
+                    PillButton {
+                        visible: !!card.message.audio && Messages.canPlay
+                        text: Messages.playingId === card.message.id ? qsTr("Stop") : qsTr("Play")
+                        fill: Theme.surfaceAlt
+                        ink: Theme.text
+                        onClicked: Messages.play(card.message.id)
+                    }
+                    PillButton {
+                        text: qsTr("Reply")
+                        onClicked: {
+                            Voice.stopSpeaking()
+                            card.reply()
+                        }
                     }
                 }
             }
